@@ -1,9 +1,11 @@
 from typing import AsyncGenerator
+from datetime import datetime
 
 import os
 from asyncio import current_task
 from supabase import Client, create_client
 from dotenv import load_dotenv
+from sqlalchemy import Column, Integer, String, Text, DateTime
 from sqlalchemy.ext.asyncio import (
     AsyncSession, 
     create_async_engine, 
@@ -48,6 +50,21 @@ AsyncSessionLocal = async_sessionmaker(
 ScopedSession = async_scoped_session(AsyncSessionLocal, scopefunc=current_task)
 
 Base = declarative_base()
+
+
+class LNRReviewLog(Base):
+    __tablename__ = "lnr_reviews_log"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = Column(Integer, nullable=False)
+    platform_id = Column(Integer, nullable=False)
+    external_review_id = Column(String(255), unique=True, nullable=False)
+    author_name = Column(String(255))
+    rating = Column(Integer, nullable=False)
+    review_text = Column(Text)
+    sentiment = Column(String(50))  # "negative" if rating <= 3 else "positive"
+    processing_status = Column(String(50), default="new")  # new, processed, alert_sent
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 
 # Наш главный мост — Dependency Injection для FastAPI роутеров
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

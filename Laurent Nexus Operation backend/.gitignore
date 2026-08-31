@@ -1,36 +1,20 @@
-# Dependencies
+.env
+**/.env
 node_modules/
 **/node_modules/
-
-# Python
 .venv/
 **/.venv/
 __pycache__/
 **/__pycache__/
-*.pyc
-
-# Build output
 dist/
 **/dist/
 .vite/
 **/.vite/
-
-# Databases
 *.db
 **/*.db
 *.db-shm
 **/*.db-shm
 *.db-wal
 **/*.db-wal
-
-# Environment & secrets
-.env
-**/.env
-
-# Editors
 .vscode/
 .DS_Store
-
-# Logs
-*.log
-npm-debug.log*

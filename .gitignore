@@ -5,6 +5,9 @@ node_modules/
 # Python
 .venv/
 **/.venv/
+venv/
+**/venv/
+tenable-engine/venv/
 __pycache__/
 **/__pycache__/
 *.pyc

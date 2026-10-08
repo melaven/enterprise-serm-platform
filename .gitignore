@@ -28,7 +28,17 @@ dist/
 
 # Environment & secrets
 .env
+.env.*
+!.env.example
 **/.env
+**/.env.*
+!**/.env.example
+
+# Private keys and certificates
+*.key
+*.pem
+*.p12
+*.pfx
 
 # Editors
 .vscode/
@@ -37,3 +47,9 @@ dist/
 # Logs
 *.log
 npm-debug.log*
+
+# Project specific
+Laurent Nexus Operation backend_backup/
+Tenable_backend/
+portfolio-site/
+tenable-engine/

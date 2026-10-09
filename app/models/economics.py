@@ -56,6 +56,7 @@ class Platform(Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    platform_url: Mapped[str | None] = mapped_column(String(500), nullable=True, index=True)
     monthly_views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     conversion_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     cac_on_platform: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
@@ -68,7 +69,7 @@ class Platform(Base):
         passive_deletes=True,
     )
 
-    # Индекс для мультитенантности
+    # Индексы создаются в миграциях  
     __table_args__ = (
         Index("ix_platforms_company_id", "company_id"),
     )
@@ -95,6 +96,10 @@ class Review(Base):
     external_review_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True, unique=True, index=True
     )
+    # Добавляем поле для названия платформы как строки (для упрощения парсинга)
+    platform: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
+    )
     author_name: Mapped[str] = mapped_column(String(255), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -116,12 +121,11 @@ class Review(Base):
     platform: Mapped[Platform] = relationship(back_populates="reviews")
     company: Mapped[Company] = relationship()
 
-    # Индексы для мультитенантности и производительности
+    # Индексы для мультитенантности и производительности создаются в миграциях
     __table_args__ = (
         Index("ix_reviews_company_id", "company_id"),
         Index("ix_reviews_platform_company", "platform_id", "company_id"),
         Index("ix_reviews_status_company", "status", "company_id"),
-        Index("ix_reviews_external_id", "external_review_id"),
     )
 
 

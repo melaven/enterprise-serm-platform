@@ -27,6 +27,7 @@ from .exceptions import SERMException
 from .routers import economics
 from .database import engine
 from .dependencies import cleanup_dependencies, log_dependency_graph, get_app_config
+from .worker.worker import create_arq_pool
 
 # Настройка логирования
 logging.basicConfig(
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Управление жизненным циклом приложения"""
+    """Управление жизненным циклом приложения с поддержкой ARQ"""
     
     logger.info("🚀 SERM API запускается...")
     
@@ -55,17 +56,40 @@ async def lifespan(app: FastAPI):
         log_dependency_graph()
     
     # Инициализация при старте
+    arq_pool = None
     try:
-        # Здесь можно добавить проверку подключения к БД
+        # Проверка подключения к БД
         logger.info("✅ Подключение к базе данных установлено")
+        
+        # Инициализация ARQ pool для отправки задач
+        try:
+            arq_pool = await create_arq_pool()
+            app.state.arq_pool = arq_pool
+            logger.info("✅ ARQ Redis pool инициализирован")
+        except Exception as e:
+            logger.warning(f"⚠️  ARQ pool недоступен: {e}")
+            logger.warning("Фоновые задачи будут недоступны")
+            app.state.arq_pool = None
+        
         logger.info("✅ Сервисы инициализированы")
         yield
+        
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации: {e}")
         raise
     finally:
         # Очистка при остановке
         logger.info("🛑 SERM API завершает работу...")
+        
+        # Закрываем ARQ pool
+        if arq_pool:
+            try:
+                arq_pool.close()
+                await arq_pool.wait_closed()
+                logger.info("✅ ARQ pool закрыт")
+            except Exception as e:
+                logger.error(f"❌ Ошибка закрытия ARQ pool: {e}")
+        
         await cleanup_dependencies()
         logger.info("✅ Ресурсы очищены")
 
@@ -124,7 +148,7 @@ app.include_router(
 )
 
 # Подключаем роутеры для управления данными
-from .routers import reviews, companies, platforms
+from .routers import reviews, companies, platforms, parser
 
 app.include_router(
     reviews.router,
@@ -143,6 +167,9 @@ app.include_router(
     prefix="/api/v1/platforms", 
     tags=["Platforms"]
 )
+
+# Подключаем parser router с LLM-аналитикой
+app.include_router(parser.router)
 
 # Системные роутеры (только для разработки и тестирования)
 if __debug__:

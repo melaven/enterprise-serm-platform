@@ -1,0 +1,35 @@
+# Секреты: переменные приходят через env_file в compose, в образ не копируются.
+.env
+.env.*
+!.env.docker.example
+
+# VCS / IDE
+.git
+.gitignore
+.github
+.idea
+.vscode
+
+# Python-мусор
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Не нужно в рантайме
+tests/
+docs/
+archive/
+*.md
+requirements-dev.txt
+requirements-bot.txt
+pytest.ini
+.pre-commit-config.yaml
+docker-compose*.yml
+Dockerfile
+node_modules/

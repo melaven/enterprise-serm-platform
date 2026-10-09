@@ -1,0 +1,97 @@
+name: tenable-serm
+
+# Общие настройки api и worker: один образ, один .env, одинаковое усиление безопасности.
+x-app: &app
+  build:
+    context: .
+    args:
+      PYTHON_VERSION: "3.12"
+  image: tenable-serm:latest
+  env_file: .env # GEMINI_API_KEY, SUPABASE_URL, DATABASE_URL и т.д.
+  environment: &app-env
+    # Перекрывает REDIS_URL из .env (там обычно 127.0.0.1, а из контейнера это он сам).
+    REDIS_URL: redis://:${REDIS_PASSWORD:?Задай REDIS_PASSWORD в .env}@redis:6379/0
+  restart: unless-stopped
+  init: true # корректная обработка сигналов и зомби-процессов
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+  depends_on:
+    redis:
+      condition: service_healthy # ждём не просто старт контейнера, а ответ PONG
+  networks:
+    - backend
+
+services:
+  api:
+    <<: *app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *app-env
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2} # число процессов uvicorn
+    ports:
+      # По умолчанию только localhost VPS: наружу отдаёт reverse proxy (Caddy/Nginx).
+      # Для прямого доступа: API_BIND=0.0.0.0 в .env.
+      - "${API_BIND:-127.0.0.1}:${API_PORT:-8000}:8000"
+    healthcheck:
+      # TCP-проверка порта: не зависит от того, есть ли в API маршрут /health.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import socket; socket.create_connection(('127.0.0.1', 8000), 3).close()"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["arq", "app.worker.worker.WorkerSettings"]
+    stop_grace_period: 30s # время дозавершить задачи; прерванные ARQ вернёт в очередь
+    healthcheck:
+      # Требует health_check_interval в WorkerSettings; если воркер не становится
+      # healthy, удали этот блок (на запуск других сервисов он не влияет).
+      test: ["CMD", "arq", "--check", "app.worker.worker.WorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Порт НЕ публикуется: Redis виден только api и worker внутри сети backend.
+    # appendonly: очередь ARQ переживает рестарт контейнера.
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Задай REDIS_PASSWORD в .env}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging: *logging
+    networks:
+      - backend
+
+volumes:
+  redis-data:
+
+networks:
+  backend:

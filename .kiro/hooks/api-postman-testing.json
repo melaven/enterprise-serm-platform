@@ -1,0 +1,15 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "API Postman Testing",
+      "trigger": "PostFileSave",
+      "description": "Monitors API source code changes and automatically runs Postman collection tests to validate functionality",
+      "matcher": ".*\\.(py|sql|env)$",
+      "action": {
+        "type": "agent",
+        "prompt": "API source code or configuration has been modified. Please retrieve the contents of the .postman.json file. If the file does not exist or is empty, create a Postman collection for the API. If it exists, get the collection ID and run the collection, showing me the results and propose fixes for any errors found."
+      }
+    }
+  ]
+}

@@ -58,7 +58,7 @@ async def test_error_handlers(
         raise DatabaseTimeoutError("запроса статистики отзывов")
     
     elif error_type == "llm":
-        raise LLMServiceError("OpenAI API недоступен")
+        raise LLMServiceError("Gemini API недоступен")
     
     elif error_type == "calculation":
         raise EconomicsCalculationError("LTV", "отрицательное значение CAC")

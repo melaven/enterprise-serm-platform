@@ -78,7 +78,7 @@ class ExternalServiceError(SERMException):
 
 
 class LLMServiceError(ExternalServiceError):
-    """Ошибки LLM сервиса (OpenAI)"""
+    """Ошибки LLM сервиса (Google Gemini)"""
     
     def __init__(self, message: str = "Ошибка генерации ответа"):
         super().__init__("LLM", message)

@@ -12,9 +12,11 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import get_db
-from .auth import AuthContext, JWTHandler, get_jwt_handler, get_db_with_tenant
-from .repositories import CompanyRepository, PlatformRepository, ReviewRepository
-from .services import EconomicsService, LLMService, SentimentService, ReviewProcessorService
+from .auth import AuthContext, JWTHandler
+from .auth.jwt_handler import get_jwt_handler
+from .auth.tenant_session import get_db_with_tenant
+from .repositories import CompanyRepository, PlatformRepository, ReviewRepository, ParserRepository
+from .services import EconomicsService, LLMService, SentimentService, ReviewProcessorService, ParserService
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
@@ -79,6 +81,13 @@ async def get_platform_repository(
     return PlatformRepository(db)
 
 
+async def get_parser_repository(
+    db: AsyncSession = Depends(get_tenant_db)
+) -> ParserRepository:
+    """Фабрика для ParserRepository с tenant изоляцией"""
+    return ParserRepository(db)
+
+
 async def get_review_repository(
     db: AsyncSession = Depends(get_tenant_db)
 ) -> ReviewRepository:
@@ -98,7 +107,7 @@ async def get_economics_service(
 
 @lru_cache()
 def get_llm_service_singleton() -> LLMService:
-    """Синглтон для LLMService (переиспользуем OpenAI клиент)"""
+    """Синглтон для LLMService (переиспользуем Gemini клиент)"""
     return LLMService()
 
 
@@ -116,6 +125,15 @@ def get_sentiment_service_singleton() -> SentimentService:
 async def get_sentiment_service() -> SentimentService:
     """Фабрика для SentimentService"""
     return get_sentiment_service_singleton()
+
+
+async def get_parser_service(
+    review_repo: ReviewRepository = Depends(get_review_repository),
+    platform_repo: PlatformRepository = Depends(get_platform_repository),
+    company_repo: CompanyRepository = Depends(get_company_repository)
+) -> ParserService:
+    """Фабрика для ParserService"""
+    return ParserService(review_repo, platform_repo, company_repo)
 
 
 async def get_review_processor_service(
@@ -274,9 +292,9 @@ class AppConfig:
         # Database
         self.database_url = os.getenv("DATABASE_URL")
         
-        # OpenAI
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        # Google Gemini API
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         
         # Authentication
         self.auth_jwt_secret = os.getenv("AUTH_JWT_SECRET")
@@ -298,8 +316,8 @@ class AppConfig:
         if not self.database_url:
             errors.append("DATABASE_URL not configured")
         
-        if not self.openai_api_key:
-            errors.append("OPENAI_API_KEY not configured")
+        if not self.gemini_api_key:
+            errors.append("GEMINI_API_KEY not configured")
         
         # Проверка auth настроек
         if self.auth_jwt_algorithm == "RS256" and not self.auth_jwks_url:

@@ -54,6 +54,17 @@ class PlatformRepository(BaseRepository[Platform]):
         except Exception as e:
             raise DatabaseError("Ошибка поиска платформы по названию", e)
     
+    async def get_by_url(self, platform_url: str) -> Optional[Platform]:
+        """Найти платформу по URL"""
+        try:
+            query = select(Platform).options(
+                selectinload(Platform.company)
+            ).where(Platform.platform_url == platform_url)
+            result = await self.db.execute(query)
+            return result.scalar_one_or_none()
+        except Exception as e:
+            raise DatabaseError("Ошибка поиска платформы по URL", e)
+    
     async def update_rating(self, platform_id: UUID) -> Platform:
         """Пересчитать средний рейтинг платформы на основе отзывов"""
         try:

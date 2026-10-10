@@ -67,6 +67,20 @@ services:
       retries: 3
       start_period: 45s
 
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "tg_bot.main"]
+    env_file:
+      - .env.docker
+    environment:
+      TG_API_BASE_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    stop_grace_period: 10s
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped

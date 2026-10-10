@@ -148,7 +148,7 @@ app.include_router(
 )
 
 # Подключаем роутеры для управления данными
-from .routers import reviews, companies, platforms, parser
+from .routers import reviews, companies, platforms, parser, analytics
 
 app.include_router(
     reviews.router,
@@ -170,6 +170,9 @@ app.include_router(
 
 # Подключаем parser router с LLM-аналитикой
 app.include_router(parser.router)
+
+# Подключаем analytics router
+app.include_router(analytics.router, tags=["Analytics"])
 
 # Системные роутеры (только для разработки и тестирования)
 if __debug__:

@@ -11,3 +11,5 @@ python-multipart>=0.0.6
 httpx>=0.25.0
 arq>=0.26
 redis>=5.0.0
+aiogram>=3.13,<4
+httpx>=0.27

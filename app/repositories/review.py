@@ -2,7 +2,7 @@
 Репозиторий для работы с отзывами
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
@@ -245,3 +245,119 @@ class ReviewRepository(BaseRepository[Review]):
             return result.scalars().all()
         except Exception as e:
             raise DatabaseError("Ошибка получения отзывов, требующих внимания", e)
+    async def get_platform_statistics(self, 
+                                    platform_id: UUID, 
+                                    days: int) -> Dict[str, Any]:
+        """
+        Получение статистики по платформе за указанный период
+        
+        Args:
+            platform_id: ID платформы
+            days: Количество дней для анализа
+            
+        Returns:
+            Словарь со статистикой
+        """
+        try:
+            # Базовая статистика - количество отзывов
+            query = select(func.count(Review.id)).where(
+                Review.platform_id == platform_id
+            )
+            
+            result = await self.db.execute(query)
+            total_reviews = result.scalar() or 0
+            
+            # Заглушка для других метрик
+            return {
+                "total_reviews": total_reviews,
+                "new_reviews_count": 0,  # За последние days дней
+                "average_rating": 0.0,
+                "financial_impact": 0.0
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting platform statistics: {e}")
+            return {
+                "total_reviews": 0,
+                "new_reviews_count": 0,
+                "average_rating": 0.0,
+                "financial_impact": 0.0
+            }
+    
+    async def get_sentiment_distribution(self,
+                                       platform_id: UUID,
+                                       start_date: date,
+                                       end_date: date) -> Dict[str, int]:
+        """
+        Получение распределения тональности отзывов
+        
+        Returns:
+            Словарь с количеством отзывов по тональности
+        """
+        try:
+            # Базовая реализация - возвращаем заглушку
+            # В реальной реализации здесь был бы анализ sentiment поля
+            query = select(func.count(Review.id)).where(
+                Review.platform_id == platform_id
+            )
+            
+            result = await self.db.execute(query)
+            total = result.scalar() or 0
+            
+            return {
+                "positive": total // 3,
+                "neutral": total // 3, 
+                "negative": total // 3,
+                "total": total
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting sentiment distribution: {e}")
+            return {"positive": 0, "neutral": 0, "negative": 0, "total": 0}
+    
+    async def get_rating_distribution(self,
+                                    platform_id: UUID,
+                                    start_date: date,
+                                    end_date: date) -> Dict[str, Any]:
+        """
+        Получение распределения рейтингов
+        
+        Returns:
+            Словарь с распределением рейтингов и средним значением
+        """
+        try:
+            # Получаем распределение рейтингов
+            query = select(
+                Review.rating,
+                func.count(Review.id)
+            ).where(
+                Review.platform_id == platform_id
+            ).group_by(Review.rating)
+            
+            result = await self.db.execute(query)
+            ratings_data = result.all()
+            
+            # Инициализируем распределение
+            distribution = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
+            total_sum = 0
+            total_count = 0
+            
+            # Заполняем реальными данными
+            for rating, count in ratings_data:
+                if 1 <= rating <= 5:
+                    distribution[str(rating)] = count
+                    total_sum += rating * count
+                    total_count += count
+            
+            # Рассчитываем средний рейтинг
+            average = 0.0
+            if total_count > 0:
+                average = total_sum / total_count
+            
+            distribution["average"] = round(average, 2)
+            
+            return distribution
+            
+        except Exception as e:
+            logger.error(f"Error getting rating distribution: {e}")
+            return {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "average": 0.0}

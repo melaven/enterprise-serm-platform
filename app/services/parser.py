@@ -10,7 +10,6 @@ from uuid import UUID
 from ..repositories import ReviewRepository, PlatformRepository, CompanyRepository
 from .review_processor import ReviewProcessorService
 from ..schemas.economics import ReviewBase, ReviewStatus
-from ..services.analyzer import ReviewAnalyzerService
 from ..exceptions import BusinessLogicError, NotFoundError, ValidationError
 
 
@@ -29,9 +28,6 @@ class ParserService:
         self.platform_repo = platform_repo
         self.company_repo = company_repo
         self.review_processor = review_processor
-        
-        # Инициализация LLM-сервисов
-        self.analyzer = ReviewAnalyzerService()
     
     async def process_parsed_reviews(self, 
                                    platform_url: str,
@@ -297,39 +293,3 @@ class ParserService:
             if isinstance(e, (NotFoundError, ValidationError)):
                 raise
             raise BusinessLogicError(f"Ошибка планирования парсинга: {str(e)}")
-    
-    async def _analyze_review_with_llm(self, review_data: Dict[str, Any], platform_name: str) -> Dict[str, Any]:
-        """
-        Выполняет LLM-анализ отзыва перед сохранением в БД
-        
-        Args:
-            review_data: Сырые данные отзыва от парсера
-            platform_name: Название платформы
-            
-        Returns:
-            Dict: Результат LLM-анализа с тональностью и тегами
-        """
-        try:
-            text = review_data.get("text", "")
-            rating = review_data.get("rating", 3)
-            
-            logger.info(f"🧠 Запуск LLM-анализа отзыва с рейтингом {rating}")
-            
-            # Анализ тональности и извлечение тегов через analyzer
-            analytics = await self.analyzer.analyze_review(text, rating)
-            
-            logger.info(f"✅ LLM-анализ завершен: {analytics.sentiment}, теги: {analytics.tags}")
-            return {
-                "sentiment": analytics.sentiment,
-                "tags": analytics.tags,
-                "suggested_reply": "Спасибо за ваш отзыв! Мы обязательно учтем ваше мнение."
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Ошибка LLM-анализа отзыва: {e}")
-            # Возвращаем безопасные дефолтные значения при ошибке
-            return {
-                "sentiment": "Neutral", 
-                "tags": ["ошибка_llm_анализа"],
-                "suggested_reply": "Спасибо за ваш отзыв! Мы обязательно учтем ваше мнение."
-            }

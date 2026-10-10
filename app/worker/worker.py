@@ -1,8 +1,7 @@
 """
-ARQ Worker настройки для SERM
+ARQ Worker настройки для SERM с enterprise-логированием и DLQ
 """
 
-import logging
 import os
 from typing import Optional
 
@@ -10,9 +9,10 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from arq.worker import Function
 
+from ..core.logger import configure_logging, get_logger
 from .tasks import fetch_reviews_task
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def get_redis_settings() -> RedisSettings:
@@ -39,7 +39,7 @@ def get_redis_settings() -> RedisSettings:
 
 
 class WorkerSettings:
-    """Конфигурация ARQ Worker"""
+    """Конфигурация ARQ Worker с Dead Letter Queue"""
     
     # Настройки Redis
     redis_settings = get_redis_settings()
@@ -53,6 +53,8 @@ class WorkerSettings:
     max_jobs = 10
     job_timeout = 300  # 5 минут на задачу
     keep_result = 120  # Держим результаты 2 минуты
+    max_tries = 3  # Максимальное количество попыток для DLQ
+    max_tries = 5  # Максимальное количество попыток для DLQ
     
     # Логирование
     log_results = True
@@ -62,10 +64,23 @@ class WorkerSettings:
 
 
 async def startup(ctx):
-    """Инициализация воркера"""
+    """Инициализация воркера с настройкой логирования"""
+    
+    # Настройка логирования для воркера
+    environment = os.getenv("ENVIRONMENT", "development")
+    debug_mode = environment.lower() in ("development", "dev")
+
+    configure_logging(
+        level="DEBUG" if debug_mode else "INFO",
+        json_format=not debug_mode,
+        include_caller_info=debug_mode,
+        service_name="serm-worker"
+    )
+    
+    logger = get_logger(__name__)
     logger.info("=" * 60)
-    logger.info("🚀 ARQ Worker starting up...")
-    logger.info("=" * 60)
+    logger.info("🚀 ARQ Worker starting up...", 
+               service="serm-worker", environment=environment)
     
     try:
         # Загружаем переменные окружения

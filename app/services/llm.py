@@ -1,36 +1,131 @@
 """
-Сервис для работы с LLM (Language Model) - генерация ответов на отзывы через Google Gemini API
-Заменил OpenAI на Gemini 1.5 Flash для генерации ответов
+Сервис для работы с LLM (Language Model) - анализ отзывов через Google Gemini API
+Обновлен до нового google-genai SDK с детерминированным анализом
 """
 
 import logging
 from typing import Optional, Dict, Any
-import google.generativeai as genai
+
 from config import get_settings
-
+from .llm_analyzer import build_gemini_analyzer, LLMTransportError, LLMAnalysisError, AnalysisOutcome
 from ..exceptions import LLMServiceError
+from ..core.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LLMService:
-    """Сервис для генерации ответов на отзывы через Google Gemini API"""
+    """Сервис для анализа отзывов через Google Gemini API (новый google-genai SDK)"""
     
     def __init__(self):
         settings = get_settings()
         if not settings.gemini_api_key:
             raise LLMServiceError("Не настроен GEMINI_API_KEY")
         
-        genai.configure(api_key=settings.gemini_api_key)
-        self.model = genai.GenerativeModel(settings.gemini_model)
-        self.generation_config = {
-            "temperature": 0.7,  # Баланс между креативностью и консистентностью
-            "top_p": 0.8,
-            "top_k": 20,
-            "max_output_tokens": 400,
-        }
-        logger.info(f"✅ Gemini LLM сервис инициализирован с моделью {settings.gemini_model}")
+        try:
+            self.analyzer = build_gemini_analyzer(
+                api_key=settings.gemini_api_key,
+                model=settings.gemini_model,
+                timeout_s=30.0
+            )
+            logger.info("LLM service initialized", 
+                       model=settings.gemini_model, sdk="google-genai")
+        except Exception as e:
+            logger.error("LLM service initialization failed", error=str(e))
+            raise LLMServiceError(f"Ошибка инициализации LLM: {e}")
     
+    async def analyze_review(self,
+                           review_text: str,
+                           rating: Optional[int] = None,
+                           platform: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Анализ отзыва с использованием детерминированного LLM-анализатора
+        
+        Args:
+            review_text: Текст отзыва
+            rating: Рейтинг (1-5)
+            platform: Название платформы
+            
+        Returns:
+            Результат анализа в формате словаря
+            
+        Raises:
+            LLMServiceError: При ошибках анализа
+        """
+        try:
+            logger.info("Review analysis started", 
+                       review_chars=len(review_text), rating=rating, platform=platform)
+            
+            result = await self.analyzer.analyze(review_text, rating=rating, platform=platform)
+            
+            analysis_dict = {
+                "sentiment": result.sentiment.value,
+                "issue_category": result.issue_category.value,
+                "extracted_entities": result.extracted_entities,
+                "is_critical": result.is_critical,
+                "suggested_reply": result.suggested_reply
+            }
+            
+            logger.info("Review analysis completed", 
+                       sentiment=result.sentiment.value,
+                       is_critical=result.is_critical,
+                       entities_count=len(result.extracted_entities))
+            
+            return analysis_dict
+            
+        except LLMTransportError as e:
+            # Транспортные ошибки пробрасываем для retry в ARQ
+            logger.warning("LLM transport error", error=str(e))
+            raise
+        except LLMAnalysisError as e:
+            logger.error("LLM analysis error", error=str(e), error_type=type(e).__name__)
+            raise LLMServiceError(f"Ошибка анализа отзыва: {e}")
+        except Exception as e:
+            logger.error("Unexpected LLM error", error=str(e))
+            raise LLMServiceError(f"Неожиданная ошибка LLM: {e}")
+    
+    async def analyze_review_safe(self,
+                                review_text: str,
+                                rating: Optional[int] = None,
+                                platform: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Безопасный анализ отзыва с fallback
+        
+        Всегда возвращает результат, даже при ошибках LLM
+        """
+        try:
+            outcome: AnalysisOutcome = await self.analyzer.analyze_safe(
+                review_text, rating=rating, platform=platform
+            )
+            
+            analysis_dict = {
+                "sentiment": outcome.result.sentiment.value,
+                "issue_category": outcome.result.issue_category.value,
+                "extracted_entities": outcome.result.extracted_entities,
+                "is_critical": outcome.result.is_critical,
+                "suggested_reply": outcome.result.suggested_reply,
+                "is_fallback": outcome.is_fallback
+            }
+            
+            if outcome.is_fallback:
+                logger.warning("Used fallback analysis", 
+                              rating=rating, platform=platform)
+            
+            return analysis_dict
+            
+        except Exception as e:
+            logger.error("Safe analysis failed completely", error=str(e))
+            # Крайний fallback - если и safe метод упал
+            return {
+                "sentiment": "NEUTRAL",
+                "issue_category": "OTHER",
+                "extracted_entities": [],
+                "is_critical": rating is not None and rating <= 2,
+                "suggested_reply": "Спасибо за ваш отзыв! Мы внимательно изучим ситуацию.",
+                "is_fallback": True
+            }
+    
+    # Методы для обратной совместимости со старым API
     async def generate_review_response(self,
                                      review_text: str,
                                      rating: int,
@@ -38,149 +133,55 @@ class LLMService:
                                      company_name: str = None,
                                      custom_context: Dict[str, Any] = None) -> str:
         """
-        Генерация профессионального ответа на отзыв через Gemini API
+        Генерация ответа на отзыв (обратная совместимость)
+        
+        Использует новый анализатор для генерации suggested_reply
         """
         try:
-            logger.info("🤖 Генерация ответа на отзыв через Gemini...")
-            
-            # Формируем единый промпт для Gemini
-            prompt = self._build_prompt(review_text, rating, author_name, company_name, custom_context)
-            
-            response = self.model.generate_content(
-                prompt,
-                generation_config=self.generation_config
-            )
-            
-            generated_response = response.text.strip()
-            
-            # Проверяем качество ответа
-            if len(generated_response.strip()) < 10:
-                raise LLMServiceError("Сгенерированный ответ слишком короткий")
-            
-            logger.info("✅ Ответ успешно сгенерирован через Gemini")
-            return generated_response
-        
+            analysis = await self.analyze_review_safe(review_text, rating=rating)
+            return analysis["suggested_reply"]
         except Exception as e:
-            if isinstance(e, LLMServiceError):
-                raise
-            logger.error(f"❌ Ошибка Gemini API: {e}")
-            raise LLMServiceError(f"Ошибка генерации ответа: {str(e)}")
-    
-    def _build_prompt(self, review_text: str, rating: int, author_name: str = None, 
-                     company_name: str = None, custom_context: Dict[str, Any] = None) -> str:
-        """Построение промпта для Gemini"""
-        
-        company_info = f"от имени компании {company_name}" if company_name else "от имени компании"
-        author_info = f"клиенту {author_name}" if author_name else "клиенту"
-        
-        prompt = f"""
-Ты - профессиональный менеджер по работе с клиентами российской компании. 
-Напиши вежливый, профессиональный и полезный ответ на отзыв {author_info} {company_info} на русском языке.
-
-ПРИНЦИПЫ ОТВЕТОВ:
-- Всегда благодари за обратную связь
-- Будь искренним и человечным
-- Для негативных отзывов (1-2 звезды): извинись и предложи конкретное решение
-- Для нейтральных отзывов (3 звезды): поблагодари и предложи улучшения
-- Для позитивных отзывов (4-5 звезд): поблагодари и поддержи позитив
-- Избегай шаблонных фраз
-- Длина ответа: 2-4 предложения
-- Тон: дружелюбный, профессиональный, искренний
-
-ДАННЫЕ ОТЗЫВА:
-Рейтинг: {rating}/5
-Текст отзыва: "{review_text}"
-"""
-
-        if author_name:
-            prompt += f"Имя автора: {author_name}\n"
-
-        if custom_context:
-            if custom_context.get("response_style"):
-                prompt += f"Стиль ответов: {custom_context['response_style']}\n"
-            if custom_context.get("special_offers"):
-                prompt += f"Можешь предложить: {custom_context['special_offers']}\n"
-
-        prompt += "\nНапиши профессиональный ответ на этот отзыв:"
-        
-        return prompt
+            logger.error("Review response generation failed", error=str(e))
+            raise LLMServiceError(f"Ошибка генерации ответа: {e}")
     
     async def generate_bulk_responses(self,
                                     reviews_data: list[Dict[str, Any]],
                                     company_name: str = None) -> list[Dict[str, Any]]:
         """
-        Массовая генерация ответов для нескольких отзывов
+        Массовая генерация ответов (обратная совместимость)
         """
-        logger.info(f"🔄 Массовая генерация ответов для {len(reviews_data)} отзывов")
+        logger.info("Bulk analysis started", reviews_count=len(reviews_data))
         results = []
         
         for review_data in reviews_data:
             try:
-                response = await self.generate_review_response(
+                analysis = await self.analyze_review_safe(
                     review_text=review_data["text"],
-                    rating=review_data["rating"],
-                    author_name=review_data.get("author_name"),
-                    company_name=company_name
+                    rating=review_data.get("rating")
                 )
                 
                 results.append({
                     "review_id": review_data.get("id"),
-                    "generated_response": response,
+                    "generated_response": analysis["suggested_reply"],
+                    "analysis": analysis,
                     "success": True
                 })
             
             except Exception as e:
-                logger.error(f"❌ Ошибка генерации для отзыва {review_data.get('id')}: {e}")
+                logger.error("Bulk analysis item failed", 
+                           review_id=review_data.get("id"), error=str(e))
                 results.append({
                     "review_id": review_data.get("id"),
                     "generated_response": None,
+                    "analysis": None,
                     "success": False,
                     "error": str(e)
                 })
         
+        logger.info("Bulk analysis completed", 
+                   total=len(results),
+                   successful=sum(1 for r in results if r["success"]))
         return results
-    
-    async def generate_follow_up_message(self,
-                                       original_review: str,
-                                       company_response: str,
-                                       client_reply: str = None) -> str:
-        """
-        Генерация дополнительного сообщения для продолжения диалога
-        """
-        try:
-            logger.info("📞 Генерация follow-up сообщения через Gemini")
-            
-            prompt = f"""
-Ты помогаешь продолжить диалог с клиентом после первоначального ответа компании.
-Напиши дружелюбное follow-up сообщение на русском языке, которое:
-- Подтверждает заботу о клиенте
-- При необходимости уточняет детали решения проблемы
-- Поддерживает позитивные отношения
-- Длина: 1-2 предложения
-
-КОНТЕКСТ ДИАЛОГА:
-Изначальный отзыв клиента: "{original_review}"
-Ответ компании: "{company_response}"
-"""
-            
-            if client_reply:
-                prompt += f'Ответ клиента: "{client_reply}"\n'
-            
-            prompt += "\nНапиши подходящее follow-up сообщение:"
-            
-            response = self.model.generate_content(
-                prompt,
-                generation_config={
-                    **self.generation_config,
-                    "max_output_tokens": 200
-                }
-            )
-            
-            return response.text.strip()
-        
-        except Exception as e:
-            logger.error(f"❌ Ошибка генерации follow-up: {e}")
-            raise LLMServiceError(f"Ошибка генерации follow-up сообщения: {str(e)}")
     
     def validate_api_connection(self) -> bool:
         """Проверка доступности Gemini API"""

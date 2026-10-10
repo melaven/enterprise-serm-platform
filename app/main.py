@@ -1,12 +1,12 @@
 """
 Главный файл FastAPI приложения SERM
-с централизованной обработкой ошибок
+с централизованной обработкой ошибок и enterprise-телеметрией
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime
-from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError, HTTPException
@@ -15,6 +15,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from asyncio import TimeoutError
 
+from .core.logger import configure_logging, get_logger
+from .core.middleware import (
+    CorrelationIdMiddleware, 
+    RequestLoggingMiddleware, 
+    PerformanceMiddleware
+)
 from .handlers import (
     serm_exception_handler,
     http_exception_handler, 
@@ -29,26 +35,38 @@ from .database import engine
 from .dependencies import cleanup_dependencies, log_dependency_graph, get_app_config
 from .worker.worker import create_arq_pool
 
-# Настройка логирования
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Определяем переменные окружения
+environment = os.getenv("ENVIRONMENT", "development")
+debug_mode = environment.lower() in ("development", "dev")
+
+# Настройка enterprise-логирования будет в lifespan
+logger = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения с поддержкой ARQ"""
     
-    logger.info("🚀 SERM API запускается...")
+    # Настройка enterprise-логирования при запуске
+    configure_logging(
+        level=logging.DEBUG if debug_mode else logging.INFO,
+        json_format=not debug_mode,  # JSON для продакшна, консоль для разработки
+        include_caller_info=debug_mode,
+        service_name="serm-api"
+    )
+    
+    global logger
+    logger = get_logger(__name__)
+    
+    logger.info("🚀 SERM API запускается...", 
+               service="serm-api", environment=environment)
     
     # Проверяем конфигурацию
     config = get_app_config()
     if not config.is_valid():
         logger.error("❌ Конфигурация содержит ошибки:")
         for error in config.validate():
-            logger.error(f"  - {error}")
+            logger.error("Configuration error", error=error)
         raise RuntimeError("Invalid application configuration")
     
     # Логируем граф зависимостей в debug режиме
@@ -59,39 +77,46 @@ async def lifespan(app: FastAPI):
     arq_pool = None
     try:
         # Проверка подключения к БД
-        logger.info("✅ Подключение к базе данных установлено")
+        logger.info("✅ Подключение к базе данных установлено",
+                   database="postgresql", connection="successful")
         
         # Инициализация ARQ pool для отправки задач
         try:
             arq_pool = await create_arq_pool()
             app.state.arq_pool = arq_pool
-            logger.info("✅ ARQ Redis pool инициализирован")
+            logger.info("✅ ARQ Redis pool инициализирован", 
+                       component="arq", status="ready")
         except Exception as e:
-            logger.warning(f"⚠️  ARQ pool недоступен: {e}")
+            logger.warning("⚠️ ARQ pool недоступен", 
+                          component="arq", error=str(e))
             logger.warning("Фоновые задачи будут недоступны")
             app.state.arq_pool = None
         
-        logger.info("✅ Сервисы инициализированы")
+        logger.info("✅ Сервисы инициализированы", 
+                   status="startup_complete")
         yield
         
     except Exception as e:
-        logger.error(f"❌ Ошибка инициализации: {e}")
+        logger.error("❌ Ошибка инициализации", 
+                    error=str(e), error_type=type(e).__name__)
         raise
     finally:
         # Очистка при остановке
-        logger.info("🛑 SERM API завершает работу...")
+        logger.info("🛑 SERM API завершает работу...", 
+                   status="shutdown_initiated")
         
         # Закрываем ARQ pool
         if arq_pool:
             try:
                 arq_pool.close()
                 await arq_pool.wait_closed()
-                logger.info("✅ ARQ pool закрыт")
+                logger.info("✅ ARQ pool закрыт", component="arq")
             except Exception as e:
-                logger.error(f"❌ Ошибка закрытия ARQ pool: {e}")
+                logger.error("❌ Ошибка закрытия ARQ pool", 
+                           component="arq", error=str(e))
         
         await cleanup_dependencies()
-        logger.info("✅ Ресурсы очищены")
+        logger.info("✅ Ресурсы очищены", status="shutdown_complete")
 
 
 # Создание FastAPI приложения
@@ -106,22 +131,32 @@ app = FastAPI(
 )
 
 
-# Middleware для трассировки запросов
-@app.middleware("http")
-async def add_request_id_middleware(request: Request, call_next):
-    """Добавляет уникальный ID к каждому запросу для трассировки"""
-    
-    request_id = str(uuid4())
-    request.state.request_id = request_id
-    
-    # Добавляем в headers для отладки
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = request_id
-    
-    return response
+# Enterprise Middleware Stack (порядок важен!)
 
+# 1. Correlation ID Middleware (должен быть первым)
+app.add_middleware(
+    CorrelationIdMiddleware,
+    header_name="X-Correlation-ID",
+    generate_if_missing=True
+)
 
-# CORS настройки
+# 2. Performance Monitoring (после correlation ID)
+app.add_middleware(
+    PerformanceMiddleware,
+    slow_request_threshold=2.0,  # 2 секунды для SERM API
+    log_slow_requests=True
+)
+
+# 3. Request Logging (в development режиме)
+if debug_mode:
+    app.add_middleware(
+        RequestLoggingMiddleware,
+        log_request_body=True,
+        log_response_body=False,  # Может быть большим для аналитики
+        log_headers=True
+    )
+
+# 4. CORS (после всех custom middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # В продакшене указать конкретные домены

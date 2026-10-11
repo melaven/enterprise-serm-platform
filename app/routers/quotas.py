@@ -1,0 +1,121 @@
+"""API endpoints для управления квотами и биллингом.
+
+Предоставляет эндпоинты для просмотра статуса квот, обновления лимитов (admin).
+"""
+
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, status
+
+from ..core.auth import get_current_tenant
+from ..core.billing_deps import get_quota_service, get_quota_status
+from ..schemas.billing import QuotaStatus, QuotaUpdateLimits
+from ..services.billing import QuotaNotFoundError, QuotaService
+
+router = APIRouter(prefix="/api/v1/quotas", tags=["Quotas & Billing"])
+
+
+@router.get(
+    "/status",
+    response_model=QuotaStatus,
+    summary="Получить статус квот текущего tenant'а",
+    description="""
+    Возвращает текущее состояние квот:
+    - Лимиты (max_llm_tokens, max_reviews)
+    - Использование (used_llm_tokens, used_reviews, reserved_llm_tokens)
+    - Доступные ресурсы (вычисляемые свойства)
+    - Процент использования
+    """,
+)
+async def get_my_quota_status(
+    quota_status: QuotaStatus = Depends(get_quota_status),
+) -> QuotaStatus:
+    """Получить статус квот для текущего tenant'а."""
+    return quota_status
+
+
+@router.get(
+    "/status/{tenant_id}",
+    response_model=QuotaStatus,
+    summary="Получить статус квот для конкретного tenant'а (admin)",
+    description="Только для администраторов. Позволяет просматривать квоты других tenant'ов.",
+)
+async def get_tenant_quota_status(
+    tenant_id: UUID,
+    quota_service: QuotaService = Depends(get_quota_service),
+) -> QuotaStatus:
+    """Получить статус квот для конкретного tenant'а (admin only)."""
+    try:
+        return await quota_service.get_status(tenant_id)
+    except QuotaNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Quota not found for tenant {tenant_id}",
+        ) from e
+
+
+@router.patch(
+    "/limits",
+    response_model=QuotaStatus,
+    summary="Обновить лимиты квот текущего tenant'а (admin)",
+    description="""
+    Обновляет лимиты квот для текущего tenant'а.
+    Можно обновить как токены, так и отзывы, или только одно значение.
+    """,
+)
+async def update_my_quota_limits(
+    limits: QuotaUpdateLimits,
+    tenant_id: UUID = Depends(get_current_tenant),
+    quota_service: QuotaService = Depends(get_quota_service),
+) -> QuotaStatus:
+    """Обновить лимиты квот для текущего tenant'а."""
+    try:
+        return await quota_service.update_limits(
+            tenant_id,
+            max_llm_tokens=limits.max_llm_tokens,
+            max_reviews=limits.max_reviews,
+        )
+    except QuotaNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Quota not found for tenant {tenant_id}",
+        ) from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
+@router.patch(
+    "/limits/{tenant_id}",
+    response_model=QuotaStatus,
+    summary="Обновить лимиты квот для конкретного tenant'а (super admin)",
+    description="Только для супер-администраторов. Позволяет изменять квоты других tenant'ов.",
+)
+async def update_tenant_quota_limits(
+    tenant_id: UUID,
+    limits: QuotaUpdateLimits,
+    quota_service: QuotaService = Depends(get_quota_service),
+) -> QuotaStatus:
+    """Обновить лимиты квот для конкретного tenant'а (super admin only)."""
+    try:
+        return await quota_service.update_limits(
+            tenant_id,
+            max_llm_tokens=limits.max_llm_tokens,
+            max_reviews=limits.max_reviews,
+        )
+    except QuotaNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Quota not found for tenant {tenant_id}",
+        ) from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+
+
+# Экспорт роутера
+__all__ = ["router"]

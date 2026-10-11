@@ -183,7 +183,13 @@ app.include_router(
 )
 
 # Подключаем роутеры для управления данными
-from .routers import reviews, companies, platforms, parser, analytics
+from .routers import reviews, companies, platforms, parser, analytics, quotas, auth
+
+# Auth router (должен быть первым для документации)
+app.include_router(
+    auth.router,
+    tags=["Authentication"]
+)
 
 app.include_router(
     reviews.router,
@@ -208,6 +214,9 @@ app.include_router(parser.router)
 
 # Подключаем analytics router
 app.include_router(analytics.router, tags=["Analytics"])
+
+# Подключаем quotas router для биллинга
+app.include_router(quotas.router, tags=["Quotas & Billing"])
 
 # Системные роутеры (только для разработки и тестирования)
 if __debug__:

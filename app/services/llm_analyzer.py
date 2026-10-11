@@ -99,6 +99,7 @@ class ReviewAnalysisResult(BaseModel):
 class AnalysisOutcome:
     result: ReviewAnalysisResult
     is_fallback: bool  # True: модель не использована/не справилась
+    tokens_used: int = 0  # Фактически использовано токенов (из usage_metadata)
 
 
 # --------------------------------------------------------------------------- #
@@ -167,13 +168,20 @@ def build_user_prompt(text: str, *, rating: int | None, platform: str | None) ->
 # --------------------------------------------------------------------------- #
 # Транспорт (замена SDK/модели не затрагивает анализатор)
 # --------------------------------------------------------------------------- #
+@dataclass(frozen=True, slots=True)
+class GenerationResult:
+    """Результат генерации с метаданными использования токенов."""
+    json_text: str
+    tokens_used: int
+
+
 class JSONGenerationClient(Protocol):
     model: str
 
     async def generate_json(
         self, *, system_instruction: str, prompt: str, schema: type[BaseModel]
-    ) -> str:
-        """Сырой JSON-текст ответа. Сетевые сбои -> LLMTransportError."""
+    ) -> GenerationResult:
+        """Генерация JSON с метаданными токенов. Сетевые сбои -> LLMTransportError."""
         ...
 
 
@@ -193,7 +201,7 @@ class GeminiJSONClient:
 
     async def generate_json(
         self, *, system_instruction: str, prompt: str, schema: type[BaseModel]
-    ) -> str:
+    ) -> GenerationResult:
         config = genai_types.GenerateContentConfig(
             system_instruction=system_instruction,
             response_mime_type="application/json",
@@ -209,7 +217,16 @@ class GeminiJSONClient:
             )
         except (genai_errors.APIError, asyncio.TimeoutError, OSError) as exc:
             raise LLMTransportError(f"Gemini request failed: {exc!r}") from exc
-        return response.text or ""  # пусто (напр. блок safety) -> провалит валидацию
+        
+        # Извлекаем usage_metadata для точного учета токенов
+        tokens_used = 0
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            # Google Gemini возвращает usage_metadata с total_token_count
+            tokens_used = getattr(response.usage_metadata, 'total_token_count', 0)
+        
+        json_text = response.text or ""  # пусто (напр. блок safety) -> провалит валидацию
+        
+        return GenerationResult(json_text=json_text, tokens_used=tokens_used)
 
 
 # --------------------------------------------------------------------------- #
@@ -227,8 +244,12 @@ class LLMReviewAnalyzer:
         *,
         rating: int | None = None,
         platform: str | None = None,
-    ) -> ReviewAnalysisResult:
-        """Строго типизированный анализ. Бросает LLMAnalysisError (см. подклассы)."""
+    ) -> tuple[ReviewAnalysisResult, int]:
+        """Строго типизированный анализ. Бросает LLMAnalysisError (см. подклассы).
+        
+        Returns:
+            Tuple[ReviewAnalysisResult, int]: результат анализа и количество токенов
+        """
         if not text.strip():
             raise EmptyReviewError("review text is empty")
 
@@ -242,22 +263,26 @@ class LLMReviewAnalyzer:
         started = time.perf_counter()
         prompt = build_user_prompt(text, rating=rating, platform=platform)
         last_error: ValidationError | None = None
+        total_tokens = 0
 
         for attempt in range(1, self._max_attempts + 1):
-            raw = await self._client.generate_json(
+            generation_result = await self._client.generate_json(
                 system_instruction=SYSTEM_PROMPT,
                 prompt=prompt,
                 schema=ReviewAnalysisResult,
             )
+            total_tokens += generation_result.tokens_used
+            
             try:
-                result = ReviewAnalysisResult.model_validate_json(raw)
+                result = ReviewAnalysisResult.model_validate_json(generation_result.json_text)
             except ValidationError as exc:
                 last_error = exc
                 logger.warning(
                     "llm_validation_failed",
                     attempt=attempt,
                     max_attempts=self._max_attempts,
-                    response_chars=len(raw),
+                    response_chars=len(generation_result.json_text),
+                    tokens_used=generation_result.tokens_used,
                     errors=exc.errors(
                         include_url=False, include_context=False, include_input=False
                     ),
@@ -271,9 +296,10 @@ class LLMReviewAnalyzer:
                 entities_count=len(result.extracted_entities),
                 is_critical=result.is_critical,
                 attempt=attempt,
+                tokens_used=total_tokens,
                 duration_ms=round((time.perf_counter() - started) * 1000, 2),
             )
-            return result
+            return result, total_tokens
 
         raise LLMResponseValidationError(
             f"model output failed schema validation after {self._max_attempts} attempts"
@@ -292,16 +318,15 @@ class LLMReviewAnalyzer:
         на сетевых сбоях, лови LLMTransportError из analyze() и делай arq Retry.
         """
         try:
-            return AnalysisOutcome(
-                await self.analyze(text, rating=rating, platform=platform), False
-            )
+            result, tokens = await self.analyze(text, rating=rating, platform=platform)
+            return AnalysisOutcome(result, is_fallback=False, tokens_used=tokens)
         except LLMAnalysisError as exc:
             logger.error(
                 "llm_analysis_fallback",
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-            return AnalysisOutcome(fallback_result(rating), True)
+            return AnalysisOutcome(fallback_result(rating), is_fallback=True, tokens_used=0)
 
 
 def fallback_result(rating: int | None) -> ReviewAnalysisResult:

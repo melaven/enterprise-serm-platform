@@ -1,5 +1,6 @@
 -- 002_custom_access_token_hook.sql
 -- Кладёт company_id и company_role в JWT при выдаче/обновлении токена.
+-- ОБНОВЛЕНО: Добавляет tenant_id как алиас для company_id для совместимости
 -- Включить: Dashboard -> Authentication -> Hooks -> Custom Access Token
 --           -> Postgres function -> public.custom_access_token_hook
 -- Локально (supabase/config.toml):
@@ -28,8 +29,12 @@ BEGIN
    WHERE cm.user_id = (event ->> 'user_id')::uuid;
 
   IF FOUND THEN
+    -- Добавляем company_id для стандартной логики
     claims := jsonb_set(claims, '{company_id}', to_jsonb(m.company_id::text));
     claims := jsonb_set(claims, '{company_role}', to_jsonb(m.role));
+    
+    -- Добавляем tenant_id как алиас для company_id для multi-tenant архитектуры
+    claims := jsonb_set(claims, '{tenant_id}', to_jsonb(m.company_id::text));
   END IF;
 
   RETURN jsonb_set(event, '{claims}', claims);

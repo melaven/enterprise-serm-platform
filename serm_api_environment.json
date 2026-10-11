@@ -1,0 +1,55 @@
+{
+  "id": "serm-local-env",
+  "name": "SERM API Local Environment",
+  "values": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "enabled": true,
+      "type": "default"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "enabled": true,
+      "type": "secret",
+      "description": "JWT Bearer token for authentication - set this with a valid token"
+    },
+    {
+      "key": "tenant_id", 
+      "value": "87654321-fedc-ba98-7654-321fedcba98",
+      "enabled": true,
+      "type": "default",
+      "description": "Test tenant UUID for multi-tenant testing"
+    },
+    {
+      "key": "user_id",
+      "value": "12345678-90ab-cdef-1234-567890abcdef", 
+      "enabled": true,
+      "type": "default",
+      "description": "Test user UUID"
+    },
+    {
+      "key": "company_id",
+      "value": "",
+      "enabled": true,
+      "type": "default",
+      "description": "Company ID - will be set automatically during tests"
+    },
+    {
+      "key": "platform_id",
+      "value": "",
+      "enabled": true,
+      "type": "default", 
+      "description": "Platform ID - will be set automatically during tests"
+    },
+    {
+      "key": "review_id",
+      "value": "",
+      "enabled": true,
+      "type": "default",
+      "description": "Review ID - will be set automatically during tests"
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}

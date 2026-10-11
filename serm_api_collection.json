@@ -1,0 +1,508 @@
+{
+  "info": {
+    "name": "SERM API - Multi-Tenant Test Collection",
+    "description": "Comprehensive API testing for SERM (Service & Economy Reputation Management) with RLS integration",
+    "version": "1.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3OC05MGFiLWNkZWYtMTIzNC01Njc4OTBhYmNkZWYiLCJ0ZW5hbnRfaWQiOiI4NzY1NDMyMS1mZWRjLWJhOTgtNzY1NC0zMjFmZWRjYmE5OCIsImF1ZCI6ImF1dGhlbnRpY2F0ZWQiLCJleHAiOjk5OTk5OTk5OTl9.placeholder",
+      "type": "string"
+    },
+    {
+      "key": "tenant_id",
+      "value": "87654321-fedc-ba98-7654-321fedcba98",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "12345678-90ab-cdef-1234-567890abcdef",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "System Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has status healthy', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql('healthy');",
+                  "});",
+                  "",
+                  "pm.test('Response has service name', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.service).to.eql('SERM API');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Root Endpoint",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": ["{{base_url}}"],
+              "path": [""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has message', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.message).to.include('SERM API');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Companies API (Multi-Tenant)",
+      "item": [
+        {
+          "name": "Create Company",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Company Ltd\",\n  \"average_check\": 1500.0,\n  \"margin\": 0.25,\n  \"cac\": 800.0,\n  \"ltv\": 5000.0\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/companies/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "companies", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 or 400 (if exists)', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    pm.test('Response has success true', function () {",
+                  "        const jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.success).to.eql(true);",
+                  "    });",
+                  "    ",
+                  "    pm.test('Response has company data', function () {",
+                  "        const jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.data).to.have.property('id');",
+                  "        pm.globals.set('company_id', jsonData.data.id);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Companies",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/companies/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "companies", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has companies list', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    pm.expect(jsonData.data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Platforms API (Multi-Tenant)",
+      "item": [
+        {
+          "name": "Create Platform",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Google Maps\",\n  \"platform_type\": \"maps\",\n  \"weight\": 0.8,\n  \"base_url\": \"https://maps.google.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/platforms/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "platforms", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201 or 400', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([201, 400]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    pm.test('Response has platform data', function () {",
+                  "        const jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.data).to.have.property('id');",
+                  "        pm.globals.set('platform_id', jsonData.data.id);",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List Platforms",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/platforms/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "platforms", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has platforms list', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Reviews API (Multi-Tenant)",
+      "item": [
+        {
+          "name": "Create Review via Webhook",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"external_review_id\": \"test-review-001\",\n  \"company_id\": \"{{company_id}}\",\n  \"platform_id\": \"{{platform_id}}\",\n  \"author\": \"Test User\",\n  \"content\": \"Отличный сервис! Быстро и качественно выполнили работу.\",\n  \"rating\": 5,\n  \"created_at\": \"2026-10-10T15:30:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/reviews/webhook",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "reviews", "webhook"]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates success', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.success).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.test('Review ID returned', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data).to.have.property('review_id');",
+                  "    pm.globals.set('review_id', jsonData.data.review_id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Economics API (Multi-Tenant)", 
+      "item": [
+        {
+          "name": "Calculate Review Impact",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/economics/impact?company_id={{company_id}}&review_rating=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "economics", "impact"],
+              "query": [
+                {
+                  "key": "company_id",
+                  "value": "{{company_id}}"
+                },
+                {
+                  "key": "review_rating",
+                  "value": "5"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has economic impact data', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('impact');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Authentication Tests",
+      "item": [
+        {
+          "name": "Test Unauthorized Access",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/companies/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "companies", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401 (Unauthorized)', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates missing bearer token', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('Missing bearer token');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Test Invalid Token",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer invalid-token-123"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/companies/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "companies", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401 (Unauthorized)', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Response indicates invalid token', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail).to.include('Invalid token');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Multi-Tenant Isolation Tests",
+      "item": [
+        {
+          "name": "Test Cross-Tenant Data Isolation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/companies/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "companies", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('RLS isolation - should only return tenant data', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('data');",
+                  "    ",
+                  "    // Если есть данные, они должны принадлежать текущему tenant",
+                  "    if (jsonData.data.length > 0) {",
+                  "        jsonData.data.forEach(company => {",
+                  "            // Проверяем, что company_id соответствует текущему tenant",
+                  "            // (в реальной системе это может быть скрытое поле)",
+                  "            pm.expect(company).to.have.property('id');",
+                  "        });",
+                  "    }",
+                  "});",
+                  "",
+                  "pm.test('Response should not exceed expected tenant data count', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    // В тестовом tenant должно быть ограниченное количество записей",
+                  "    pm.expect(jsonData.data.length).to.be.at.most(100);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

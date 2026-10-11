@@ -1,7 +1,9 @@
 """
 Production-ready Parser API endpoints для ARQ задач
-Включает LLM-аналитику отзывов
+Включает LLM-аналитику отзывов и контроль квот
 """
+
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, HttpUrl
@@ -10,6 +12,9 @@ from arq.connections import create_pool
 from arq.jobs import Job, JobStatus
 import os
 from dotenv import load_dotenv
+
+from ..core.billing_deps import check_quota
+from ..schemas.billing import QuotaCheck
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -20,6 +25,8 @@ router = APIRouter(prefix="/api/v1/parsers", tags=["Parsers"])
 class ParserStartRequest(BaseModel):
     url: HttpUrl
     company_id: str
+    limit: int = 50  # Количество отзывов для парсинга
+
 
 class JobStatusResponse(BaseModel):
     job_id: str
@@ -50,21 +57,32 @@ async def get_redis_pool():
     redis_settings = get_redis_settings()
     return await create_pool(redis_settings)
 
-# 4. Эндпоинт постановки задачи в очередь с LLM-аналитикой
+# 4. Эндпоинт постановки задачи в очередь с LLM-аналитикой и проверкой квот
 @router.post("/start", summary="Запуск парсинга с LLM-аналитикой")
-async def start_parser(request: ParserStartRequest, redis=Depends(get_redis_pool)):
+async def start_parser(
+    request: ParserStartRequest,
+    redis=Depends(get_redis_pool),
+    quota: QuotaCheck = check_quota(tokens=50000, reviews=50)  # Проверка квоты перед запуском
+):
     """
     Запускает фоновую задачу парсинга отзывов с LLM-аналитикой:
+    - Проверяет доступность квоты (токены LLM + количество отзывов)
     - Парсинг отзывов с указанного URL
     - Анализ тональности (Positive/Neutral/Negative) 
     - Извлечение тегов из текста
     - Генерация предлагаемых ответов
+    
+    Возвращает HTTP 402 Payment Required если квота исчерпана.
     """
     try:
+        # Вычисляем оценочное количество токенов (1000 токенов на отзыв)
+        estimated_tokens = request.limit * 1000
+        
         job = await redis.enqueue_job(
             'fetch_reviews_task',
             platform_url=str(request.url),
-            company_id=request.company_id
+            company_id=request.company_id,
+            limit=request.limit
         )
         
         if not job:
@@ -75,7 +93,13 @@ async def start_parser(request: ParserStartRequest, redis=Depends(get_redis_pool
             "status": "queued",
             "message": "Задача парсинга с LLM-аналитикой поставлена в очередь",
             "platform_url": str(request.url),
-            "company_id": request.company_id
+            "company_id": request.company_id,
+            "limit": request.limit,
+            "quota_info": {
+                "estimated_tokens": estimated_tokens,
+                "tokens_available": quota.tokens_available,
+                "reviews_available": quota.reviews_available
+            }
         }
     
     except Exception as e:

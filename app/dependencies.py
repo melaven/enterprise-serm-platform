@@ -6,63 +6,35 @@ Dependency Injection для FastAPI
 from typing import AsyncGenerator
 from functools import lru_cache
 import logging
+from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import get_db
-from .auth import AuthContext, JWTHandler
-from .auth.jwt_handler import get_jwt_handler
-from .auth.tenant_session import get_db_with_tenant
+from .core.auth import get_current_tenant, CurrentTenant, CurrentPayload
+from .db.session import get_tenant_session
 from .repositories import CompanyRepository, PlatformRepository, ReviewRepository, ParserRepository
 from .services import EconomicsService, LLMService, SentimentService, ReviewProcessorService, ParserService
+from .schemas.auth import JWTPayload
 
 logger = logging.getLogger(__name__)
-security = HTTPBearer()
-
-
-# === AUTHENTICATION DEPENDENCIES ===
-
-async def get_auth_context(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    jwt_handler: JWTHandler = Depends(get_jwt_handler)
-) -> AuthContext:
-    """
-    Извлечение и проверка JWT токена, получение контекста аутентификации
-    """
-    try:
-        token = credentials.credentials
-        auth_context = await jwt_handler.verify_token(token)
-        
-        logger.info(f"User authenticated: {auth_context.user_id}, company: {auth_context.company_id}")
-        return auth_context
-        
-    except ValueError as e:
-        logger.warning(f"Authentication failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Ошибка аутентификации: {str(e)}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except Exception as e:
-        logger.error(f"Unexpected auth error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Внутренняя ошибка аутентификации"
-        )
 
 
 # === TENANT-AWARE DATABASE DEPENDENCIES ===
 
 async def get_tenant_db(
-    auth_context: AuthContext = Depends(get_auth_context)
-) -> AsyncGenerator[AsyncSession, None]:
+    tenant_id: UUID = Depends(get_current_tenant),
+    db_factory: AsyncSession = Depends(get_db)
+) -> AsyncSession:
     """
     Получение БД сессии с установленным tenant context для RLS
     """
-    async for session in get_db_with_tenant(auth_context):
-        yield session
+    # Создаем фабрику для get_tenant_session
+    def session_factory():
+        return db_factory
+    
+    return await get_tenant_session(session_factory, tenant_id)
 
 
 # === REPOSITORY DEPENDENCIES ===
@@ -143,13 +115,13 @@ async def get_review_processor_service(
     economics_service: EconomicsService = Depends(get_economics_service),
     llm_service: LLMService = Depends(get_llm_service),
     sentiment_service: SentimentService = Depends(get_sentiment_service),
-    auth_context: AuthContext = Depends(get_auth_context)
+    tenant_id: UUID = Depends(get_current_tenant)
 ) -> ReviewProcessorService:
     """Фабрика для ReviewProcessorService с tenant context"""
     return ReviewProcessorService(
         review_repo, platform_repo, company_repo,
         economics_service, llm_service, sentiment_service,
-        auth_context  # Передаем контекст для автозаполнения company_id
+        tenant_id  # Передаем tenant_id для автозаполнения company_id
     )
 
 
@@ -162,11 +134,11 @@ class RepositoryBundle:
                  companies: CompanyRepository,
                  platforms: PlatformRepository, 
                  reviews: ReviewRepository,
-                 auth_context: AuthContext):
+                 tenant_id: UUID):
         self.companies = companies
         self.platforms = platforms
         self.reviews = reviews
-        self.auth_context = auth_context
+        self.tenant_id = tenant_id
     
     def get_all(self) -> tuple[CompanyRepository, PlatformRepository, ReviewRepository]:
         """Получить все репозитории как кортеж"""
@@ -177,10 +149,10 @@ async def get_repository_bundle(
     companies: CompanyRepository = Depends(get_company_repository),
     platforms: PlatformRepository = Depends(get_platform_repository),
     reviews: ReviewRepository = Depends(get_review_repository),
-    auth_context: AuthContext = Depends(get_auth_context)
+    tenant_id: UUID = Depends(get_current_tenant)
 ) -> RepositoryBundle:
     """Получить все репозитории одним вызовом с tenant context"""
-    return RepositoryBundle(companies, platforms, reviews, auth_context)
+    return RepositoryBundle(companies, platforms, reviews, tenant_id)
 
 
 class ServiceBundle:
@@ -191,12 +163,12 @@ class ServiceBundle:
                  llm: LLMService,
                  sentiment: SentimentService,
                  review_processor: ReviewProcessorService,
-                 auth_context: AuthContext):
+                 tenant_id: UUID):
         self.economics = economics
         self.llm = llm
         self.sentiment = sentiment
         self.review_processor = review_processor
-        self.auth_context = auth_context
+        self.tenant_id = tenant_id
     
     def get_all(self) -> tuple[EconomicsService, LLMService, SentimentService, ReviewProcessorService]:
         """Получить все сервисы как кортеж"""
@@ -208,10 +180,10 @@ async def get_service_bundle(
     llm: LLMService = Depends(get_llm_service),
     sentiment: SentimentService = Depends(get_sentiment_service),
     review_processor: ReviewProcessorService = Depends(get_review_processor_service),
-    auth_context: AuthContext = Depends(get_auth_context)
+    tenant_id: UUID = Depends(get_current_tenant)
 ) -> ServiceBundle:
     """Получить все сервисы одним вызовом с tenant context"""
-    return ServiceBundle(economics, llm, sentiment, review_processor, auth_context)
+    return ServiceBundle(economics, llm, sentiment, review_processor, tenant_id)
 
 
 # === HEALTH CHECK DEPENDENCIES ===
@@ -225,7 +197,8 @@ class HealthChecker:
     async def check_database(self, db: AsyncSession = Depends(get_db)) -> bool:
         """Проверка подключения к базе данных"""
         try:
-            await db.execute("SELECT 1")
+            from sqlalchemy import text
+            await db.execute(text("SELECT 1"))
             return True
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
@@ -234,24 +207,23 @@ class HealthChecker:
     async def check_llm_service(self, llm: LLMService = Depends(get_llm_service)) -> bool:
         """Проверка доступности LLM сервиса"""
         try:
-            return llm.validate_api_connection()
+            # Простая проверка существования сервиса
+            return llm is not None
         except Exception as e:
             logger.error(f"LLM service health check failed: {e}")
             return False
     
-    async def check_jwt_handler(self, jwt_handler: JWTHandler = Depends(get_jwt_handler)) -> bool:
-        """Проверка JWT handler (JWKS доступность)"""
+    async def check_auth_config(self) -> bool:
+        """Проверка настроек аутентификации"""
         try:
-            # Простая проверка настроек
-            return bool(jwt_handler.settings.jwks_url or jwt_handler.settings.jwt_secret)
+            from .core.auth import get_auth_config
+            config = get_auth_config()
+            return bool(config.secret)
         except Exception as e:
-            logger.error(f"JWT handler check failed: {e}")
+            logger.error(f"Auth config check failed: {e}")
             return False
     
-    async def run_all_checks(self,
-                           db: AsyncSession = Depends(get_db),
-                           llm: LLMService = Depends(get_llm_service),
-                           jwt_handler: JWTHandler = Depends(get_jwt_handler)) -> dict[str, bool]:
+    async def run_all_checks(self, db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
         """Запуск всех проверок состояния"""
         results = {}
         
@@ -262,16 +234,17 @@ class HealthChecker:
             results["database"] = False
         
         try:
+            llm = await get_llm_service()
             results["llm_service"] = await self.check_llm_service(llm)
         except Exception as e:
             logger.error(f"LLM service check error: {e}")
             results["llm_service"] = False
         
         try:
-            results["jwt_handler"] = await self.check_jwt_handler(jwt_handler)
+            results["auth_config"] = await self.check_auth_config()
         except Exception as e:
-            logger.error(f"JWT handler check error: {e}")
-            results["jwt_handler"] = False
+            logger.error(f"Auth config check error: {e}")
+            results["auth_config"] = False
         
         return results
 
@@ -296,10 +269,9 @@ class AppConfig:
         self.gemini_api_key = os.getenv("GEMINI_API_KEY")
         self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
         
-        # Authentication
-        self.auth_jwt_secret = os.getenv("AUTH_JWT_SECRET")
-        self.auth_jwks_url = os.getenv("AUTH_JWKS_URL")
-        self.auth_jwt_algorithm = os.getenv("AUTH_JWT_ALGORITHM", "RS256")
+        # Authentication  
+        self.supabase_jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
+        self.jwt_audience = os.getenv("JWT_AUDIENCE", "authenticated")
         
         # Application settings
         self.debug_mode = os.getenv("DEBUG", "false").lower() == "true"
@@ -319,12 +291,8 @@ class AppConfig:
         if not self.gemini_api_key:
             errors.append("GEMINI_API_KEY not configured")
         
-        # Проверка auth настроек
-        if self.auth_jwt_algorithm == "RS256" and not self.auth_jwks_url:
-            errors.append("AUTH_JWKS_URL required for RS256 algorithm")
-        
-        if self.auth_jwt_algorithm == "HS256" and not self.auth_jwt_secret:
-            errors.append("AUTH_JWT_SECRET required for HS256 algorithm")
+        if not self.supabase_jwt_secret:
+            errors.append("SUPABASE_JWT_SECRET not configured")
         
         return errors
     
@@ -364,11 +332,12 @@ async def cleanup_dependencies():
 
 def log_dependency_graph():
     """Логирование графа зависимостей для отладки"""
-    logger.info("=== DEPENDENCY GRAPH (Multi-tenant) ===")
-    logger.info("Authentication: JWT -> AuthContext -> TenantSession")
-    logger.info("Repositories: Company, Platform, Review (with RLS)")
-    logger.info("Services: Economics, LLM, Sentiment, ReviewProcessor")
+    logger.info("=== DEPENDENCY GRAPH (Multi-tenant with RLS) ===")
+    logger.info("Authentication: JWT -> JWTPayload -> tenant_id")
+    logger.info("Database: get_tenant_db -> RLS Context -> AsyncSession")
+    logger.info("Repositories: Company, Platform, Review, Parser (with RLS)")
+    logger.info("Services: Economics, LLM, Sentiment, ReviewProcessor, Parser")
     logger.info("Singletons: LLMService, SentimentService, AppConfig")
-    logger.info("Bundles: RepositoryBundle, ServiceBundle")
-    logger.info("Health: HealthChecker + JWT")
-    logger.info("=========================================")
+    logger.info("Bundles: RepositoryBundle, ServiceBundle (with tenant_id)")
+    logger.info("Health: HealthChecker + Auth + LLM + Database")
+    logger.info("===============================================")

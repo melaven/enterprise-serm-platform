@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Импорт шрифтов */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  /* CSS Переменные для shadcn/ui (адаптированы под нашу палитру) */
+  :root {
+    --background: 11 11 15; /* Ink #0B0B0F */
+    --foreground: 201 206 214; /* Chrome #C9CED6 */
+    
+    --card: 26 26 32; /* Ink-50 */
+    --card-foreground: 201 206 214;
+    
+    --popover: 26 26 32;
+    --popover-foreground: 201 206 214;
+    
+    --primary: 90 24 154; /* Plum #5A189A */
+    --primary-foreground: 255 255 255;
+    
+    --secondary: 107 113 125; /* Chrome-600 */
+    --secondary-foreground: 201 206 214;
+    
+    --muted: 107 113 125;
+    --muted-foreground: 168 174 184;
+    
+    --accent: 197 255 74; /* Lime #C5FF4A */
+    --accent-foreground: 11 11 15;
+    
+    --destructive: 220 38 38;
+    --destructive-foreground: 255 255 255;
+    
+    --border: 107 113 125; /* Chrome-600 */
+    --input: 107 113 125;
+    --ring: 90 24 154; /* Plum */
+    
+    --radius: 0.125rem; /* 2px - максимум! */
+  }
+
+  /* Глобальные стили для body */
+  body {
+    @apply bg-ink text-chrome-300 font-sans antialiased;
+  }
+
+  /* Улучшаем сглаживание шрифтов */
+  * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Убираем outline по умолчанию, добавим свой через focus-visible */
+  *:focus {
+    outline: none;
+  }
+
+  /* Кастомный focus state для клавиатурной навигации */
+  *:focus-visible {
+    @apply ring-2 ring-plum ring-offset-2 ring-offset-ink;
+  }
+
+  /* Scrollbar стилизация для темной темы */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-ink;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-chrome-600 hover:bg-chrome-500 rounded-none;
+  }
+}
+
+@layer components {
+  /* Утилитарные классы для частых паттернов */
+  
+  .card {
+    @apply bg-ink-50 border border-chrome-600 rounded-none;
+  }
+
+  .input-field {
+    @apply w-full bg-ink-50 text-chrome-300 placeholder:text-chrome-500 
+           border border-chrome-600 focus:border-plum 
+           rounded-none px-3 py-2 text-sm outline-none 
+           transition-colors duration-150;
+  }
+
+  .text-label {
+    @apply text-xs font-medium text-chrome-400 uppercase tracking-wider;
+  }
+
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-sm text-xs font-medium;
+  }
+
+  .badge-success {
+    @apply badge bg-lime text-ink;
+  }
+
+  .badge-info {
+    @apply badge bg-plum-900 text-plum-300 border border-plum-700;
+  }
+
+  .badge-neutral {
+    @apply badge bg-transparent text-chrome-400 border border-chrome-600;
+  }
+}
+
+@layer utilities {
+  /* Кастомные утилиты */
+  
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Анимация для loading состояний */
+  @keyframes pulse-slow {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}

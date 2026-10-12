@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     DateTime,
+    Boolean,
     Enum as SQLAlchemyEnum,
     Float,
     ForeignKey,
@@ -12,7 +13,9 @@ from sqlalchemy import (
     Uuid,
     func,
     Index,
+    text as sql_text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -64,7 +67,7 @@ class Platform(Base):
 
     company: Mapped[Company] = relationship(back_populates="platforms")
     reviews: Mapped[list["Review"]] = relationship(
-        back_populates="platform",
+        back_populates="platform_ref",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
@@ -114,11 +117,26 @@ class Review(Base):
     )
     financial_impact: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     si_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sentiment: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    tags: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        server_default=sql_text("'[]'::jsonb"),
+    )
+    is_critical: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_text("false")
+    )
+    auto_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_pending: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_text("false")
+    )
+    ai_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    platform: Mapped[Platform] = relationship(back_populates="reviews")
+    platform_ref: Mapped[Platform] = relationship(back_populates="reviews")
     company: Mapped[Company] = relationship()
 
     # Индексы для мультитенантности и производительности создаются в миграциях

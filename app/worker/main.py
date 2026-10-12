@@ -1,6 +1,6 @@
 """
 ARQ Worker с инициализацией Supabase service role для DLQ
-и зависимостей боевых парсеров ХИУС
+и зависимостей Tenable SERM парсеров
 """
 
 import os
@@ -17,6 +17,8 @@ from ..core.logger import configure_logging, get_logger
 from ..db.dlq_repository import SupabaseDLQStore, set_default_dlq_store
 from ..services.parsers.factory import ParserDeps
 from ..schemas.parser import RawReview
+from ..repositories.postgres_review_sink import PostgresReviewSink
+from ..services.billing import QuotaService
 from .worker import WorkerSettings, startup as worker_startup, shutdown as worker_shutdown
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -120,9 +122,20 @@ async def startup_with_dlq(ctx: dict[str, Any]) -> None:
             twogis_api_key=twogis_api_key
         )
         
-        # Создаем заглушки для LLM и review_sink
+        # === РЕАЛЬНЫЕ СЕРВИСЫ ВМЕСТО ЗАГЛУШЕК ===
+        
+        # 1. PostgresReviewSink для сохранения отзывов
+        review_sink = PostgresReviewSink()
+        logger.info("✅ PostgresReviewSink initialized")
+        
+        # 2. LLM Service (используем существующую заглушку до реальной реализации)
         llm_service = MockLLMService()
-        review_sink = MockReviewSink()
+        logger.info("✅ LLM Service initialized (mock)")
+        
+        # 3. QuotaService - будет инициализирован в задаче с DB session
+        # Здесь только помечаем что он доступен
+        ctx["quota_service_enabled"] = True
+        logger.info("✅ QuotaService factory configured")
         
         # Прокидываем зависимости в контекст задач
         ctx["parser_deps"] = parser_deps

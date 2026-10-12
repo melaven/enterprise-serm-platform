@@ -1,174 +1,126 @@
-import { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { QuotaWidget } from './QuotaWidget';
-import { useAuth, useUI } from '../store/useAppStore';
+import { BarChart3, Inbox, LogOut, Settings, type LucideIcon } from 'lucide-react';
+import { NavLink, Outlet } from 'react-router-dom';
 
-interface DashboardLayoutProps {
-  children: ReactNode;
+import { QuotaWidget, type QuotaWidgetProps } from '@/components/QuotaWidget';
+import { Button } from '@/components/ui/button';
+import { QuotaModal } from '@/components/QuotaModal';
+import { cn } from '@/lib/utils';
+
+interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
 }
 
-type NavigationItem = {
-  id: string;
-  label: string;
-  icon: string;
-};
-
-const navigationItems: NavigationItem[] = [
-  { id: 'overview', label: 'Обзор', icon: '◆' },
-  { id: 'reviews', label: 'Отзывы', icon: '◇' },
-  { id: 'analytics', label: 'Аналитика', icon: '◈' },
-  { id: 'settings', label: 'Настройки', icon: '◉' },
+const NAV: readonly NavItem[] = [
+  { to: '/', label: 'Аналитика', icon: BarChart3 },
+  { to: '/reviews', label: 'Отзывы', icon: Inbox },
+  { to: '/settings', label: 'Настройки', icon: Settings },
 ];
 
-/**
- * Главный макет дашборда
- * Строгий flat-design: боковой сайдбар + хедер + основной контент
- * Без теней, без скруглений, только границы
- */
-export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
-  const { isAuthenticated, user, logout } = useAuth();
-  const { activeNavItem, setActiveNavItem } = useUI();
-  const navigate = useNavigate();
+export interface DashboardLayoutProps {
+  /** Заголовок текущего экрана в хедере */
+  title: string;
+  userEmail?: string;
+  /** null — квоты загружаются (скелетон) */
+  quota: Pick<QuotaWidgetProps, 'llmTokens' | 'reviewsParsed' | 'resetDate'> | null;
+  online: boolean;
+  onLogout: () => void;
+  onUpgrade?: () => void;
+  /** Если не передан — рендерится <Outlet /> */
+  children?: React.ReactNode;
+}
 
-  const handleLogout = () => {
-    logout();
-    localStorage.removeItem('auth_token');
-    navigate('/login');
-  };
-
+function Logo() {
   return (
-    <div className="min-h-screen bg-ink flex">
-      {/* SIDEBAR - Строгий боковой сайдбар */}
-      <aside className="w-64 bg-[#0B0B0F] border-r border-[#C9CED6] flex flex-col">
-        {/* Logo / Brand */}
-        <div className="px-4 py-6 border-b border-chrome-600">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-[#5A189A] rounded-none flex items-center justify-center">
-              <span className="text-white font-bold text-lg">TS</span>
-            </div>
-            <div>
-              <h1 className="text-base font-semibold text-chrome-300">
-                Tenable SERM
-              </h1>
-              <p className="text-[10px] text-chrome-500 uppercase tracking-wider">
-                Dashboard
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4">
-          <ul className="space-y-1">
-            {navigationItems.map((item) => {
-              const isActive = activeNavItem === item.id;
-              return (
-                <li key={item.id}>
-                  <button
-                    onClick={() => setActiveNavItem(item.id)}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-2
-                      text-sm font-medium
-                      border border-transparent
-                      rounded-none
-                      transition-colors duration-150
-                      ${
-                        isActive
-                          ? 'text-[#5A189A] bg-[#5A189A]/10 border-[#5A189A]'
-                          : 'text-chrome-400 hover:text-chrome-300 hover:bg-chrome-600/10'
-                      }
-                    `}
-                  >
-                    <span className="text-lg">{item.icon}</span>
-                    <span>{item.label}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-
-        {/* Quota Widget - В нижней части сайдбара */}
-        <QuotaWidget />
-
-        {/* User Section */}
-        {isAuthenticated && (
-          <div className="px-4 py-3 border-t border-chrome-600">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-chrome-300">
-                  {user?.email || 'User'}
-                </p>
-                <p className="text-[10px] text-chrome-500">
-                  {user?.tenant_id ? `Tenant: ${user.tenant_id}` : 'Authenticated'}
-                </p>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="text-[10px] text-chrome-500 hover:text-chrome-300 transition-colors"
-              >
-                Выход
-              </button>
-            </div>
-          </div>
-        )}
-      </aside>
-
-      {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col">
-        {/* HEADER - Верхняя панель */}
-        <header className="h-16 bg-[#0B0B0F] border-b-2 border-[#C9CED6] flex items-center px-6">
-          <div className="flex-1 flex items-center justify-between">
-            {/* Breadcrumb / Current Page */}
-            <div>
-              <h2 className="text-lg font-semibold text-chrome-300">
-                {navigationItems.find((item) => item.id === activeNavItem)?.label || 'Dashboard'}
-              </h2>
-              <p className="text-xs text-chrome-500">
-                {new Date().toLocaleDateString('ru-RU', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
-              </p>
-            </div>
-
-            {/* Header Actions */}
-            <div className="flex items-center gap-4">
-              {/* Status Badge */}
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-[#C5FF4A] rounded-full"></div>
-                <span className="text-xs text-chrome-400">System Online</span>
-              </div>
-
-              {/* Notifications (placeholder) */}
-              <button className="
-                w-8 h-8 
-                flex items-center justify-center
-                text-chrome-400 hover:text-chrome-300
-                border border-chrome-600 hover:border-chrome-400
-                rounded-none
-                transition-colors duration-150
-              ">
-                <span className="text-sm">🔔</span>
-              </button>
-            </div>
-          </div>
-        </header>
-
-        {/* MAIN CONTENT */}
-        <main className="flex-1 overflow-auto bg-ink">
-          {children}
-        </main>
-
-        {/* FOOTER (optional) */}
-        <footer className="h-10 bg-[#0B0B0F] border-t border-chrome-600 flex items-center justify-center">
-          <p className="text-[10px] text-chrome-500">
-            Tenable SERM © 2026 · Design System v1.0 · Утилитарный flat-design
-          </p>
-        </footer>
-      </div>
+    <div className="flex h-16 items-center gap-3 border-b border-zinc-800 px-6">
+      <span
+        aria-hidden="true"
+        className="flex size-8 items-center justify-center rounded-sm bg-plum text-sm font-bold text-white"
+      >
+        T
+      </span>
+      <span className="text-sm font-semibold uppercase tracking-wider text-white">Tenable SERM</span>
     </div>
   );
-};
+}
+
+function SidebarNav() {
+  return (
+    <nav aria-label="Основная навигация" className="flex-1 overflow-y-auto">
+      <ul className="space-y-0">
+        {NAV.map(({ to, label, icon: Icon }) => (
+          <li key={to}>
+            <NavLink
+              to={to}
+              end={to === '/'}
+              className={({ isActive }) =>
+                isActive
+                  ? 'flex items-center gap-3 px-6 py-3 text-sm transition-colors bg-zinc-900/50 text-white border-l-2 border-lime'
+                  : 'flex items-center gap-3 px-6 py-3 text-sm transition-colors text-zinc-400 hover:text-white hover:bg-zinc-900/30 border-l-2 border-transparent'
+              }
+            >
+              <Icon className="size-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+              {label}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+export function DashboardLayout({
+  title,
+  userEmail,
+  quota,
+  online,
+  onLogout,
+  onUpgrade,
+  children,
+}: DashboardLayoutProps) {
+  return (
+    <>
+      <div className="flex h-screen bg-black text-zinc-100">
+        <aside className="hidden w-72 shrink-0 flex-col border-r border-zinc-800 bg-black md:flex">
+          <Logo />
+          <SidebarNav />
+          {quota ? (
+            <QuotaWidget
+              compact
+              {...quota}
+              onUpgrade={onUpgrade}
+              className="border-x-0 border-b-0 border-t border-zinc-800 bg-black"
+            />
+          ) : (
+            <div className="border-t border-zinc-800 p-6 text-sm text-zinc-500">
+              Квоты временно недоступны
+            </div>
+          )}
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-16 shrink-0 items-center justify-between gap-6 border-b border-zinc-800 bg-black px-8">
+            <h1 className="truncate text-xs font-medium uppercase tracking-wider text-zinc-400">{title}</h1>
+            <div className="flex items-center gap-6">
+              <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-zinc-400">
+                <span aria-hidden="true" className={cn('size-2', online ? 'bg-lime' : 'bg-zinc-700')} />
+                {online ? 'Онлайн' : 'Офлайн'}
+              </span>
+              {userEmail ? (
+                <span className="hidden truncate text-xs text-zinc-400 sm:inline">{userEmail}</span>
+              ) : null}
+              <Button variant="outline" size="sm" onClick={onLogout}>
+                <LogOut className="size-4" strokeWidth={1.75} aria-hidden="true" />
+                Выйти
+              </Button>
+            </div>
+          </header>
+
+          <main className="flex-1 overflow-y-auto bg-black p-8">{children ?? <Outlet />}</main>
+        </div>
+      </div>
+      <QuotaModal />
+    </>
+  );
+}

@@ -119,10 +119,10 @@ module.exports = {
         '2xl': '0',
         '3xl': '0',
       },
-      // Типографика для B2B интерфейсов
+      // Типографика для B2B интерфейсов (локальные @fontsource пакеты)
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Consolas', 'monospace'],
+        sans: ['Inter', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
       },
       fontSize: {
         'xs': ['11px', { lineHeight: '16px', letterSpacing: '0.01em' }],

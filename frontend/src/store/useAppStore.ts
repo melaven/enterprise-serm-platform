@@ -1,16 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { QuotaStatus } from '../api/types';
+import * as api from '../api/services';
+import { withErrorHandling } from '../api/errorHandler';
 
 /**
  * Глобальное состояние приложения с Zustand
- * Управляет аутентификацией, квотами и общими настройками
+ * Управляет аутентификацией, отзывами и аналитикой
  */
 
 interface User {
   id: string;
   email: string;
-  tenant_id: string;
+  tenant_id?: string;
 }
 
 interface AppState {
@@ -19,10 +20,18 @@ interface AppState {
   user: User | null;
   token: string | null;
   
-  // Quotas State
-  quotas: QuotaStatus | null;
-  quotasLoading: boolean;
-  quotasError: string | null;
+  // Reviews State
+  reviews: api.Review[];
+  reviewsLoading: boolean;
+  reviewsTotal: number;
+  
+  // Analytics State
+  analytics: api.AnalyticsSummary | null;
+  analyticsLoading: boolean;
+  
+  // Parser State
+  parserJobId: string | null;
+  parserStatus: string | null;
   
   // UI State
   sidebarCollapsed: boolean;
@@ -30,12 +39,14 @@ interface AppState {
   
   // Auth Actions
   login: (token: string, user: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
+  performLogin: (email: string, password: string) => Promise<boolean>;
+  performRegister: (email: string, password: string, fullName?: string) => Promise<boolean>;
   
-  // Quotas Actions
-  setQuotas: (quotas: QuotaStatus) => void;
-  setQuotasLoading: (loading: boolean) => void;
-  setQuotasError: (error: string | null) => void;
+  // Data Fetch Actions
+  fetchReviews: (params?: { skip?: number; limit?: number; source?: string; sentiment?: string }) => Promise<void>;
+  fetchAnalytics: () => Promise<void>;
+  startParser: (url: string, maxReviews?: number) => Promise<string | null>;
   
   // UI Actions
   toggleSidebar: () => void;
@@ -48,51 +59,117 @@ interface AppState {
  */
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // Initial State
       isAuthenticated: false,
       user: null,
       token: null,
-      quotas: null,
-      quotasLoading: false,
-      quotasError: null,
+      reviews: [],
+      reviewsLoading: false,
+      reviewsTotal: 0,
+      analytics: null,
+      analyticsLoading: false,
+      parserJobId: null,
+      parserStatus: null,
       sidebarCollapsed: false,
       activeNavItem: 'overview',
       
-      // Auth Actions
-      login: (token: string, user: User) => 
+      // ============================================================
+      // AUTH ACTIONS
+      // ============================================================
+      
+      login: (token: string, user: User) => {
+        // Сохраняем токен в localStorage для axios interceptor
+        localStorage.setItem('auth_token', token);
         set({ 
           isAuthenticated: true, 
           token, 
           user 
-        }),
+        });
+      },
       
-      logout: () => 
-        set({ 
-          isAuthenticated: false, 
-          token: null, 
-          user: null,
-          quotas: null 
-        }),
+      logout: async () => {
+        await withErrorHandling(async () => {
+          await api.logout();
+          localStorage.removeItem('auth_token');
+          set({ 
+            isAuthenticated: false, 
+            token: null, 
+            user: null,
+            reviews: [],
+            analytics: null,
+          });
+        });
+      },
       
-      // Quotas Actions
-      setQuotas: (quotas: QuotaStatus) => 
-        set({ 
-          quotas, 
-          quotasLoading: false, 
-          quotasError: null 
-        }),
+      performLogin: async (email: string, password: string): Promise<boolean> => {
+        const result = await withErrorHandling(async () => {
+          const response = await api.login({ email, password });
+          get().login(response.access_token, response.user);
+          return true;
+        });
+        return result ?? false;
+      },
       
-      setQuotasLoading: (loading: boolean) => 
-        set({ quotasLoading: loading }),
+      performRegister: async (email: string, password: string, fullName?: string): Promise<boolean> => {
+        const result = await withErrorHandling(async () => {
+          const response = await api.register({ email, password, full_name: fullName });
+          get().login(response.access_token, response.user);
+          return true;
+        });
+        return result ?? false;
+      },
       
-      setQuotasError: (error: string | null) => 
-        set({ 
-          quotasError: error, 
-          quotasLoading: false 
-        }),
+      // ============================================================
+      // DATA FETCH ACTIONS
+      // ============================================================
       
-      // UI Actions
+      fetchReviews: async (params) => {
+        set({ reviewsLoading: true });
+        await withErrorHandling(async () => {
+          const reviews = await api.getReviews(params);
+          set({ 
+            reviews, 
+            reviewsTotal: reviews.length,
+            reviewsLoading: false 
+          });
+        });
+        set({ reviewsLoading: false });
+      },
+      
+      fetchAnalytics: async () => {
+        set({ analyticsLoading: true });
+        await withErrorHandling(async () => {
+          const analytics = await api.getAnalyticsSummary();
+          set({ analytics, analyticsLoading: false });
+        });
+        set({ analyticsLoading: false });
+      },
+      
+      startParser: async (url: string, maxReviews?: number): Promise<string | null> => {
+        const result = await withErrorHandling(async () => {
+          const user = get().user;
+          if (!user) {
+            throw new Error('Не удалось определить текущую организацию');
+          }
+          const response = await api.startParserJob({
+            url,
+            company_id: user.tenant_id ?? user.id,
+            limit: maxReviews,
+          });
+          set({ 
+            parserJobId: response.job_id,
+            parserStatus: response.status 
+          });
+          return response.job_id;
+        });
+        return result ?? null;
+      },
+      
+      // ============================================================
+      // UI ACTIONS
+      // ============================================================
+      
       toggleSidebar: () => 
         set((state) => ({ 
           sidebarCollapsed: !state.sidebarCollapsed 
@@ -124,15 +201,27 @@ export const useAuth = () => useAppStore((state) => ({
   token: state.token,
   login: state.login,
   logout: state.logout,
+  performLogin: state.performLogin,
+  performRegister: state.performRegister,
 }));
 
-export const useQuotas = () => useAppStore((state) => ({
-  quotas: state.quotas,
-  quotasLoading: state.quotasLoading,
-  quotasError: state.quotasError,
-  setQuotas: state.setQuotas,
-  setQuotasLoading: state.setQuotasLoading,
-  setQuotasError: state.setQuotasError,
+export const useReviews = () => useAppStore((state) => ({
+  reviews: state.reviews,
+  reviewsLoading: state.reviewsLoading,
+  reviewsTotal: state.reviewsTotal,
+  fetchReviews: state.fetchReviews,
+}));
+
+export const useAnalytics = () => useAppStore((state) => ({
+  analytics: state.analytics,
+  analyticsLoading: state.analyticsLoading,
+  fetchAnalytics: state.fetchAnalytics,
+}));
+
+export const useParser = () => useAppStore((state) => ({
+  parserJobId: state.parserJobId,
+  parserStatus: state.parserStatus,
+  startParser: state.startParser,
 }));
 
 export const useUI = () => useAppStore((state) => ({

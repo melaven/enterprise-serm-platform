@@ -62,8 +62,8 @@ class ReviewRepository(BaseRepository[Review]):
         """Получить отзыв с данными платформы и компании"""
         try:
             query = select(Review).options(
-                selectinload(Review.platform).selectinload(
-                    Review.platform.property.mapper.class_.company
+                selectinload(Review.platform_ref).selectinload(
+                    Review.platform_ref.property.mapper.class_.company
                 )
             ).where(Review.id == review_id)
             
@@ -229,8 +229,8 @@ class ReviewRepository(BaseRepository[Review]):
             cutoff_time = datetime.utcnow() - timedelta(hours=max_hours_without_response)
             
             query = select(Review).options(
-                selectinload(Review.platform).selectinload(
-                    Review.platform.property.mapper.class_.company
+                selectinload(Review.platform_ref).selectinload(
+                    Review.platform_ref.property.mapper.class_.company
                 )
             ).where(
                 and_(

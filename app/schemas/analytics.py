@@ -4,8 +4,54 @@
 
 from datetime import datetime, date
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from uuid import UUID
+
+from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
+
+from .economics import ReviewStatus
+
+
+class DashboardReview(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    external_review_id: str | None
+    platform: str | None
+    author_name: str
+    rating: int
+    text: str
+    sentiment: str | None
+    is_critical: bool
+    status: ReviewStatus
+    financial_impact: float
+    si_response: str | None
+    created_at: datetime
+
+
+class DashboardReviewsPage(BaseModel):
+    items: list[DashboardReview]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class DashboardReviewsResponse(BaseModel):
+    success: bool
+    data: DashboardReviewsPage
+
+
+class DashboardMetrics(BaseModel):
+    total_reviews: int
+    positive_reviews: int
+    negative_reviews: int
+    critical_reviews: int
+
+
+class DashboardMetricsResponse(BaseModel):
+    success: bool
+    data: DashboardMetrics
 
 
 # Legacy схема для обратной совместимости с analyzer service

@@ -21,6 +21,10 @@ venv/
 .coverage
 htmlcov/
 
+# Node.js
+node_modules/
+frontend/node_modules/
+
 # Не нужно в рантайме
 tests/
 docs/
@@ -32,4 +36,7 @@ pytest.ini
 .pre-commit-config.yaml
 docker-compose*.yml
 Dockerfile
-node_modules/
+backend.Dockerfile
+worker.Dockerfile
+frontend.Dockerfile
+nginx.conf

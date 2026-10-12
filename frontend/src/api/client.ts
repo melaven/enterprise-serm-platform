@@ -11,6 +11,13 @@ const TOKEN_STORAGE_KEY = 'auth_token';
 // Базовый URL API (можно вынести в environment variables)
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+function getErrorDetail(data: unknown): unknown {
+  if (typeof data === 'object' && data !== null && 'detail' in data) {
+    return data.detail;
+  }
+  return undefined;
+}
+
 /**
  * Создаем экземпляр Axios с базовой конфигурацией
  */
@@ -65,6 +72,14 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 403) {
       console.error('Access forbidden: insufficient permissions or tenant mismatch');
     }
+
+    if (error.response?.status === 402) {
+      window.dispatchEvent(
+        new CustomEvent<unknown>('quota-exceeded', {
+          detail: getErrorDetail(error.response.data),
+        })
+      );
+    }
     
     return Promise.reject(error);
   }
@@ -103,4 +118,4 @@ export const auth = {
   },
 };
 
-export default apiClient;
+export { apiClient };

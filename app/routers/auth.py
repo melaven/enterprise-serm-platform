@@ -4,7 +4,7 @@ Auth router для авторизации через Supabase
 
 from fastapi import APIRouter, HTTPException, Depends, Form, Header
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional
 import os
 from supabase import create_client, Client
@@ -54,10 +54,12 @@ class TokenResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: str
     email: str
     tenant_id: Optional[str] = None
-    created_at: str
+    created_at: datetime
 
 
 @router.post("/register", response_model=UserResponse, status_code=201)

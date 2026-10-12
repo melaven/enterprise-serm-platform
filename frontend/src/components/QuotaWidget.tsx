@@ -1,122 +1,138 @@
-import { useEffect } from 'react';
-import apiClient from '../api/client';
-import { useQuotas } from '../store/useAppStore';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
-/**
- * Виджет биллинга с прогресс-барами квот
- * Строгий flat-design, никаких теней и скруглений
- * Использует Zustand для управления состоянием
- */
-export const QuotaWidget = () => {
-  const { quotas, quotasLoading, quotasError, setQuotas, setQuotasLoading, setQuotasError } = useQuotas();
+export interface QuotaCounter {
+  used: number;
+  limit: number;
+}
 
-  useEffect(() => {
-    fetchQuotas();
-  }, []);
+export interface QuotaWidgetProps {
+  llmTokens: QuotaCounter;
+  reviewsParsed: QuotaCounter;
+  /** YYYY-MM-DD (UTC): следующий сброс счётчиков */
+  resetDate: string;
+  onUpgrade?: () => void;
+  /** Узкий режим для сайдбара: меньше отступы и кегль */
+  compact?: boolean;
+  className?: string;
+}
 
-  const fetchQuotas = async () => {
-    try {
-      setQuotasLoading(true);
-      const response = await apiClient.get('/api/v1/quotas/status');
-      setQuotas(response.data);
-    } catch (err: any) {
-      // Если бэкенд не доступен, используем мок-данные
-      console.warn('Failed to fetch quotas, using mock data:', err.message);
-      setQuotas({
-        llm_tokens: {
-          used: 45678,
-          limit: 100000,
-          percentage: 45.7,
-        },
-        parsing_requests: {
-          used: 1234,
-          limit: 5000,
-          percentage: 24.7,
-        },
-        period_start: '2026-10-01T00:00:00Z',
-        period_end: '2026-10-31T23:59:59Z',
-      });
-      setQuotasError('Offline mode');
-    }
-  };
+const WARN_AT = 90;
+const numberFmt = new Intl.NumberFormat('ru-RU');
+const dateFmt = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
 
-  if (quotasLoading) {
-    return (
-      <div className="px-4 py-3 border-t border-chrome-600">
-        <div className="animate-pulse-slow">
-          <div className="h-3 bg-chrome-600/30 rounded-none mb-2"></div>
-          <div className="h-3 bg-chrome-600/30 rounded-none"></div>
-        </div>
-      </div>
-    );
-  }
+function usedPercent({ used, limit }: QuotaCounter): number {
+  return limit <= 0 ? 100 : Math.round((used / limit) * 100);
+}
 
-  if (!quotas) return null;
+function QuotaRow({
+  label,
+  unit,
+  counter,
+  compact,
+}: {
+  label: string;
+  unit: string;
+  counter: QuotaCounter;
+  compact?: boolean;
+}) {
+  const pct = usedPercent(counter);
+  const exhausted = counter.used >= counter.limit;
+  const warning = !exhausted && pct >= WARN_AT;
 
   return (
-    <div className="px-4 py-3 border-t border-chrome-600">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-medium text-chrome-400 uppercase tracking-wider">
-          Квоты
-        </p>
-        {quotasError && (
-          <span className="text-[10px] text-chrome-500">{quotasError}</span>
-        )}
-      </div>
-
-      {/* LLM Tokens Quota */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-chrome-300">LLM Токены</span>
-          <span className="text-xs font-medium text-chrome-300">
-            {quotas.llm_tokens.used.toLocaleString()} / {quotas.llm_tokens.limit.toLocaleString()}
+    <div>
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-sm text-zinc-400">{label}</span>
+        {exhausted ? (
+          <span className="rounded-sm bg-plum px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white">
+            Лимит исчерпан
           </span>
-        </div>
-        
-        {/* Progress Bar - СТРОГО без скруглений */}
-        <div className="h-1 bg-chrome-600/20 rounded-none overflow-hidden">
-          <div 
-            className="h-full bg-[#C5FF4A] transition-all duration-300"
-            style={{ width: `${Math.min(quotas.llm_tokens.percentage, 100)}%` }}
-          />
-        </div>
-        
-        <p className="text-[10px] text-chrome-500 mt-1">
-          {quotas.llm_tokens.percentage.toFixed(1)}% использовано
-        </p>
-      </div>
-
-      {/* Parsing Requests Quota */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs text-chrome-300">Парсинг</span>
-          <span className="text-xs font-medium text-chrome-300">
-            {quotas.parsing_requests.used.toLocaleString()} / {quotas.parsing_requests.limit.toLocaleString()}
+        ) : warning ? (
+          <span className="rounded-sm bg-lime px-2 py-1 text-xs font-semibold uppercase tracking-wider text-black">
+            Порог {WARN_AT}%
           </span>
-        </div>
-        
-        {/* Progress Bar - СТРОГО без скруглений */}
-        <div className="h-1 bg-chrome-600/20 rounded-none overflow-hidden">
-          <div 
-            className="h-full bg-[#C5FF4A] transition-all duration-300"
-            style={{ width: `${Math.min(quotas.parsing_requests.percentage, 100)}%` }}
-          />
-        </div>
-        
-        <p className="text-[10px] text-chrome-500 mt-1">
-          {quotas.parsing_requests.percentage.toFixed(1)}% использовано
-        </p>
+        ) : null}
       </div>
 
-      {/* Warning if approaching limit */}
-      {(quotas.llm_tokens.percentage > 80 || quotas.parsing_requests.percentage > 80) && (
-        <div className="mt-3 px-2 py-1 bg-[#C5FF4A]/10 border border-[#C5FF4A]/30 rounded-none">
-          <p className="text-[10px] text-[#C5FF4A] font-medium">
-            ⚠ Приближение к лимиту
-          </p>
-        </div>
-      )}
+      <div className="mt-3 flex items-baseline gap-3">
+        <span
+          className={cn(
+            'font-medium leading-none tracking-tight text-white tabular-nums',
+            compact ? 'text-3xl' : 'text-5xl',
+          )}
+        >
+          {numberFmt.format(counter.used)}
+        </span>
+        <span className={cn('text-zinc-500 tabular-nums', compact ? 'text-xs' : 'text-base')}>
+          / {numberFmt.format(counter.limit)} {unit}
+        </span>
+      </div>
+
+      <div
+        role="progressbar"
+        aria-label={label}
+        aria-valuemin={0}
+        aria-valuemax={counter.limit}
+        aria-valuenow={Math.min(counter.used, counter.limit)}
+        className="mt-5 h-1.5 w-full bg-zinc-900"
+      >
+        <div
+          className={cn('h-full', exhausted ? 'bg-plum' : 'bg-lime')}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+      <div className="mt-2 text-right text-xs text-zinc-400 tabular-nums">{pct}%</div>
     </div>
   );
-};
+}
+
+export function QuotaWidget({
+  llmTokens,
+  reviewsParsed,
+  resetDate,
+  onUpgrade,
+  compact = false,
+  className,
+}: QuotaWidgetProps) {
+  const needsUpgrade = llmTokens.used >= llmTokens.limit || reviewsParsed.used >= reviewsParsed.limit;
+
+  return (
+    <section aria-labelledby="quota-title" className={cn('border border-zinc-800 bg-zinc-950', compact ? 'p-6' : 'p-8', className)}>
+      <h2 id="quota-title" className="text-xs font-medium uppercase tracking-wider text-zinc-400">
+        Квоты и тариф
+      </h2>
+
+      <div className={cn(compact ? 'mt-6 space-y-6' : 'mt-10 space-y-10')}>
+        <QuotaRow label="LLM-токены" unit="ток." counter={llmTokens} compact={compact} />
+        <QuotaRow label="Разобрано отзывов" unit="отз." counter={reviewsParsed} compact={compact} />
+      </div>
+
+      <div
+        className={cn(
+          'flex items-end justify-between gap-4 border-t border-zinc-900 pt-6',
+          compact ? 'mt-6 flex-wrap' : 'mt-10',
+        )}
+      >
+        <div>
+          <div className="text-xs font-medium uppercase tracking-wider text-zinc-400">Сброс счётчиков</div>
+          <div className="mt-2 text-sm text-zinc-100">{dateFmt.format(new Date(resetDate))}</div>
+        </div>
+        {onUpgrade ? (
+          <Button
+            variant={needsUpgrade ? 'default' : 'outline'}
+            size={compact ? 'sm' : 'default'}
+            onClick={onUpgrade}
+          >
+            Сменить тариф
+          </Button>
+        ) : null}
+      </div>
+    </section>
+  );
+}

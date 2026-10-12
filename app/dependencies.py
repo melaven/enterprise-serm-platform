@@ -179,7 +179,6 @@ async def get_service_bundle(
     economics: EconomicsService = Depends(get_economics_service),
     llm: LLMService = Depends(get_llm_service),
     sentiment: SentimentService = Depends(get_sentiment_service),
-    review_processor: ReviewProcessorService = Depends(get_review_processor_service),
     tenant_id: UUID = Depends(get_current_tenant)
 ) -> ServiceBundle:
     """Получить все сервисы одним вызовом с tenant context"""

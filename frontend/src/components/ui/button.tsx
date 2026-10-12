@@ -15,6 +15,8 @@ const buttonVariants = cva(
       variant: {
         default:
           "bg-plum text-white hover:bg-plum-400 active:bg-plum-600 border-2 border-transparent",
+        accent:
+          "bg-lime text-black hover:bg-lime/90 active:bg-lime/80 border-2 border-transparent font-semibold",
         destructive:
           "bg-destructive text-destructive-foreground hover:bg-destructive/90 border-2 border-transparent",
         outline:

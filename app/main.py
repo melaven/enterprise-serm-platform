@@ -108,8 +108,7 @@ async def lifespan(app: FastAPI):
         # Закрываем ARQ pool
         if arq_pool:
             try:
-                arq_pool.close()
-                await arq_pool.wait_closed()
+                await arq_pool.close()
                 logger.info("✅ ARQ pool закрыт", component="arq")
             except Exception as e:
                 logger.error("❌ Ошибка закрытия ARQ pool", 
@@ -183,7 +182,7 @@ app.include_router(
 )
 
 # Подключаем роутеры для управления данными
-from .routers import reviews, companies, platforms, parser, analytics, quotas, auth
+from .routers import reviews, companies, platforms, parser, analytics, auth
 
 # Auth router (должен быть первым для документации)
 app.include_router(
@@ -216,7 +215,7 @@ app.include_router(parser.router)
 app.include_router(analytics.router, tags=["Analytics"])
 
 # Подключаем quotas router для биллинга
-app.include_router(quotas.router, tags=["Quotas & Billing"])
+# app.include_router(quotas.router, tags=["Quotas & Billing"])
 
 # Системные роутеры (только для разработки и тестирования)
 if __debug__:

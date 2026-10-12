@@ -9,15 +9,31 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import select, func, and_, desc, column
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..schemas.economics import ReviewBase, ReviewResponse, ReviewStatus
+from ..schemas.analytics import (
+    DashboardMetrics,
+    DashboardMetricsResponse,
+    DashboardReview,
+    DashboardReviewsPage,
+    DashboardReviewsResponse,
+)
 from ..dependencies import (
     get_review_repository, 
     get_review_processor_service,
-    get_sentiment_service
+    get_sentiment_service,
+    get_tenant_db
 )
 from ..repositories import ReviewRepository
 from ..services import ReviewProcessorService, SentimentService
+from ..core.auth import get_current_tenant
+from ..models.economics import Review
+from ..repositories.analytics_repo import (
+    get_dashboard_metrics,
+    get_reviews_list as fetch_dashboard_reviews,
+)
 
 
 router = APIRouter()
@@ -57,7 +73,7 @@ async def receive_review_webhook(
     )
 
 
-@router.get("/{review_id}",
+@router.get("/details/{review_id}",
             summary="Получить отзыв по ID",
             description="Детальная информация об отзыве")
 async def get_review(
@@ -88,8 +104,8 @@ async def get_review(
             "success": True,
             "data": {
                 "review_id": str(review.id),
-                "platform_name": review.platform.name,
-                "company_name": review.platform.company.name,
+                "platform_name": review.platform_ref.name,
+                "company_name": review.platform_ref.company.name,
                 "author_name": review.author_name,
                 "rating": review.rating,
                 "text": review.text,
@@ -329,8 +345,8 @@ async def get_reviews_requiring_attention(
         
         urgent_reviews.append({
             "review_id": str(review.id),
-            "platform_name": review.platform.name,
-            "company_name": review.platform.company.name,
+            "platform_name": review.platform_ref.name,
+            "company_name": review.platform_ref.company.name,
             "author_name": review.author_name,
             "rating": review.rating,
             "text": review.text,
@@ -349,4 +365,116 @@ async def get_reviews_requiring_attention(
                 "threshold_hours": max_hours
             }
         }
+    )
+
+
+# ============================================================================
+# DASHBOARD API ENDPOINTS - для фронтенд-дашборда
+# ============================================================================
+
+
+@router.get("",
+            response_model=DashboardReviewsResponse,
+            summary="Список отзывов с пагинацией",
+            description="Основной эндпоинт для отображения отзывов в дашборде с tenant-изоляцией")
+async def get_reviews_list(
+    page: int = Query(1, ge=1, description="Номер страницы"),
+    page_size: int = Query(20, ge=1, le=100, description="Размер страницы"),
+    platform: Optional[str] = Query(None, description="Фильтр по платформе (google, 2gis и т.д.)"),
+    rating: Optional[int] = Query(None, ge=1, le=5, description="Фильтр по рейтингу"),
+    sentiment: Optional[str] = Query(None, description="Фильтр по тональности"),
+    sort_by: str = Query("created_at", pattern="^(created_at|rating)$", description="Поле сортировки"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$", description="Порядок сортировки: asc или desc"),
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db)
+) -> DashboardReviewsResponse:
+    """
+    Получить список отзывов с пагинацией и фильтрацией.
+    
+    **RLS изоляция:** Автоматическая фильтрация по tenant_id через RLS политику.
+    
+    **Параметры:**
+    - page: номер страницы (начиная с 1)
+    - page_size: количество отзывов на странице (максимум 100)
+    - platform: фильтр по названию платформы
+    - rating: фильтр по рейтингу (1-5)
+    - sentiment: фильтр по тональности (positive, neutral, negative)
+    - sort_by: поле для сортировки (created_at, rating)
+    - sort_order: порядок сортировки (asc, desc)
+    
+    **Возвращает:**
+    - items: массив отзывов
+    - total: общее количество отзывов (с учётом фильтров)
+    - page: текущая страница
+    - page_size: размер страницы
+    - total_pages: общее количество страниц
+    """
+    
+    filters = [Review.company_id == tenant_id]
+
+    if platform:
+        # Используем column() для обращения к text-колонке platform
+        # (в модели есть конфликт: relationship platform перекрывает column platform)
+        filters.append(column('platform') == platform)
+
+    if rating is not None:
+        filters.append(Review.rating == rating)
+
+    if sentiment:
+        filters.append(func.upper(Review.sentiment) == sentiment.upper())
+
+    count_query = select(func.count(Review.id)).where(and_(*filters))
+    total_result = await db.execute(count_query)
+    total = int(total_result.scalar_one())
+
+    offset = (page - 1) * page_size
+    if (
+        platform is None
+        and rating is None
+        and sentiment is None
+        and sort_by == "created_at"
+        and sort_order == "desc"
+    ):
+        reviews = await fetch_dashboard_reviews(db, tenant_id, page_size, offset)
+    else:
+        query = select(Review).where(and_(*filters))
+        sort_column = {
+            "created_at": Review.created_at,
+            "rating": Review.rating,
+        }[sort_by]
+        ordering = sort_column.asc() if sort_order == "asc" else sort_column.desc()
+        result = await db.execute(
+            query.order_by(ordering).limit(page_size).offset(offset)
+        )
+        reviews = list(result.scalars().all())
+
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+    return DashboardReviewsResponse(
+        success=True,
+        data=DashboardReviewsPage(
+            items=[DashboardReview.model_validate(review) for review in reviews],
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=total_pages,
+        ),
+    )
+
+
+@router.get("/summary",
+            response_model=DashboardMetricsResponse,
+            summary="KPI-метрики дашборда",
+            description="Сводка по отзывам: всего, тональность, критичные проблемы")
+async def get_reviews_summary(
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db)
+) -> DashboardMetricsResponse:
+    """
+    Получить KPI-метрики для дашборда в контексте авторизованного tenant.
+    """
+    metrics = await get_dashboard_metrics(db, tenant_id)
+    return DashboardMetricsResponse(
+        success=True,
+        data=DashboardMetrics(**metrics),
     )

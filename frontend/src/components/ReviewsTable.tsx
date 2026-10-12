@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
-import apiClient from '../api/client';
+import { useEffect } from 'react';
+import { Database } from 'lucide-react';
+import { useReviews } from '../store/useAppStore';
 import {
   Table,
   TableBody,
@@ -14,75 +14,28 @@ import { Button } from './ui/button';
 import { Skeleton } from './ui/skeleton';
 
 /**
- * Таблица отзывов с реальным API
- * Flat-design, без теней
+ * Таблица отзывов
+ * Использует centralized API через Zustand store
  */
-
-interface Review {
-  id: string;
-  platform: string;
-  author: string;
-  rating: number;
-  text: string;
-  sentiment?: 'positive' | 'negative' | 'neutral';
-  created_at: string;
-  status?: 'new' | 'processing' | 'analyzed';
-  external_review_id?: string;
-}
-
 export const ReviewsTable = () => {
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { reviews, reviewsLoading, reviewsTotal, fetchReviews } = useReviews();
 
   useEffect(() => {
-    fetchReviews();
-  }, []);
+    fetchReviews({ limit: 50 });
+  }, [fetchReviews]);
 
-  const fetchReviews = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get('/api/v1/reviews');
-      setReviews(response.data.items || response.data);
-    } catch (err: any) {
-      console.error('Failed to fetch reviews:', err);
-      
-      if (err.response?.status === 402) {
-        toast.error('Ошибка биллинга: Лимит токенов или запросов исчерпан', {
-          duration: 5000,
-        });
-      } else {
-        toast.error('Не удалось загрузить отзывы');
-      }
-      
-      setReviews([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getSentimentBadge = (sentiment?: Review['sentiment']) => {
+  const getSentimentBadge = (sentiment: string | null) => {
     if (!sentiment) return <Badge variant="secondary">Не определена</Badge>;
     
-    switch (sentiment) {
+    switch (sentiment.toLowerCase()) {
       case 'positive':
         return <Badge variant="success">Позитивный</Badge>;
       case 'negative':
         return <Badge variant="destructive">Негативный</Badge>;
       case 'neutral':
         return <Badge variant="secondary">Нейтральный</Badge>;
-    }
-  };
-
-  const getStatusBadge = (status?: Review['status']) => {
-    if (!status) return <Badge variant="outline">Новый</Badge>;
-    
-    switch (status) {
-      case 'analyzed':
-        return <Badge variant="success">Проанализирован</Badge>;
-      case 'processing':
-        return <Badge variant="default">Обработка</Badge>;
-      case 'new':
-        return <Badge variant="outline">Новый</Badge>;
+      default:
+        return <Badge variant="outline">{sentiment}</Badge>;
     }
   };
 
@@ -101,7 +54,7 @@ export const ReviewsTable = () => {
   };
 
   // Loading Skeleton
-  if (loading) {
+  if (reviewsLoading) {
     return (
       <div className="card p-6">
         <div className="space-y-4">
@@ -128,23 +81,16 @@ export const ReviewsTable = () => {
               Отзывы не найдены
             </p>
           </div>
-          <Button variant="outline" onClick={fetchReviews}>
+          <Button variant="outline" onClick={() => fetchReviews({ limit: 50 })}>
             Обновить
           </Button>
         </div>
 
         {/* Empty State */}
-        <div className="flex flex-col items-center justify-center py-12">
-          <div className="w-16 h-16 bg-chrome-600/20 rounded-none flex items-center justify-center mb-4">
-            <span className="text-3xl text-chrome-500">📋</span>
-          </div>
-          <h4 className="text-lg font-medium text-chrome-300 mb-2">
-            Нет отзывов
-          </h4>
-          <p className="text-sm text-chrome-500 text-center max-w-md">
-            Отзывы появятся здесь после запуска сбора данных.
-            Нажмите кнопку "Запустить сбор" чтобы начать.
-          </p>
+        <div className="border border-zinc-800 rounded-sm bg-black p-12 text-center flex flex-col items-center justify-center">
+          <Database className="w-12 h-12 text-zinc-700 mb-4" strokeWidth={1.25} />
+          <h3 className="text-zinc-100 font-medium mb-1">Нет отзывов</h3>
+          <p className="text-zinc-500 text-sm max-w-sm">Отзывы появятся здесь после запуска сбора данных.</p>
         </div>
       </div>
     );
@@ -159,10 +105,10 @@ export const ReviewsTable = () => {
             Отзывы
           </h3>
           <p className="text-sm text-chrome-500 mt-1">
-            Всего {reviews.length} отзывов
+            Всего {reviewsTotal} отзывов
           </p>
         </div>
-        <Button variant="outline" onClick={fetchReviews}>
+        <Button variant="outline" onClick={() => fetchReviews({ limit: 50 })}>
           Обновить
         </Button>
       </div>
@@ -171,12 +117,11 @@ export const ReviewsTable = () => {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Платформа</TableHead>
+            <TableHead>Источник</TableHead>
             <TableHead>Автор</TableHead>
             <TableHead>Рейтинг</TableHead>
             <TableHead>Отзыв</TableHead>
             <TableHead>Тональность</TableHead>
-            <TableHead>Статус</TableHead>
             <TableHead>Дата</TableHead>
             <TableHead className="text-right">Действия</TableHead>
           </TableRow>
@@ -185,7 +130,7 @@ export const ReviewsTable = () => {
           {reviews.map((review) => (
             <TableRow key={review.id}>
               <TableCell className="font-medium">
-                {review.platform}
+                {review.source}
               </TableCell>
               <TableCell>{review.author || 'Аноним'}</TableCell>
               <TableCell>
@@ -199,11 +144,8 @@ export const ReviewsTable = () => {
               <TableCell>
                 {getSentimentBadge(review.sentiment)}
               </TableCell>
-              <TableCell>
-                {getStatusBadge(review.status)}
-              </TableCell>
               <TableCell className="font-mono text-xs text-chrome-400">
-                {formatDate(review.created_at)}
+                {formatDate(review.date)}
               </TableCell>
               <TableCell className="text-right">
                 <Button variant="ghost" size="sm">

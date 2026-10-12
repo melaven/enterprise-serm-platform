@@ -2,10 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Импорт шрифтов */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
-
 @layer base {
   /* CSS Переменные для shadcn/ui (адаптированы под нашу палитру) */
   :root {
@@ -58,7 +54,7 @@
 
   /* Кастомный focus state для клавиатурной навигации */
   *:focus-visible {
-    @apply ring-2 ring-plum ring-offset-2 ring-offset-ink;
+    @apply outline outline-2 outline-lime outline-offset-2;
   }
 
   /* Scrollbar стилизация для темной темы */
@@ -135,5 +131,70 @@
 
   .animate-pulse-slow {
     animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  /* ============================================ */
+  /* КАСТОМНЫЕ АНИМАЦИИ ДЛЯ AUTH SHELL           */
+  /* ============================================ */
+  
+  /* Резкий блик для кнопок (hard glare effect) */
+  @keyframes hard-glare {
+    0% {
+      left: -150%;
+      opacity: 0;
+    }
+    30% {
+      opacity: 0.8;
+    }
+    50% {
+      left: 50%;
+      opacity: 1;
+    }
+    70% {
+      opacity: 0.8;
+    }
+    100% {
+      left: 200%;
+      opacity: 0;
+    }
+  }
+
+  .animate-hard-glare {
+    animation: hard-glare 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* ============================================ */
+  /* ДОПОЛНИТЕЛЬНЫЕ УТИЛИТЫ ДЛЯ SONNER          */
+  /* ============================================ */
+  
+  /* Кастомизация Sonner под нашу flat-палитру */
+  [data-sonner-toast] {
+    @apply bg-ink-50 border border-chrome-600 text-chrome-300 rounded-sm;
+  }
+  
+  [data-sonner-toast][data-type="success"] {
+    @apply border-[#C5FF4A] bg-black text-[#C5FF4A];
+  }
+  
+  [data-sonner-toast][data-type="error"] {
+    @apply border-[#FF5C5C] bg-black text-[#FF5C5C];
+  }
+  
+  [data-sonner-toast][data-type="warning"] {
+    @apply border-white bg-black text-white;
+  }
+  
+  /* Убираем shadows из Sonner */
+  [data-sonner-toast] [data-content] {
+    box-shadow: none !important;
+  }
+  
+  /* Кнопки внутри toast */
+  [data-sonner-toast] [data-button] {
+    @apply bg-plum text-white hover:bg-plum/90 rounded-sm;
+  }
+  
+  [data-sonner-toast] [data-cancel-button] {
+    @apply bg-chrome-600 text-chrome-300 hover:bg-chrome-500 rounded-sm;
   }
 }

@@ -1,63 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { toast } from 'sonner';
-import apiClient from '../api/client';
+import { useAnalytics, useParser } from '../store/useAppStore';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 
 /**
- * Панель аналитики с использованием shadcn/ui
- * Показывает агрегированную статистику по отзывам
+ * Панель аналитики
+ * Использует centralized API через Zustand store
  */
-
-interface AnalyticsData {
-  total_reviews: number;
-  positive_count: number;
-  negative_count: number;
-  neutral_count: number;
-  avg_rating: number;
-  trend: 'up' | 'down' | 'stable';
-  trend_percentage: number;
-}
-
 export const AnalysisPanel = () => {
-  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [parserLoading, setParserLoading] = useState(false);
+  const { analytics, analyticsLoading, fetchAnalytics } = useAnalytics();
+  const { startParser, parserStatus } = useParser();
 
   useEffect(() => {
     fetchAnalytics();
-  }, []);
-
-  const fetchAnalytics = async () => {
-    try {
-      setLoading(true);
-      const response = await apiClient.get('/api/v1/analytics/summary');
-      setAnalytics(response.data);
-    } catch (err) {
-      console.warn('Failed to fetch analytics, using mock data');
-      // Мок-данные
-      setAnalytics({
-        total_reviews: 0,
-        positive_count: 0,
-        negative_count: 0,
-        neutral_count: 0,
-        avg_rating: 0,
-        trend: 'stable',
-        trend_percentage: 0,
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [fetchAnalytics]);
 
   const handleStartParser = async () => {
-    try {
-      setParserLoading(true);
-      
-      await apiClient.post('/api/v1/parsers/start');
-      
+    const jobId = await startParser('https://2gis.ru/moscow/firm/70000001012345678/tab/reviews', 100);
+    
+    if (jobId) {
       toast.success('Сбор отзывов запущен!', {
-        description: 'Отзывы будут обработаны в фоновом режиме',
+        description: `Job ID: ${jobId}`,
         duration: 4000,
       });
       
@@ -65,30 +29,10 @@ export const AnalysisPanel = () => {
       setTimeout(() => {
         fetchAnalytics();
       }, 2000);
-    } catch (error: any) {
-      console.error('Failed to start parser:', error);
-      
-      // Перехватываем ошибку 402 Payment Required
-      if (error.response?.status === 402) {
-        toast.error('Ошибка биллинга: Лимит токенов или запросов исчерпан', {
-          description: 'Пожалуйста, обновите тарифный план или дождитесь следующего периода',
-          duration: 6000,
-        });
-      } else if (error.response?.status === 429) {
-        toast.error('Слишком много запросов', {
-          description: 'Попробуйте позже',
-        });
-      } else {
-        toast.error('Не удалось запустить сбор отзывов', {
-          description: error.response?.data?.detail || 'Неизвестная ошибка',
-        });
-      }
-    } finally {
-      setParserLoading(false);
     }
   };
 
-  if (loading) {
+  if (analyticsLoading) {
     return (
       <div className="card p-6">
         <div className="animate-pulse-slow space-y-4">
@@ -102,13 +46,13 @@ export const AnalysisPanel = () => {
   if (!analytics) return null;
 
   const positivePercentage = analytics.total_reviews > 0 
-    ? (analytics.positive_count / analytics.total_reviews) * 100 
+    ? (analytics.sentiment_distribution.positive / analytics.total_reviews) * 100 
     : 0;
   const negativePercentage = analytics.total_reviews > 0
-    ? (analytics.negative_count / analytics.total_reviews) * 100
+    ? (analytics.sentiment_distribution.negative / analytics.total_reviews) * 100
     : 0;
   const neutralPercentage = analytics.total_reviews > 0
-    ? (analytics.neutral_count / analytics.total_reviews) * 100
+    ? (analytics.sentiment_distribution.neutral / analytics.total_reviews) * 100
     : 0;
 
   return (
@@ -123,10 +67,10 @@ export const AnalysisPanel = () => {
             {/* Кнопка запуска сбора - ГЛАВНАЯ ЭКШН */}
             <Button 
               onClick={handleStartParser}
-              disabled={parserLoading}
+              disabled={parserStatus === 'running'}
               className="bg-[#5A189A] hover:bg-[#7B36B3]"
             >
-              {parserLoading ? 'Запуск...' : '▶ Запустить сбор'}
+              {parserStatus === 'running' ? 'Запуск...' : '▶ Запустить сбор'}
             </Button>
             <Button variant="outline" size="sm">
               Экспорт
@@ -135,7 +79,7 @@ export const AnalysisPanel = () => {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-4 gap-6 mb-6">
+        <div className="grid grid-cols-3 gap-6 mb-6">
           {/* Total Reviews */}
           <div>
             <p className="text-label mb-2">Всего отзывов</p>
@@ -153,25 +97,16 @@ export const AnalysisPanel = () => {
             </p>
           </div>
 
-          {/* Trend */}
+          {/* Top Topics */}
           <div>
-            <p className="text-label mb-2">Тренд</p>
-            <div className="flex items-center gap-2">
-              <span className={`text-2xl ${analytics.trend === 'up' ? 'text-[#C5FF4A]' : analytics.trend === 'down' ? 'text-destructive' : 'text-chrome-400'}`}>
-                {analytics.trend === 'up' ? '↑' : analytics.trend === 'down' ? '↓' : '→'}
-              </span>
-              <span className="text-2xl font-semibold text-chrome-300">
-                {analytics.trend_percentage}%
-              </span>
+            <p className="text-label mb-2">Главные темы</p>
+            <div className="flex flex-wrap gap-1">
+              {analytics.top_topics.slice(0, 3).map((topic, idx) => (
+                <Badge key={idx} variant="secondary" className="text-xs">
+                  {topic.topic} ({topic.count})
+                </Badge>
+              ))}
             </div>
-          </div>
-
-          {/* Status */}
-          <div>
-            <p className="text-label mb-2">Статус</p>
-            <Badge variant="success" className="text-sm px-3 py-1">
-              Активен
-            </Badge>
           </div>
         </div>
 
@@ -188,7 +123,7 @@ export const AnalysisPanel = () => {
                   <div className="flex items-center gap-2">
                     <Badge variant="success" className="text-xs">Позитивные</Badge>
                     <span className="text-sm text-chrome-400">
-                      {analytics.positive_count} отзывов
+                      {analytics.sentiment_distribution.positive} отзывов
                     </span>
                   </div>
                   <span className="text-sm font-medium text-chrome-300">
@@ -209,7 +144,7 @@ export const AnalysisPanel = () => {
                   <div className="flex items-center gap-2">
                     <Badge variant="secondary" className="text-xs">Нейтральные</Badge>
                     <span className="text-sm text-chrome-400">
-                      {analytics.neutral_count} отзывов
+                      {analytics.sentiment_distribution.neutral} отзывов
                     </span>
                   </div>
                   <span className="text-sm font-medium text-chrome-300">
@@ -230,7 +165,7 @@ export const AnalysisPanel = () => {
                   <div className="flex items-center gap-2">
                     <Badge variant="destructive" className="text-xs">Негативные</Badge>
                     <span className="text-sm text-chrome-400">
-                      {analytics.negative_count} отзывов
+                      {analytics.sentiment_distribution.negative} отзывов
                     </span>
                   </div>
                   <span className="text-sm font-medium text-chrome-300">

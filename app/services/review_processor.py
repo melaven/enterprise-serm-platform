@@ -270,8 +270,8 @@ class ReviewProcessorService:
             if not priority_filter or sentiment_analysis["priority"] == priority_filter:
                 queue.append({
                     "review_id": str(review.id),
-                    "platform_name": review.platform.name,
-                    "company_name": review.platform.company.name,
+                    "platform_name": review.platform_ref.name,
+                    "company_name": review.platform_ref.company.name,
                     "rating": review.rating,
                     "author_name": review.author_name,
                     "created_at": review.created_at.isoformat(),

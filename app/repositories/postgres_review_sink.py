@@ -1,203 +1,202 @@
-"""
-PostgresReviewSink - реализация сохранения отзывов в PostgreSQL.
-Использует bulk insert с ON CONFLICT DO NOTHING для идемпотентности.
-"""
+"""Tenant-scoped PostgreSQL persistence for parsed and analyzed reviews."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
+from datetime import datetime
+from typing import Protocol
 from uuid import UUID
 
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.economics import Review, Platform
+from app.core.tenant import TenantSessionFactory
+from app.models.economics import Platform, Review
+from app.schemas.economics import ReviewStatus
 
-if TYPE_CHECKING:
-    from app.services.ai_processor import EnrichedReview
+
+class _EnumValue(Protocol):
+    value: str
+
+
+class _RawReview(Protocol):
+    platform_id: str
+    author_name: str
+    text: str
+    rating: float
+    date: datetime
+    platform: _EnumValue
+
+
+class _AnalysisResult(Protocol):
+    sentiment: _EnumValue
+    issue_category: _EnumValue
+    extracted_entities: list[str]
+    is_critical: bool
+    suggested_reply: str
+
+
+class _AnalysisOutcome(Protocol):
+    result: _AnalysisResult
+    is_fallback: bool
+
+
+class _AnalyzedReview(Protocol):
+    raw: _RawReview
+    analysis: _AnalysisOutcome
 
 
 class PostgresReviewSink:
-    """
-    Sink для массовой записи спарсенных отзывов в PostgreSQL.
-    
-    Особенности:
-    - Bulk insert для производительности
-    - ON CONFLICT DO NOTHING по (company_id, platform, external_review_id)
-    - Автоматическое создание platform_id если не существует
-    - Возврат количества успешно вставленных записей
-    """
-    
+    """Persist reviews without committing outside the tenant transaction."""
+
+    def __init__(self, session_factory: TenantSessionFactory | None = None) -> None:
+        self._session_factory = (
+            session_factory if session_factory is not None else TenantSessionFactory()
+        )
+
+    async def save(
+        self, tenant_id: UUID, reviews: Sequence[_AnalyzedReview]
+    ) -> int:
+        """Worker entry point; opens a session with RLS set to ``tenant_id``."""
+        async with self._session_factory(tenant_id) as db:
+            return await self.save_many(db, tenant_id, reviews)
+
     async def save_many(
         self,
         db: AsyncSession,
         tenant_id: UUID,
-        reviews: list[EnrichedReview],
-        platform_id: UUID | None = None
+        reviews: Sequence[_AnalyzedReview],
+        platform_id: UUID | None = None,
     ) -> int:
-        """
-        Массовая вставка отзывов с защитой от дубликатов.
+        """Insert a batch idempotently and return only rows inserted by this call.
         
-        Args:
-            db: Async database session
-            tenant_id: ID компании (company_id) для мультитенантности
-            reviews: Список сырых отзывов после парсинга
-            platform_id: UUID платформы (опционально, если None - создаётся автоматически)
-            
-        Returns:
-            int: Количество успешно вставленных записей (не дубликатов)
-            
-        Raises:
-            ValueError: Если reviews пустой список
+        SECURITY FIX: Advisory lock prevents race conditions when multiple workers
+        process reviews for the same tenant simultaneously.
         """
         if not reviews:
             return 0
-        
-        # Получаем или создаём platform_id
+
+        # ✅ CRITICAL FIX: Advisory lock for tenant isolation during concurrent writes
+        # Prevents race conditions: two workers inserting same review → IntegrityError
+        lock_key = int(tenant_id.int % (2**31))  # PostgreSQL advisory lock requires int32
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": lock_key}
+        )
+
+        platform_names = {str(review.raw.platform.value) for review in reviews}
+        if len(platform_names) != 1:
+            raise ValueError("A review batch must contain exactly one platform")
+        platform_name = platform_names.pop()
+
         if platform_id is None:
             platform_id = await self._get_or_create_platform(
-                db, 
-                tenant_id, 
-                reviews[0].review.platform.value
+                db, tenant_id, platform_name
             )
-        
-        # Подготовка данных для bulk insert
-        review_dicts = []
-        for enriched_review in reviews:
-            raw_review = enriched_review.review
-            review_dict = {
+        else:
+            result = await db.execute(
+                select(Platform.id, Platform.name).where(
+                    Platform.id == platform_id,
+                    Platform.company_id == tenant_id,
+                )
+            )
+            owned_platform = result.one_or_none()
+            if owned_platform is None or owned_platform.name != platform_name:
+                raise ValueError("Platform does not belong to the requested tenant")
+
+        rows = [
+            {
                 "company_id": tenant_id,
                 "platform_id": platform_id,
-                "external_review_id": raw_review.external_id,
-                "platform": raw_review.platform.value,
-                "author_name": raw_review.author_name,
-                "rating": int(raw_review.rating),
-                "text": raw_review.text,
-                "status": "new",  # ReviewStatus.NEW
+                "external_review_id": review.raw.platform_id,
+                "platform": platform_name,
+                "author_name": review.raw.author_name,
+                "rating": int(review.raw.rating),
+                "text": review.raw.text,
+                "status": ReviewStatus.NEW.value,
                 "financial_impact": 0.0,
-                "created_at": raw_review.published_at or func.now(),
-                "sentiment": (
-                    enriched_review.sentiment.value
-                    if enriched_review.sentiment is not None
-                    else None
-                ),
-                "tags": list(enriched_review.tags),
-                "is_critical": enriched_review.is_critical,
-                "auto_reply": enriched_review.reply,
-                "ai_pending": enriched_review.ai_pending,
-                "ai_error": enriched_review.ai_error,
+                "created_at": review.raw.date,
+                "sentiment": review.analysis.result.sentiment.value,
+                "tags": [
+                    review.analysis.result.issue_category.value,
+                    *review.analysis.result.extracted_entities,
+                ],
+                "is_critical": review.analysis.result.is_critical,
+                "auto_reply": review.analysis.result.suggested_reply,
+                "ai_pending": review.analysis.is_fallback,
             }
-            review_dicts.append(review_dict)
-        
-        # Bulk insert с ON CONFLICT DO NOTHING
-        stmt = insert(Review).values(review_dicts)
-        
-        # Индекс для деdupликации: (company_id, platform, external_review_id)
-        # Используем constraint или уникальные поля
-        stmt = stmt.on_conflict_do_nothing(
-            index_elements=["company_id", "platform", "external_review_id"]
+            for review in reviews
+        ]
+
+        stmt = (
+            insert(Review)
+            .values(rows)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    Review.company_id,
+                    Review.platform,
+                    Review.external_review_id,
+                ]
+            )
+            .returning(Review.id)
         )
-        
-        # Для подсчёта вставленных записей используем RETURNING
-        # Но on_conflict_do_nothing не возвращает конфликтующие строки
-        # Поэтому делаем count до и после
-        count_before = await self._count_reviews(db, tenant_id)
-        
-        await db.execute(stmt)
-        await db.commit()
-        
-        count_after = await self._count_reviews(db, tenant_id)
-        inserted_count = count_after - count_before
-        
-        return inserted_count
-    
+        result = await db.execute(stmt)
+        return len(result.scalars().all())
+
     async def _get_or_create_platform(
+        self, db: AsyncSession, tenant_id: UUID, platform_name: str
+    ) -> UUID:
+        stmt = (
+            insert(Platform)
+            .values(
+                company_id=tenant_id,
+                name=platform_name,
+                monthly_views=0,
+                conversion_rate=0.0,
+                cac_on_platform=0.0,
+                average_rating=0.0,
+            )
+            .on_conflict_do_nothing(
+                index_elements=[Platform.company_id, Platform.name]
+            )
+            .returning(Platform.id)
+        )
+        result = await db.execute(stmt)
+        platform_id = result.scalar_one_or_none()
+        if platform_id is not None:
+            return platform_id
+
+        result = await db.execute(
+            select(Platform.id).where(
+                Platform.company_id == tenant_id,
+                Platform.name == platform_name,
+            )
+        )
+        platform_id = result.scalar_one_or_none()
+        if platform_id is None:
+            raise RuntimeError("Tenant platform could not be created or retrieved")
+        return platform_id
+
+    async def existing_external_ids(
         self,
         db: AsyncSession,
-        company_id: UUID,
-        platform_name: str
-    ) -> UUID:
-        """
-        Получить существующую платформу или создать новую.
-        
-        Args:
-            db: Async database session
-            company_id: ID компании
-            platform_name: Название платформы (2gis, yandex, google)
-            
-        Returns:
-            UUID: ID платформы
-        """
-        # Ищем существующую платформу
-        stmt = select(Platform).where(
-            Platform.company_id == company_id,
-            Platform.name == platform_name
-        )
-        result = await db.execute(stmt)
-        platform = result.scalar_one_or_none()
-        
-        if platform:
-            return platform.id
-        
-        # Создаём новую платформу
-        new_platform = Platform(
-            company_id=company_id,
-            name=platform_name,
-            monthly_views=0,
-            conversion_rate=0.0,
-            cac_on_platform=0.0,
-            average_rating=0.0
-        )
-        db.add(new_platform)
-        await db.flush()  # Получаем ID без commit
-        
-        return new_platform.id
-    
-    async def _count_reviews(self, db: AsyncSession, tenant_id: UUID) -> int:
-        """Подсчёт отзывов для tenant."""
-        stmt = select(func.count()).select_from(Review).where(
-            Review.company_id == tenant_id
-        )
-        result = await db.execute(stmt)
-        return result.scalar_one()
-    
-    async def existing_external_ids(
-        self, 
-        db: AsyncSession, 
-        tenant_id: UUID, 
-        platform: str, 
-        ids: list[str]
+        tenant_id: UUID,
+        platform: str,
+        ids: list[str],
     ) -> set[str]:
-        """
-        Проверяет, какие external_id уже существуют в базе для данного tenant и платформы.
-        
-        Args:
-            db: Async database session
-            tenant_id: ID компании (company_id) для изоляции данных
-            platform: Название платформы (2gis, yandex, google)
-            ids: Список external_id для проверки
-            
-        Returns:
-            set[str]: Множество external_id, которые уже есть в базе
-            
-        Example:
-            >>> existing = await sink.existing_external_ids(
-            ...     db, tenant_id, "2gis", ["id1", "id2", "id3"]
-            ... )
-            >>> print(existing)  # {"id1", "id3"}
-        """
+        """Return known source IDs only within the requested tenant and platform."""
         if not ids:
             return set()
-        
-        # Делаем SELECT external_review_id для проверки существования
+
         stmt = select(Review.external_review_id).where(
             Review.company_id == tenant_id,
             Review.platform == platform,
-            Review.external_review_id.in_(ids)
+            Review.external_review_id.in_(ids),
         )
-        
         result = await db.execute(stmt)
-        existing_ids = result.scalars().all()
-        
-        return set(existing_ids)
+        return {
+            external_id
+            for external_id in result.scalars().all()
+            if external_id is not None
+        }

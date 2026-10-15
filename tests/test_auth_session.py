@@ -16,11 +16,11 @@ from app.core.auth import (
     get_current_tenant,
     get_jwt_payload,
 )
-from app.db.session import build_rls_claims, tenant_session
+from app.core.tenant_session import build_rls_claims, tenant_session
 from app.schemas.auth import JWTPayload
 
 SECRET = "x" * 40  # тестовый секрет, не настоящий
-CFG = AuthConfig(secret=SECRET)
+CFG = AuthConfig(secret=SECRET, jwks_url=None)
 USER = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 TENANT = "11111111-1111-1111-1111-111111111111"
 
@@ -42,7 +42,7 @@ def token(**over: Any) -> str:
 
 
 def creds(tok: str) -> HTTPAuthorizationCredentials:
-    return HTTPAuthorizationCredentials("Bearer", tok)
+    return HTTPAuthorizationCredentials(scheme="Bearer", credentials=tok)
 
 
 def test_valid_token() -> None:
@@ -86,23 +86,29 @@ def test_missing_bearer_is_401() -> None:
     assert ei.value.status_code == 401
 
 
-@pytest.mark.parametrize("tenant", [None, "not-a-uuid", ""])
-def test_token_without_valid_tenant_is_403(tenant: str | None) -> None:
+@pytest.mark.parametrize("tenant", ["not-a-uuid", ""])
+def test_token_with_invalid_tenant_is_403(tenant: str) -> None:
     with pytest.raises(HTTPException) as ei:
         run(get_jwt_payload(creds(token(tenant_id=tenant)), CFG))
     assert ei.value.status_code == 403
 
 
+def test_missing_tenant_falls_back_to_user_id() -> None:
+    payload = run(get_jwt_payload(creds(token(tenant_id=None)), CFG))
+    assert payload.tenant_id is None
+    assert run(get_current_tenant(payload)) == UUID(USER)
+
+
 def test_user_metadata_tenant_is_ignored() -> None:
     tok = token(tenant_id=None, user_metadata={"tenant_id": TENANT})
-    with pytest.raises(HTTPException) as ei:
-        run(get_jwt_payload(creds(tok), CFG))
-    assert ei.value.status_code == 403
+    payload = run(get_jwt_payload(creds(tok), CFG))
+    assert payload.tenant_id is None
+    assert run(get_current_tenant(payload)) == UUID(USER)
 
 
 def test_payload_requires_fields() -> None:
     with pytest.raises(ValidationError):
-        JWTPayload.model_validate({"sub": USER})
+        JWTPayload.model_validate({})
 
 
 def test_claims_json_is_safe_and_minimal() -> None:
@@ -150,7 +156,7 @@ def test_tenant_context_is_first_statement_in_transaction() -> None:
     run(go())
     assert log[0] == "begin"
     stmt, params = log[1]
-    assert "set_config('request.jwt.claims', :claims, true)" in stmt
+    assert "set_config('request.jwt.claims', :claims, true)" in str(stmt)
     assert json.loads(params["claims"])["tenant_id"] == TENANT
     assert log[2][0] == "SELECT 1" and log[-1] == "commit"
 

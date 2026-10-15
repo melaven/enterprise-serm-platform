@@ -4,7 +4,7 @@ const BASE =
   'group flex w-full items-start gap-3 rounded-sm border border-zinc-700 bg-zinc-950 p-4 text-sm font-medium uppercase tracking-wider text-zinc-100 shadow-none';
 
 /**
- * Плоские тосты: border Chrome, без теней. success — lime, error — красный #FF5C5C
+ * Плоские тосты: border Chrome, без теней. success — lime, error — crimson #A4172A
  * (plum на чёрном ~1.9:1, нечитаем как текст; plum остаётся заливкой).
  * unstyled: true отключает собственные стили Sonner, весь вид задан классами ниже.
  */
@@ -23,7 +23,7 @@ export function Toaster(props: ToasterProps) {
           title: 'text-xs font-semibold uppercase tracking-wider',
           description: 'mt-1 text-xs normal-case tracking-normal text-zinc-400',
           success: '!text-lime',
-          error: '!text-[#FF5C5C]',
+          error: '!text-crimson',
           warning: '!text-white',
           info: '!text-zinc-100',
           icon: 'mt-0.5 size-4 shrink-0',

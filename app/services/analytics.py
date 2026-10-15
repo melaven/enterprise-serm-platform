@@ -13,7 +13,7 @@ from ..schemas.analytics import (
     RatingDistribution, TimeRange, AnalyticsRequest,
     DetailedAnalyticsResponse, AnalyticsTrend, TrendPoint
 )
-from ..exceptions import BusinessLogicError, NotFoundError
+from ..core.exceptions import BusinessLogicError, NotFoundError
 
 logger = logging.getLogger(__name__)
 

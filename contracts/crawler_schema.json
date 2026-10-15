@@ -1,0 +1,379 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Tenable SERM Crawler Microservice Contract",
+  "description": "JSON schema for communication between Python task manager and Go crawler",
+  "version": "1.0.0",
+  "type": "object",
+  "definitions": {
+    "TaskRequest": {
+      "type": "object",
+      "description": "Request from Python to Go crawler to start parsing",
+      "required": ["task_id", "platform_url", "platform_type", "company_id", "tenant_id"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Unique task identifier (UUID v4)"
+        },
+        "platform_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "URL to parse (e.g., https://maps.google.com/place/...)"
+        },
+        "platform_type": {
+          "type": "string",
+          "enum": ["google_maps", "yandex_maps", "2gis", "trustpilot", "tripadvisor", "flamp", "yell", "custom"],
+          "description": "Type of platform to parse"
+        },
+        "company_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Company ID for tenant isolation"
+        },
+        "tenant_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Tenant ID for multi-tenancy"
+        },
+        "max_reviews": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000,
+          "default": 100,
+          "description": "Maximum number of reviews to fetch"
+        },
+        "min_rating": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Minimum rating filter (optional)"
+        },
+        "date_from": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Start date for reviews (ISO 8601)"
+        },
+        "date_to": {
+          "type": "string",
+          "format": "date-time",
+          "description": "End date for reviews (ISO 8601)"
+        },
+        "language": {
+          "type": "string",
+          "default": "en",
+          "description": "Language code (e.g., en, ru, de)"
+        },
+        "priority": {
+          "type": "integer",
+          "enum": [0, 1, 2, 3],
+          "default": 1,
+          "description": "Task priority (0=low, 1=normal, 2=high, 3=critical)"
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 30,
+          "maximum": 600,
+          "default": 300,
+          "description": "Task timeout in seconds"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata for the task"
+        }
+      }
+    },
+    "TaskResponse": {
+      "type": "object",
+      "description": "Response from Go crawler to Python task manager",
+      "required": ["task_id", "status", "timestamp"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Task identifier (must match request)"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["accepted", "processing", "completed", "failed", "cancelled", "timeout"],
+          "description": "Current task status"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Response timestamp (ISO 8601)"
+        },
+        "error": {
+          "type": "object",
+          "description": "Error details (present if status is failed)",
+          "properties": {
+            "code": {
+              "type": "string",
+              "description": "Error code"
+            },
+            "message": {
+              "type": "string",
+              "description": "Human-readable error message"
+            },
+            "details": {
+              "type": "object",
+              "description": "Additional error details"
+            }
+          }
+        },
+        "progress": {
+          "type": "object",
+          "description": "Task progress information",
+          "properties": {
+            "percentage": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Progress percentage (0-100)"
+            },
+            "current_page": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Current page being processed"
+            },
+            "total_pages": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Total pages to process"
+            },
+            "reviews_fetched": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Number of reviews fetched so far"
+            }
+          }
+        }
+      }
+    },
+    "ReviewData": {
+      "type": "object",
+      "description": "Single review data structure",
+      "required": ["external_review_id", "author_name", "rating", "text", "date"],
+      "properties": {
+        "external_review_id": {
+          "type": "string",
+          "description": "External review ID from platform"
+        },
+        "author_name": {
+          "type": "string",
+          "description": "Reviewer name"
+        },
+        "rating": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5,
+          "description": "Review rating (1-5 stars)"
+        },
+        "text": {
+          "type": "string",
+          "description": "Review text content"
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Review date (ISO 8601)"
+        },
+        "author_url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Author profile URL (optional)"
+        },
+        "response": {
+          "type": "object",
+          "description": "Business response to review (if any)",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Response text"
+            },
+            "date": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Response date"
+            },
+            "author": {
+              "type": "string",
+              "description": "Response author name"
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Platform-specific metadata"
+        }
+      }
+    },
+    "TaskResult": {
+      "type": "object",
+      "description": "Final result from Go crawler with parsed reviews",
+      "required": ["task_id", "status", "timestamp", "reviews"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Task identifier"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["completed", "failed", "partial"],
+          "description": "Final task status"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Result timestamp (ISO 8601)"
+        },
+        "reviews": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReviewData"
+          },
+          "description": "Array of parsed reviews"
+        },
+        "total_reviews": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of reviews found"
+        },
+        "reviews_fetched": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of reviews actually fetched"
+        },
+        "pages_processed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of pages processed"
+        },
+        "execution_time_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total execution time in seconds"
+        },
+        "error": {
+          "type": "object",
+          "description": "Error details (present if status is failed)",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object"
+            }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Warning messages (e.g., rate limiting, partial data)"
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata about the parsing process"
+        }
+      }
+    },
+    "HealthCheckRequest": {
+      "type": "object",
+      "description": "Health check request from Python to Go crawler",
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Request timestamp"
+        }
+      }
+    },
+    "HealthCheckResponse": {
+      "type": "object",
+      "description": "Health check response from Go crawler",
+      "required": ["status", "timestamp"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["healthy", "degraded", "unhealthy"],
+          "description": "Crawler health status"
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Response timestamp"
+        },
+        "version": {
+          "type": "string",
+          "description": "Crawler version"
+        },
+        "uptime_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Crawler uptime in seconds"
+        },
+        "active_tasks": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of currently active tasks"
+        },
+        "queue_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of tasks in queue"
+        },
+        "memory_usage_mb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Memory usage in MB"
+        },
+        "goroutines": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of active goroutines"
+        }
+      }
+    },
+    "CancelTaskRequest": {
+      "type": "object",
+      "description": "Request to cancel a running task",
+      "required": ["task_id"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Task ID to cancel"
+        },
+        "reason": {
+          "type": "string",
+          "description": "Cancellation reason (optional)"
+        }
+      }
+    },
+    "CancelTaskResponse": {
+      "type": "object",
+      "description": "Response to task cancellation",
+      "required": ["task_id", "cancelled"],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "format": "uuid",
+          "description": "Task ID"
+        },
+        "cancelled": {
+          "type": "boolean",
+          "description": "Whether task was successfully cancelled"
+        },
+        "message": {
+          "type": "string",
+          "description": "Cancellation message"
+        }
+      }
+    }
+  }
+}

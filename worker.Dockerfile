@@ -41,4 +41,4 @@ COPY --chown=app:app . .
 USER app
 
 # Запуск ARQ воркера
-CMD ["arq", "app.worker.worker.WorkerSettings"]
+CMD ["arq", "app.services.worker.worker.WorkerSettings"]

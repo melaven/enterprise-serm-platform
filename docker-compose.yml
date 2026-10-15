@@ -3,7 +3,7 @@ name: tenable-serm
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-serm_user}
@@ -12,7 +12,11 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-serm_user}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-serm_user} -d ${POSTGRES_DB:-serm}",
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -63,6 +67,9 @@ services:
     environment:
       # Перекрывает DATABASE_URL из .env для подключения к Docker-сервису
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
+      TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-serm}
+      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}
+      USE_TENANT_ROLE: "true"
       # Перекрывает REDIS_URL из .env для подключения к Docker-сервису
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
@@ -112,6 +119,9 @@ services:
     environment:
       # Перекрывает DATABASE_URL из .env для подключения к Docker-сервису
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
+      TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-serm}
+      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}
+      USE_TENANT_ROLE: "true"
       # Перекрывает REDIS_URL из .env для подключения к Docker-сервису
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
     restart: unless-stopped
@@ -128,9 +138,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      backend:
+        condition: service_healthy
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD", "arq", "--check", "app.worker.worker.WorkerSettings"]
+      test: ["CMD", "arq", "--check", "app.services.worker.worker.WorkerSettings"]
       interval: 30s
       timeout: 10s
       retries: 3

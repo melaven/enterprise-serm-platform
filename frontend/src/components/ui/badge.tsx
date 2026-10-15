@@ -13,6 +13,10 @@ const badgeVariants = cva(
       variant: {
         default:
           "border-transparent bg-plum-900 text-plum-300 border-plum-700",
+        plum:
+          "border-plum-800 bg-plum-900/40 text-plum-200",
+        lime:
+          "border-lime-800 bg-lime-900/40 text-lime-200",
         secondary:
           "border-transparent bg-chrome-600/20 text-chrome-300 border-chrome-600",
         destructive:

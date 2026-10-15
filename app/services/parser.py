@@ -10,7 +10,7 @@ from uuid import UUID
 from ..repositories import ReviewRepository, PlatformRepository, CompanyRepository
 from .review_processor import ReviewProcessorService
 from ..schemas.economics import ReviewBase, ReviewStatus
-from ..exceptions import BusinessLogicError, NotFoundError, ValidationError
+from ..core.exceptions import BusinessLogicError, NotFoundError, ValidationError
 
 
 logger = logging.getLogger(__name__)

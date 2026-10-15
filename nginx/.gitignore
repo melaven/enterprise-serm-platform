@@ -1,0 +1,8 @@
+# SSL certificates - NEVER commit these
+*.pem
+*.crt
+*.key
+*.csr
+
+# SSL directory
+ssl/

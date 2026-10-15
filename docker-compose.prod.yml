@@ -1,0 +1,205 @@
+name: tenable-serm-prod
+
+services:
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-serm_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задай POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: ${POSTGRES_DB:-serm}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-serm_user}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - backend
+
+  # Redis for ARQ and caching
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Задай REDIS_PASSWORD в .env}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - backend
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+      args:
+        PYTHON_VERSION: "3.12"
+    image: tenable-serm-backend:latest
+    env_file: .env
+    environment:
+      # Перекрывает DATABASE_URL из .env для подключения к Docker-сервису
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
+      # Перекрывает REDIS_URL из .env для подключения к Docker-сервису
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
+      # Production settings
+      ENVIRONMENT: production
+      DEBUG: "false"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import socket; socket.create_connection(('127.0.0.1', 8000), 3).close()"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - backend
+
+  # ARQ Worker
+  worker:
+    build:
+      context: .
+      dockerfile: worker.Dockerfile
+      args:
+        PYTHON_VERSION: "3.12"
+    image: tenable-serm-worker:latest
+    env_file: .env
+    environment:
+      # Перекрывает DATABASE_URL из .env для подключения к Docker-сервису
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
+      # Перекрывает REDIS_URL из .env для подключения к Docker-сервису
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      # Production settings
+      ENVIRONMENT: production
+      DEBUG: "false"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "arq", "--check", "app.services.worker.worker.WorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - backend
+
+  # React Frontend with Nginx
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    image: tenable-serm-frontend:latest
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - backend
+
+volumes:
+  postgres-data:
+  redis-data:
+  nginx-logs:
+
+networks:
+  backend:
+    driver: bridge

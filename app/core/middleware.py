@@ -4,12 +4,14 @@ Enterprise middleware для Correlation ID и трассировки запро
 
 import time
 from typing import Callable
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from .logger import get_logger, set_correlation_id, get_correlation_id
+
+CORRELATION_ID_HEADER = "X-Correlation-ID"
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):
@@ -27,7 +29,7 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
         app,
-        header_name: str = "X-Correlation-ID",
+        header_name: str = CORRELATION_ID_HEADER,
         generate_if_missing: bool = True
     ):
         super().__init__(app)
@@ -40,6 +42,11 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         
         # Извлекаем или генерируем Correlation ID
         correlation_id = request.headers.get(self.header_name)
+        if correlation_id:
+            try:
+                correlation_id = str(UUID(correlation_id))
+            except ValueError:
+                correlation_id = None
         
         if not correlation_id and self.generate_if_missing:
             correlation_id = str(uuid4())

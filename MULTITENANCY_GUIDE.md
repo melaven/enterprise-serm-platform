@@ -24,6 +24,12 @@ SERM API поддерживает мультитенантность через 
 
 ## Установка и настройка
 
+> Для локальной разработки используйте PostgreSQL 16 + pgvector из
+> `docker-compose.yml` и выполняйте только `python scripts/migrate.py` из
+> корня репозитория. Он ведёт журнал версий и сам задаёт пароль `app_tenant`
+> из `APP_TENANT_PASSWORD`. Инструкции ниже про ручной пароль и SQL-бэкфилл
+> относятся к старым установкам и не являются частью локального Docker-пути.
+
 ### 1. Установка зависимостей
 
 ```bash
@@ -49,8 +55,9 @@ AUTH_JWKS_URL=https://your-project.supabase.co/auth/v1/jwks
 ### 3. Применение миграций
 
 ```bash
-cd app
-python migrations/run_multitenancy_migration.py
+docker compose up -d postgres
+python scripts/migrate.py
+python scripts/seed_db.py
 ```
 
 ### 4. Дополнительная настройка
@@ -85,22 +92,22 @@ UPDATE reviews SET company_id = (
 ### JWT аутентификация
 
 ```python
-from app.dependencies import get_auth_context
-from app.auth import AuthContext
+from uuid import UUID
+from fastapi import Depends
+from app.core.auth import get_current_tenant
 
 # В роутере
 async def my_endpoint(
-    auth_context: AuthContext = Depends(get_auth_context)
+    tenant_id: UUID = Depends(get_current_tenant)
 ):
-    # Автоматически получаем user_id и company_id из JWT
-    user_id = auth_context.user_id
-    company_id = auth_context.company_id  # tenant ID
+    # Tenant ID извлекается и проверяется по JWT.
+    company_id = tenant_id
 ```
 
 ### Tenant-aware репозитории
 
 ```python
-from app.dependencies import get_review_repository
+from app.core.dependencies import get_review_repository
 from app.repositories import ReviewRepository
 
 # Репозиторий автоматически изолирован по tenant
@@ -114,12 +121,13 @@ async def get_reviews(
 ### Tenant Session
 
 ```python
-from app.auth import get_tenant_session, AuthContext
+from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import Depends
+from app.core.dependencies import get_tenant_db
 
-async with await get_tenant_session(auth_context) as session:
-    # app.company_id установлен автоматически
-    result = await session.execute("SELECT * FROM reviews")
-    # Возвращает только данные текущего tenant
+async def list_reviews(db: AsyncSession = Depends(get_tenant_db)):
+    # Dependency sets the tenant context before repository queries run.
+    ...
 ```
 
 ## Безопасность
@@ -189,7 +197,7 @@ asyncio.run(test())
 
 ```python
 import pytest
-from app.auth import JWTHandler
+from app.core.jwt_handler import JWTHandler
 
 @pytest.mark.asyncio
 async def test_jwt_verification():

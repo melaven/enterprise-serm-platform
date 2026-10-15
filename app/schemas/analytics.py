@@ -22,10 +22,13 @@ class DashboardReview(BaseModel):
     rating: int
     text: str
     sentiment: str | None
+    tags: list[str] = Field(default_factory=list)
     is_critical: bool
     status: ReviewStatus
     financial_impact: float
     si_response: str | None
+    auto_reply: str | None
+    ai_pending: bool
     created_at: datetime
 
 
@@ -40,18 +43,6 @@ class DashboardReviewsPage(BaseModel):
 class DashboardReviewsResponse(BaseModel):
     success: bool
     data: DashboardReviewsPage
-
-
-class DashboardMetrics(BaseModel):
-    total_reviews: int
-    positive_reviews: int
-    negative_reviews: int
-    critical_reviews: int
-
-
-class DashboardMetricsResponse(BaseModel):
-    success: bool
-    data: DashboardMetrics
 
 
 # Legacy схема для обратной совместимости с analyzer service
@@ -77,6 +68,53 @@ class SentimentDistribution(BaseModel):
     neutral: int = Field(ge=0, description="Количество нейтральных отзывов") 
     negative: int = Field(ge=0, description="Количество негативных отзывов")
     total: int = Field(ge=0, description="Общее количество отзывов")
+
+
+class DashboardSentimentDistribution(BaseModel):
+    positive: int = Field(ge=0)
+    neutral: int = Field(ge=0)
+    negative: int = Field(ge=0)
+    unclassified: int = Field(ge=0)
+    total: int = Field(ge=0)
+
+
+class DashboardTimelinePoint(BaseModel):
+    date: date
+    reviews: int = Field(ge=0)
+
+
+class DashboardPeriod(BaseModel):
+    date_from: date
+    date_to: date
+
+
+class DashboardMetrics(BaseModel):
+    total_reviews: int
+    average_rating: float | None
+    sentiment: DashboardSentimentDistribution
+    timeline: list[DashboardTimelinePoint]
+    critical_reviews: int
+    ai_pending: int
+    period: DashboardPeriod
+
+
+class DashboardMetricsResponse(BaseModel):
+    success: bool
+    data: DashboardMetrics
+
+
+class PlatformReputationStatistic(BaseModel):
+    platform: str
+    average_rating: float | None
+    rating_delta: float | None
+    total_reviews: int
+    new_reviews: int
+
+
+class ReputationStatistics(BaseModel):
+    period_days: int = Field(gt=0)
+    updated_at: datetime
+    platforms: list[PlatformReputationStatistic]
 
 
 class RatingDistribution(BaseModel):

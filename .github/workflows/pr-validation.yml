@@ -1,0 +1,69 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate-pr:
+    name: Validate Pull Request
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: 🔍 Check PR title
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          
+          # Conventional Commits validation
+          if ! echo "$PR_TITLE" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?: .+'; then
+            echo "❌ PR title must follow Conventional Commits format"
+            echo "Examples:"
+            echo "  - feat: add new feature"
+            echo "  - fix(auth): resolve login issue"
+            echo "  - docs: update README"
+            exit 1
+          fi
+          
+          echo "✅ PR title follows Conventional Commits"
+      
+      - name: 📝 Check PR description
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          
+          if [ -z "$PR_BODY" ] || [ ${#PR_BODY} -lt 20 ]; then
+            echo "❌ PR description is too short (min 20 characters)"
+            exit 1
+          fi
+          
+          echo "✅ PR description is adequate"
+      
+      - name: 🏷️ Check labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map(l => l.name);
+            
+            const requiredLabels = ['frontend', 'backend', 'documentation', 'bug', 'enhancement'];
+            const hasLabel = labels.some(label => requiredLabels.includes(label));
+            
+            if (!hasLabel) {
+              core.setFailed(`❌ PR must have at least one label: ${requiredLabels.join(', ')}`);
+            } else {
+              console.log('✅ PR has appropriate labels');
+            }
+      
+      - name: 📏 Check changed files
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
+          
+          if [ $CHANGED_FILES -gt 50 ]; then
+            echo "⚠️ Warning: PR changes $CHANGED_FILES files (recommended max: 50)"
+            echo "Consider splitting into smaller PRs for easier review"
+          fi
+          
+          echo "Changed files: $CHANGED_FILES"

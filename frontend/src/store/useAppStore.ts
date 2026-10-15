@@ -1,53 +1,71 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import * as api from '../api/services';
+import * as demoApi from '../api/demoService';
+import { tokens } from '../api/services';
 import { withErrorHandling } from '../api/errorHandler';
 
 /**
  * Глобальное состояние приложения с Zustand
  * Управляет аутентификацией, отзывами и аналитикой
+ * 
+ * Поддерживает Demo Mode через demoService (VITE_DEMO_MODE=true)
  */
 
-interface User {
-  id: string;
-  email: string;
-  tenant_id?: string;
-}
+// Выбор API: Demo Mode или Production
+const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+const apiClient = isDemoMode ? demoApi : api;
+
+type User = api.AuthResponse['user'];
 
 interface AppState {
   // Auth State
   isAuthenticated: boolean;
   user: User | null;
   token: string | null;
-  
+  refreshToken: string | null;
+
   // Reviews State
   reviews: api.Review[];
   reviewsLoading: boolean;
   reviewsTotal: number;
-  
+  reviewsPage: number;
+  reviewsPageSize: number;
+  reviewsTotalPages: number;
+
   // Analytics State
-  analytics: api.AnalyticsSummary | null;
-  analyticsLoading: boolean;
-  
+  dashboard: api.DashboardSummary | null;
+  dashboardLoading: boolean;
+
   // Parser State
   parserJobId: string | null;
-  parserStatus: string | null;
-  
+  parserStatus: 'queued' | 'in_progress' | 'succeeded' | 'failed' | null;
+  parserResult: api.ParserJobResult | null;
+  parserError: string | null;
+
   // UI State
   sidebarCollapsed: boolean;
   activeNavItem: string;
-  
+
   // Auth Actions
-  login: (token: string, user: User) => void;
+  login: (auth: api.AuthResponse) => void;
   logout: () => Promise<void>;
   performLogin: (email: string, password: string) => Promise<boolean>;
   performRegister: (email: string, password: string, fullName?: string) => Promise<boolean>;
-  
+
   // Data Fetch Actions
-  fetchReviews: (params?: { skip?: number; limit?: number; source?: string; sentiment?: string }) => Promise<void>;
-  fetchAnalytics: () => Promise<void>;
-  startParser: (url: string, maxReviews?: number) => Promise<string | null>;
-  
+  fetchReviews: (params?: {
+    page?: number;
+    page_size?: number;
+    platform?: string;
+    sentiment?: string;
+    search?: string;
+  }) => Promise<void>;
+  approveAiResponse: (reviewId: string) => Promise<boolean>;
+  fetchDashboard: () => Promise<void>;
+  startParser: (platform: string, url: string) => Promise<string | null>;
+  pollParserStatus: (jobId: string) => Promise<void>;
+
   // UI Actions
   toggleSidebar: () => void;
   setActiveNavItem: (item: string) => void;
@@ -64,118 +82,202 @@ export const useAppStore = create<AppState>()(
       isAuthenticated: false,
       user: null,
       token: null,
+      refreshToken: null,
       reviews: [],
       reviewsLoading: false,
       reviewsTotal: 0,
-      analytics: null,
-      analyticsLoading: false,
+      reviewsPage: 1,
+      reviewsPageSize: 50,
+      reviewsTotalPages: 1,
+      dashboard: null,
+      dashboardLoading: false,
       parserJobId: null,
       parserStatus: null,
+      parserResult: null,
+      parserError: null,
       sidebarCollapsed: false,
       activeNavItem: 'overview',
-      
+
       // ============================================================
       // AUTH ACTIONS
       // ============================================================
-      
-      login: (token: string, user: User) => {
-        // Сохраняем токен в localStorage для axios interceptor
-        localStorage.setItem('auth_token', token);
-        set({ 
-          isAuthenticated: true, 
-          token, 
-          user 
-        });
-      },
-      
-      logout: async () => {
-        await withErrorHandling(async () => {
-          await api.logout();
+
+      login: (auth: api.AuthResponse) => {
+        tokens.set(auth.access_token);
+        if (typeof localStorage !== 'undefined') {
           localStorage.removeItem('auth_token');
-          set({ 
-            isAuthenticated: false, 
-            token: null, 
-            user: null,
-            reviews: [],
-            analytics: null,
-          });
+        }
+        set({
+          isAuthenticated: true,
+          token: auth.access_token,
+          refreshToken: auth.refresh_token,
+          user: auth.user,
+          reviews: [],
+          reviewsTotal: 0,
+          reviewsPage: 1,
+          reviewsPageSize: 50,
+          reviewsTotalPages: 1,
+          dashboard: null,
+          parserJobId: null,
+          parserStatus: null,
+          parserResult: null,
+          parserError: null,
         });
       },
-      
+
+      logout: async () => {
+        try {
+          await withErrorHandling(async () => apiClient.logout());
+        } finally {
+          tokens.clear();
+          set({
+            isAuthenticated: false,
+            user: null,
+            token: null,
+            refreshToken: null,
+            reviews: [],
+            reviewsLoading: false,
+            reviewsTotal: 0,
+            reviewsPage: 1,
+            reviewsPageSize: 50,
+            reviewsTotalPages: 1,
+            dashboard: null,
+            dashboardLoading: false,
+            parserJobId: null,
+            parserStatus: null,
+            sidebarCollapsed: false,
+            activeNavItem: 'overview',
+          });
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('tenable-serm-storage');
+          }
+        }
+      },
+
       performLogin: async (email: string, password: string): Promise<boolean> => {
         const result = await withErrorHandling(async () => {
-          const response = await api.login({ email, password });
-          get().login(response.access_token, response.user);
+          const response = await apiClient.login({ email, password });
+          get().login(response);
           return true;
         });
         return result ?? false;
       },
-      
+
       performRegister: async (email: string, password: string, fullName?: string): Promise<boolean> => {
         const result = await withErrorHandling(async () => {
-          const response = await api.register({ email, password, full_name: fullName });
-          get().login(response.access_token, response.user);
+          const registration: api.RegisterRequest = { email, password };
+          if (fullName !== undefined) {
+            registration.full_name = fullName;
+          }
+          await apiClient.register(registration);
+          const auth = await apiClient.login({ email, password });
+          get().login(auth);
           return true;
         });
         return result ?? false;
       },
-      
+
       // ============================================================
       // DATA FETCH ACTIONS
       // ============================================================
-      
+
       fetchReviews: async (params) => {
         set({ reviewsLoading: true });
         await withErrorHandling(async () => {
-          const reviews = await api.getReviews(params);
-          set({ 
-            reviews, 
-            reviewsTotal: reviews.length,
-            reviewsLoading: false 
+          const paginatedData = await apiClient.getReviews(params);
+          set({
+            reviews: paginatedData.items,
+            reviewsTotal: paginatedData.total,
+            reviewsPage: paginatedData.page,
+            reviewsPageSize: paginatedData.page_size,
+            reviewsTotalPages: paginatedData.total_pages,
+            reviewsLoading: false
           });
         });
         set({ reviewsLoading: false });
       },
-      
-      fetchAnalytics: async () => {
-        set({ analyticsLoading: true });
-        await withErrorHandling(async () => {
-          const analytics = await api.getAnalyticsSummary();
-          set({ analytics, analyticsLoading: false });
+
+      approveAiResponse: async (reviewId) => {
+        const result = await withErrorHandling(() =>
+          apiClient.approveAiResponse(reviewId),
+        );
+        if (!result) {
+          return false;
+        }
+
+        set((state) => {
+          const wasPending = state.reviews.some(
+            (review) => review.id === result.review_id && review.ai_pending,
+          );
+          return {
+            reviews: state.reviews.map((review) =>
+              review.id === result.review_id
+                ? {
+                    ...review,
+                    status: result.status,
+                    ai_pending: result.ai_pending,
+                  }
+                : review,
+            ),
+            dashboard: state.dashboard
+              ? {
+                  ...state.dashboard,
+                  ai_pending: Math.max(
+                    0,
+                    state.dashboard.ai_pending - Number(wasPending),
+                  ),
+                }
+              : null,
+          };
         });
-        set({ analyticsLoading: false });
+        return true;
       },
-      
-      startParser: async (url: string, maxReviews?: number): Promise<string | null> => {
+
+      fetchDashboard: async () => {
+        set({ dashboardLoading: true });
+        await withErrorHandling(async () => {
+          const dashboard = await apiClient.getDashboardSummary();
+          set({ dashboard, dashboardLoading: false });
+        });
+        set({ dashboardLoading: false });
+      },
+
+      startParser: async (platform: string, url: string): Promise<string | null> => {
         const result = await withErrorHandling(async () => {
-          const user = get().user;
-          if (!user) {
-            throw new Error('Не удалось определить текущую организацию');
-          }
-          const response = await api.startParserJob({
-            url,
-            company_id: user.tenant_id ?? user.id,
-            limit: maxReviews,
-          });
-          set({ 
+          const response = await apiClient.startParserJob({ platform, url });
+          set({
             parserJobId: response.job_id,
-            parserStatus: response.status 
+            parserStatus: 'queued',
+            parserResult: null,
+            parserError: null,
           });
           return response.job_id;
         });
         return result ?? null;
       },
-      
+
+      pollParserStatus: async (jobId: string) => {
+        await withErrorHandling(async () => {
+          const response = await apiClient.getParserJobStatus(jobId);
+          set({
+            parserStatus: response.state,
+            parserResult: response.result,
+            parserError: response.error,
+          });
+        });
+      },
+
       // ============================================================
       // UI ACTIONS
       // ============================================================
-      
-      toggleSidebar: () => 
-        set((state) => ({ 
-          sidebarCollapsed: !state.sidebarCollapsed 
+
+      toggleSidebar: () =>
+        set((state) => ({
+          sidebarCollapsed: !state.sidebarCollapsed
         })),
-      
-      setActiveNavItem: (item: string) => 
+
+      setActiveNavItem: (item: string) =>
         set({ activeNavItem: item }),
     }),
     {
@@ -183,6 +285,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         // Сохраняем только важные данные
         token: state.token,
+        refreshToken: state.refreshToken,
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         sidebarCollapsed: state.sidebarCollapsed,
@@ -209,19 +312,26 @@ export const useReviews = () => useAppStore((state) => ({
   reviews: state.reviews,
   reviewsLoading: state.reviewsLoading,
   reviewsTotal: state.reviewsTotal,
+  reviewsPage: state.reviewsPage,
+  reviewsPageSize: state.reviewsPageSize,
+  reviewsTotalPages: state.reviewsTotalPages,
   fetchReviews: state.fetchReviews,
+  approveAiResponse: state.approveAiResponse,
 }));
 
-export const useAnalytics = () => useAppStore((state) => ({
-  analytics: state.analytics,
-  analyticsLoading: state.analyticsLoading,
-  fetchAnalytics: state.fetchAnalytics,
+export const useDashboard = () => useAppStore((state) => ({
+  dashboard: state.dashboard,
+  dashboardLoading: state.dashboardLoading,
+  fetchDashboard: state.fetchDashboard,
 }));
 
 export const useParser = () => useAppStore((state) => ({
   parserJobId: state.parserJobId,
   parserStatus: state.parserStatus,
+  parserResult: state.parserResult,
+  parserError: state.parserError,
   startParser: state.startParser,
+  pollParserStatus: state.pollParserStatus,
 }));
 
 export const useUI = () => useAppStore((state) => ({

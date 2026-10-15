@@ -2,7 +2,7 @@
 Auth router для авторизации через Supabase
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Form, Header
+from fastapi import APIRouter, HTTPException, Depends, Form, Header, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional
@@ -10,7 +10,10 @@ import os
 from supabase import create_client, Client
 from datetime import datetime
 
+from app.core.logger import get_logger, get_correlation_id, set_correlation_id, generate_correlation_id
+
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
+logger = get_logger("auth")
 
 # OAuth2 scheme для извлечения токена из заголовка
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -50,7 +53,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: Optional[int] = None
-    refresh_token: Optional[str] = None
+    # refresh_token removed from response - now in httpOnly cookie
 
 
 class UserResponse(BaseModel):
@@ -108,13 +111,23 @@ async def register(user_data: UserRegister, supabase: Client = Depends(get_supab
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
+    request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     supabase: Client = Depends(get_supabase_client)
 ):
     """
     Авторизация пользователя (OAuth2 compatible)
     username = email
+    Refresh token stored in httpOnly, secure, sameSite=strict cookie
     """
+    # Ensure correlation ID exists
+    if not get_correlation_id():
+        set_correlation_id(generate_correlation_id())
+    
+    client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "unknown")
+    
     try:
         # Логин через Supabase Auth
         auth_response = supabase.auth.sign_in_with_password({
@@ -123,6 +136,14 @@ async def login(
         })
         
         if auth_response.session is None:
+            logger.warning(
+                "auth.login.failed",
+                email=form_data.username,
+                reason="invalid_credentials",
+                ip=client_ip,
+                user_agent=user_agent,
+                correlation_id=get_correlation_id()
+            )
             raise HTTPException(
                 status_code=401,
                 detail="Incorrect email or password"
@@ -130,16 +151,45 @@ async def login(
         
         session = auth_response.session
         
+        # Set refresh token in httpOnly cookie
+        if hasattr(session, 'refresh_token') and session.refresh_token:
+            response.set_cookie(
+                key="refresh_token",
+                value=session.refresh_token,
+                httponly=True,
+                secure=True,  # Only sent over HTTPS
+                samesite="strict",
+                max_age=30 * 24 * 60 * 60,  # 30 days
+                path="/"
+            )
+        
+        logger.info(
+            "auth.login.success",
+            email=form_data.username,
+            user_id=str(session.user.id) if session.user else None,
+            ip=client_ip,
+            user_agent=user_agent,
+            correlation_id=get_correlation_id()
+        )
+        
         return TokenResponse(
             access_token=session.access_token,
             token_type="bearer",
-            expires_in=session.expires_in if hasattr(session, 'expires_in') else 3600,
-            refresh_token=session.refresh_token if hasattr(session, 'refresh_token') else None
+            expires_in=session.expires_in if hasattr(session, 'expires_in') else 3600
         )
         
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(
+            "auth.login.error",
+            email=form_data.username,
+            error=str(e),
+            error_type=type(e).__name__,
+            ip=client_ip,
+            user_agent=user_agent,
+            correlation_id=get_correlation_id()
+        )
         raise HTTPException(
             status_code=401,
             detail=f"Login failed: {str(e)}"

@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Pre-commit hook: TypeScript check + Linting
+echo "🔍 Running pre-commit checks..."
+
+# Run lint-staged
+npx lint-staged
+
+echo "✅ Pre-commit checks passed!"

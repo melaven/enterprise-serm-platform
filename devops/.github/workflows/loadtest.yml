@@ -1,0 +1,22 @@
+name: loadtest
+on:
+  workflow_dispatch:
+    inputs:
+      profile: { description: "smoke | full", default: smoke, type: choice, options: [smoke, full] }
+permissions: { contents: read }
+jobs:
+  k6:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: grafana/setup-k6-action@v1
+      - name: Run k6 against STAGING (никогда не против prod)
+        run: k6 run --out json=results.json loadtest/k6-tenable.js
+        env:
+          BASE_URL: ${{ vars.STAGING_URL }}
+          TOKENS_JSON: ${{ secrets.LOADTEST_TOKENS_JSON }}
+          PROFILE: ${{ inputs.profile }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: k6-results, path: results.json }

@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
 from ..schemas.economics import ReviewBase, ReviewResponse
-from ..dependencies import get_review_processor_service, get_economics_service
+from ..core.dependencies import get_review_processor_service, get_economics_service
 from ..services import ReviewProcessorService, EconomicsService
 
 

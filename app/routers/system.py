@@ -5,8 +5,8 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import get_db
-from ..exceptions import (
+from ..core.database import get_db
+from ..core.exceptions import (
     NotFoundError,
     AccessDeniedError,
     ValidationError,

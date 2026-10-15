@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from .base import BaseRepository
 from ..models.economics import Company
-from ..exceptions import DatabaseError
+from ..core.exceptions import DatabaseError
 
 
 class CompanyRepository(BaseRepository[Company]):

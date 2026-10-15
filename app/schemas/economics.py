@@ -72,3 +72,7 @@ class ReviewResponse(ReviewBase):
     id: UUID
     created_at: datetime
     external_review_id: Optional[str] = None
+    auto_reply: Optional[str] = Field(
+        None, description="Ответ, предложенный AI"
+    )
+    ai_pending: bool = False

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 
-from ..exceptions import NotFoundError, DatabaseError
+from ..core.exceptions import NotFoundError, DatabaseError
 
 T = TypeVar('T')
 

@@ -1,0 +1,87 @@
+name: tenable-serm
+# Образы приходят из GHCR (тег = git SHA). Build на сервере не выполняется.
+x-app: &app
+  image: ${IMAGE:?IMAGE=ghcr.io/org/tenable-serm@sha256:...}
+  env_file: .env
+  environment: &env
+    REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379/0
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 512
+  logging: &log { driver: json-file, options: { max-size: "10m", max-file: "5" } }
+  networks: [backend]
+
+services:
+  api:
+    <<: *app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+    environment: { <<: *env, WEB_CONCURRENCY: "${WEB_CONCURRENCY:-2}" }
+    mem_limit: 1g
+    depends_on: { redis: { condition: service_healthy } }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3).status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    # Публикуем НЕ наружу: API доступен только Caddy внутри сети.
+
+  worker:
+    <<: *app
+    command: ["arq", "app.worker.worker.WorkerSettings"]
+    stop_grace_period: 40s
+    mem_limit: 1g
+    depends_on: { redis: { condition: service_healthy } }
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\" --maxmemory 256mb --maxmemory-policy noeviction"]
+    environment: { REDIS_PASSWORD: "${REDIS_PASSWORD:?}" }
+    volumes: ["/srv/data/redis:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 5s
+      retries: 10
+    logging: *log
+    networks: [backend]
+
+  # Self-hosted Postgres — ТОЛЬКО для staging/нагрузочных стендов: `--profile selfhosted-db`.
+  # Прод сейчас живёт на Supabase (JWKS-авторизация и custom access token hook в sql/002 зависят от схемы auth).
+  postgres:
+    profiles: [selfhosted-db]
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: tenable
+    command: ["postgres", "-c", "max_connections=100", "-c", "shared_buffers=512MB", "-c", "idle_in_transaction_session_timeout=15s", "-c", "statement_timeout=30s"]
+    volumes: ["/srv/data/postgres:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d tenable"]
+      interval: 5s
+      retries: 10
+    logging: *log
+    networks: [backend]
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment: { DOMAIN: "${DOMAIN:?}" }
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /srv/data/caddy:/data
+    depends_on: { api: { condition: service_healthy } }
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ["no-new-privileges:true"]
+    logging: *log
+    networks: [backend]
+
+networks:
+  backend:

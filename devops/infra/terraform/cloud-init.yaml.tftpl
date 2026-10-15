@@ -1,0 +1,55 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+packages: [ca-certificates, curl, gnupg, fail2ban, unattended-upgrades, ufw]
+
+users:
+  - name: deploy
+    shell: /bin/bash
+    groups: [docker]          # docker-группа = root-эквивалент: ключ деплоя храним только в GitHub Secrets
+    ssh_authorized_keys:
+      - ${deploy_public_key}
+  - name: admin
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    ssh_authorized_keys:
+      - ${admin_public_key}
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    content: |
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      AllowUsers deploy admin
+      MaxAuthTries 3
+  - path: /etc/docker/daemon.json
+    content: |
+      {"log-driver":"json-file","log-opts":{"max-size":"10m","max-file":"5"},"live-restore":true,"no-new-privileges":true}
+  - path: /etc/fail2ban/jail.d/sshd.local
+    content: |
+      [sshd]
+      enabled = true
+      maxretry = 4
+      bantime = 1h
+
+runcmd:
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  # диск данных
+  - mkdir -p /srv/data
+  - echo "/dev/disk/by-id/scsi-0HC_Volume_${volume_id} /srv/data ext4 discard,nofail,defaults 0 2" >> /etc/fstab
+  - mount -a
+  - mkdir -p /srv/data/redis /srv/data/postgres /srv/data/caddy /opt/tenable
+  - chown -R 999:999 /srv/data/redis    # uid redis-alpine
+  - chown -R 999:999 /srv/data/postgres # uid postgres-образа
+  - chown -R deploy:deploy /opt/tenable
+  # хостовый файрвол (вторая линия за Hetzner Firewall); docker обходит ufw для published-портов, поэтому
+  # наружу публикуем только 80/443 в compose, остальное — внутренняя сеть
+  - ufw default deny incoming && ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp && ufw --force enable
+  - systemctl enable --now docker fail2ban
+  - dpkg-reconfigure -f noninteractive unattended-upgrades
+  - systemctl restart ssh

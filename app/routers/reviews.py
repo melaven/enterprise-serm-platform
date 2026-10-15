@@ -7,9 +7,9 @@ from typing import Optional, List
 from uuid import UUID
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func, and_, desc, column
+from sqlalchemy import select, func, and_, desc, column, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..schemas.economics import ReviewBase, ReviewResponse, ReviewStatus
@@ -20,7 +20,7 @@ from ..schemas.analytics import (
     DashboardReviewsPage,
     DashboardReviewsResponse,
 )
-from ..dependencies import (
+from ..core.dependencies import (
     get_review_repository, 
     get_review_processor_service,
     get_sentiment_service,
@@ -34,9 +34,50 @@ from ..repositories.analytics_repo import (
     get_dashboard_metrics,
     get_reviews_list as fetch_dashboard_reviews,
 )
+from ..core.rate_limit import check_llm_limits
 
 
 router = APIRouter()
+
+
+@router.post(
+    "/{review_id}/approve-ai-response",
+    status_code=status.HTTP_200_OK,
+    summary="Подтвердить AI-ответ",
+)
+async def approve_ai_response(
+    review_id: UUID,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> JSONResponse:
+    result = await db.execute(
+        select(Review).where(
+            Review.id == review_id,
+            Review.company_id == tenant_id,
+        )
+    )
+    review = result.scalar_one_or_none()
+    if review is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Review not found",
+        )
+
+    review.status = ReviewStatus.RESOLVED
+    review.ai_pending = False
+    await db.flush()
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "success": True,
+            "data": {
+                "review_id": str(review.id),
+                "status": review.status.value,
+                "ai_pending": review.ai_pending,
+            },
+        },
+    )
 
 
 @router.post("/webhook",
@@ -286,18 +327,27 @@ async def search_reviews(
 
 
 @router.get("/sentiment-analysis/{review_id}",
-            summary="Анализ тональности отзыва",
-            description="Детальный анализ тональности и рекомендации")
+            summary="🔒 Анализ тональности отзыва [Rate Limited]",
+            description="LLM-анализ тональности и рекомендации (20 req/min)")
 async def analyze_review_sentiment(
     review_id: UUID,
+    limits: dict = Depends(check_llm_limits),
     review_repo: ReviewRepository = Depends(get_review_repository),
     sentiment_service: SentimentService = Depends(get_sentiment_service)
 ) -> JSONResponse:
     """
-    Анализ тональности конкретного отзыва:
+    Анализ тональности конкретного отзыва (LLM-powered):
     - Определение эмоциональной окраски
     - Приоритет обработки
     - Рекомендации по времени ответа
+    
+    **Rate Limiting:**
+    - Лимит: 20 запросов / 60 секунд
+    - 429 Too Many Requests при превышении
+    - X-RateLimit-* headers в ответе
+    
+    **Quota Check:**
+    - 402 Payment Required при исчерпании тарифа
     """
     
     review = await review_repo.get_by_id_or_404(review_id)
@@ -316,7 +366,8 @@ async def analyze_review_sentiment(
             "data": {
                 "review_id": str(review_id),
                 "sentiment_analysis": sentiment_analysis,
-                "processing_recommendations": recommendations
+                "processing_recommendations": recommendations,
+                "limits": limits  # Информация о лимитах: rate + quota
             }
         }
     )
@@ -380,9 +431,12 @@ async def get_reviews_requiring_attention(
 async def get_reviews_list(
     page: int = Query(1, ge=1, description="Номер страницы"),
     page_size: int = Query(20, ge=1, le=100, description="Размер страницы"),
+    limit: Optional[int] = Query(None, ge=1, le=100, description="Размер страницы"),
+    offset: Optional[int] = Query(None, ge=0, description="Смещение для пагинации"),
     platform: Optional[str] = Query(None, description="Фильтр по платформе (google, 2gis и т.д.)"),
     rating: Optional[int] = Query(None, ge=1, le=5, description="Фильтр по рейтингу"),
     sentiment: Optional[str] = Query(None, description="Фильтр по тональности"),
+    search: Optional[str] = Query(None, min_length=1, max_length=200),
     sort_by: str = Query("created_at", pattern="^(created_at|rating)$", description="Поле сортировки"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$", description="Порядок сортировки: asc или desc"),
     tenant_id: UUID = Depends(get_current_tenant),
@@ -410,6 +464,11 @@ async def get_reviews_list(
     - total_pages: общее количество страниц
     """
     
+    effective_page_size = limit or page_size
+    effective_offset = (
+        offset if offset is not None else (page - 1) * effective_page_size
+    )
+    response_page = effective_offset // effective_page_size + 1
     filters = [Review.company_id == tenant_id]
 
     if platform:
@@ -423,19 +482,33 @@ async def get_reviews_list(
     if sentiment:
         filters.append(func.upper(Review.sentiment) == sentiment.upper())
 
+    if search:
+        search_term = search.strip().lower()
+        if search_term:
+            filters.append(
+                or_(
+                    func.lower(Review.text).contains(search_term, autoescape=True),
+                    func.lower(Review.author_name).contains(
+                        search_term, autoescape=True
+                    ),
+                )
+            )
+
     count_query = select(func.count(Review.id)).where(and_(*filters))
     total_result = await db.execute(count_query)
     total = int(total_result.scalar_one())
 
-    offset = (page - 1) * page_size
     if (
         platform is None
         and rating is None
         and sentiment is None
+        and search is None
         and sort_by == "created_at"
         and sort_order == "desc"
     ):
-        reviews = await fetch_dashboard_reviews(db, tenant_id, page_size, offset)
+        reviews = await fetch_dashboard_reviews(
+            db, tenant_id, effective_page_size, effective_offset
+        )
     else:
         query = select(Review).where(and_(*filters))
         sort_column = {
@@ -444,19 +517,23 @@ async def get_reviews_list(
         }[sort_by]
         ordering = sort_column.asc() if sort_order == "asc" else sort_column.desc()
         result = await db.execute(
-            query.order_by(ordering).limit(page_size).offset(offset)
+            query.order_by(ordering)
+            .limit(effective_page_size)
+            .offset(effective_offset)
         )
         reviews = list(result.scalars().all())
 
-    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+    total_pages = (
+        (total + effective_page_size - 1) // effective_page_size if total > 0 else 0
+    )
 
     return DashboardReviewsResponse(
         success=True,
         data=DashboardReviewsPage(
             items=[DashboardReview.model_validate(review) for review in reviews],
             total=total,
-            page=page,
-            page_size=page_size,
+            page=response_page,
+            page_size=effective_page_size,
             total_pages=total_pages,
         ),
     )

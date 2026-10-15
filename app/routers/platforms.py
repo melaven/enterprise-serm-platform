@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 
 from ..schemas.economics import PlatformBase, PlatformResponse
-from ..dependencies import get_platform_repository
+from ..core.dependencies import get_platform_repository
 from ..repositories import PlatformRepository
 
 

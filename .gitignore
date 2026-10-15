@@ -25,31 +25,54 @@ dist/
 **/*.db-shm
 *.db-wal
 **/*.db-wal
+*.sqlite
+**/*.sqlite
+*.sqlite3
+**/*.sqlite3
 
 # Environment & secrets
 .env
 .env.*
 !.env.example
+!.env.local.example
+!.env.docker.example
 **/.env
 **/.env.*
 !**/.env.example
+!**/.env.local.example
+!**/.env.docker.example
+
+# Frontend env
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
 
 # Private keys and certificates
 *.key
 *.pem
 *.p12
 *.pfx
+*.crt
+*.cer
+nginx/ssl/
 
 # Editors
 .vscode/
 .DS_Store
+.idea/
 
 # Logs
 *.log
 npm-debug.log*
+server_error.log
+server_output.log
 
 # Project specific
 Laurent Nexus Operation backend_backup/
 Tenable_backend/
 portfolio-site/
 tenable-engine/
+
+# Backup files
+*.backup
+*.bak

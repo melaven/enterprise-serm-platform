@@ -9,7 +9,7 @@ from uuid import UUID
 from ..repositories import CompanyRepository, PlatformRepository
 from ..models.economics import Company, Platform, Review
 from ..schemas.economics import ReviewStatus
-from ..exceptions import EconomicsCalculationError, NotFoundError
+from ..core.exceptions import EconomicsCalculationError, NotFoundError
 
 
 class EconomicsService:

@@ -272,6 +272,8 @@ def mock_db_session():
             self.execute_called = True
             self.last_query = str(query)
             self.last_params = params or {}
+            fetch_one_return = self.fetch_one_return
+            self.fetch_one_return = None
             
             class MockResult:
                 def __init__(self, return_value, fetch_one_value):
@@ -293,7 +295,7 @@ def mock_db_session():
                         return Row(self._return)
                     return None
             
-            return MockResult(self.execute_return, self.fetch_one_return)
+            return MockResult(self.execute_return, fetch_one_return)
     
     return MockAsyncSession()
 

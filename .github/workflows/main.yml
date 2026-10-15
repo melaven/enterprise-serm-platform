@@ -10,7 +10,7 @@ on:
 
 jobs:
   lint:
-    name: Lint with Ruff
+    name: Lint with Ruff and MyPy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -28,8 +28,13 @@ jobs:
 
       - name: Run Ruff linter
         run: |
-          ruff check app/ tests/
-          ruff format --check app/ tests/
+          ruff check app/ scripts/migrate.py scripts/seed_db.py tests/
+          ruff format --check app/ scripts/migrate.py scripts/seed_db.py tests/
+
+      - name: Run MyPy type checker
+        run: |
+          mypy app/ --strict
+        continue-on-error: true
 
   test:
     name: Run Integration Tests
@@ -38,7 +43,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
@@ -61,6 +66,14 @@ jobs:
         ports:
           - 6379:6379
 
+    strategy:
+      matrix:
+        test-group:
+          - unit
+          - integration
+          - tenant-isolation
+          - security
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -77,17 +90,19 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
           pip install pytest-cov
+          sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Run database migrations
         env:
           DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+          APP_TENANT_PASSWORD: test_tenant_password
           SUPABASE_URL: https://test.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: test_key
         run: |
-          python app/migrations/run_multitenancy_migration.py || true
-          python app/migrations/run_migration.py || true
+          python scripts/migrate.py
 
-      - name: Run pytest with coverage
+      - name: Run Unit Tests
+        if: matrix.test-group == 'unit'
         env:
           DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
@@ -97,13 +112,68 @@ jobs:
           JWT_SECRET_KEY: test_secret_key_for_ci
           ENVIRONMENT: testing
         run: |
-          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term-missing --asyncio-mode=auto
+          pytest tests/ -v -m "not integration" --cov=app --cov-report=xml --cov-report=term-missing --asyncio-mode=auto
+
+      - name: Run Integration Tests
+        if: matrix.test-group == 'integration'
+        env:
+          DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: test_key
+          GEMINI_API_KEY: test_key
+          JWT_SECRET_KEY: test_secret_key_for_ci
+          ENVIRONMENT: testing
+        run: |
+          pytest tests/ -v -m "integration" --cov=app --cov-report=xml --cov-report=term-missing --asyncio-mode=auto
+
+      - name: Run Tenant Isolation (RLS) Tests
+        if: matrix.test-group == 'tenant-isolation'
+        env:
+          DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: test_key
+          GEMINI_API_KEY: test_key
+          JWT_SECRET_KEY: test_secret_key_for_ci
+          ENVIRONMENT: testing
+          TEST_DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+        run: |
+          # Отдельный запуск тестов на tenant isolation
+          pytest tests/test_reviews_api.py -v -k "tenant" --asyncio-mode=auto
+          pytest tests/test_billing.py -v -k "tenant" --asyncio-mode=auto
+          pytest tests/test_auth_session.py -v -k "tenant" --asyncio-mode=auto
+
+      - name: Run Security Tests
+        if: matrix.test-group == 'security'
+        env:
+          DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
+          REDIS_URL: redis://localhost:6379/0
+          SUPABASE_URL: https://test.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: test_key
+          GEMINI_API_KEY: test_key
+          JWT_SECRET_KEY: test_secret_key_for_ci
+          ENVIRONMENT: testing
+        run: |
+          # Тесты на безопасность аутентификации
+          pytest tests/test_auth_session.py -v --asyncio-mode=auto
+          # Тесты на проверку квот и billing
+          pytest tests/test_billing_deps.py -v --asyncio-mode=auto
 
       - name: Upload coverage to Codecov
+        if: matrix.test-group == 'unit'
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: Test Summary
+        if: always()
+        uses: test-summary/action@v2
+        with:
+          paths: '**/test-results/**/*.xml'
 
   build:
     name: Build Docker Images
@@ -134,6 +204,19 @@ jobs:
         run: |
           docker-compose build
 
+      - name: Security Scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
       - name: Login to Docker Hub (optional)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
@@ -150,3 +233,22 @@ jobs:
           docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm-backend:latest
           docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm-worker:latest
           docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm-frontend:latest
+
+      - name: Create deployment tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "TAG=${GITHUB_SHA::7}" >> $GITHUB_ENV
+          echo "DEPLOYMENT_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_ENV
+
+      - name: Deployment Summary
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "## 🚀 Deployment Ready" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** \`${TAG}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Time:** \`${DEPLOYMENT_TIME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Images pushed to Docker Hub:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ secrets.DOCKER_USERNAME }}/tenable-serm-backend:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ secrets.DOCKER_USERNAME }}/tenable-serm-worker:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ secrets.DOCKER_USERNAME }}/tenable-serm-frontend:latest\`" >> $GITHUB_STEP_SUMMARY

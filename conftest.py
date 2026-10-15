@@ -2,7 +2,7 @@
 
 БД-тесты идут в изолированной тестовой базе (TEST_DATABASE_URL, имя должно
 заканчиваться на `_test`). Схема создаётся один раз за сессию из ORM-метаданных,
-затем применяется sql/001_multitenancy_rls.sql, то есть тесты гоняют ту же
+затем применяется migrations/001_multitenancy_rls.sql, то есть тесты гоняют ту же
 RLS-политику, что и прод. Каждый тест выполняется во внешней транзакции,
 которая откатывается в конце.
 
@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-# app.db.session создаёт engine при импорте и читает Settings: задаём заглушки
+# app.core.database создаёт engine при импорте и читает Settings: задаём заглушки
 # ДО первого импорта app.* (сами импорты ниже сделаны лениво, внутри фикстур).
 os.environ.setdefault(
     "DATABASE_URL", "postgresql+asyncpg://app_tenant:test@localhost:5432/tenable_test"
@@ -42,7 +42,7 @@ TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://postgres:postgres@localhost:5432/tenable_test",
 )
-SQL_DIR = Path(__file__).resolve().parents[1] / "sql"
+MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 # Тестовая авторизация передаётся заголовками, поэтому в одном тесте можно
 # держать клиентов разных компаний одновременно.
@@ -74,7 +74,7 @@ async def _run_script(conn: AsyncConnection, script: str) -> None:
 
 async def _prepare_schema() -> None:
     import app.models  # noqa: F401  (регистрирует все модели в Base.metadata)
-    from app.db.base import Base  # ← Declarative Base проекта
+    from app.core.database import Base
 
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     try:
@@ -88,7 +88,10 @@ async def _prepare_schema() -> None:
             await conn.run_sync(Base.metadata.create_all)
             await conn.commit()
 
-            await _run_script(conn, (SQL_DIR / "001_multitenancy_rls.sql").read_text())
+            await _run_script(
+                conn,
+                (MIGRATIONS_DIR / "001_multitenancy_rls.sql").read_text(),
+            )
             # SET ROLE app_tenant из теста
             await conn.execute(text("GRANT app_tenant TO CURRENT_USER"))
             await conn.commit()
@@ -147,7 +150,7 @@ async def db_session(db_connection: AsyncConnection) -> AsyncIterator[AsyncSessi
 async def _tenant_session(
     conn: AsyncConnection, company_id: UUID, user_id: UUID
 ) -> AsyncIterator[AsyncSession]:
-    """Зеркало app.db.session.get_tenant_session: роль app_tenant + GUC контекста."""
+    """Зеркало app.core.tenant_session.get_tenant_session: роль app_tenant + GUC контекста."""
     session = AsyncSession(
         bind=conn,
         join_transaction_mode="create_savepoint",
@@ -209,7 +212,7 @@ def user_id() -> UUID:
 async def app(db_connection: AsyncConnection) -> AsyncIterator[FastAPI]:
     """Приложение с подменёнными auth и tenant-сессией."""
     from app.core.security import AuthContext, get_auth_context
-    from app.db.session import get_tenant_session
+    from app.core.tenant_session import get_tenant_session
     from app.main import app as fastapi_app  # ← точка входа приложения
 
     async def fake_auth(request: Request) -> AuthContext:

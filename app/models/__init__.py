@@ -1,3 +1,3 @@
-from app.models.economics import Company, Platform, Review
+from app.models.economics import Company, Platform, PlatformStatistic, Review
 
-__all__ = ["Company", "Platform", "Review"]
+__all__ = ["Company", "Platform", "PlatformStatistic", "Review"]

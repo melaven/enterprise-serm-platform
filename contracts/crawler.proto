@@ -1,0 +1,209 @@
+syntax = "proto3";
+
+package tenable.serm.crawler.v1;
+
+option go_package = "github.com/tenable/serm/crawler/v1;crawlerv1";
+
+// Crawler Service - gRPC interface for Go crawler
+service CrawlerService {
+  // Submit parsing task
+  rpc SubmitTask(TaskRequest) returns (TaskResponse);
+
+  // Get task status
+  rpc GetTaskStatus(TaskStatusRequest) returns (TaskStatusResponse);
+
+  // Cancel task
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Stream task progress (server-side streaming)
+  rpc StreamTaskProgress(TaskProgressRequest) returns (stream TaskProgressUpdate);
+}
+
+// Task submission request
+message TaskRequest {
+  string task_id = 1;           // UUID v4
+  string platform_url = 2;      // URL to parse
+  PlatformType platform_type = 3;
+  string company_id = 4;         // UUID
+  string tenant_id = 5;          // UUID
+
+  // Optional parameters
+  int32 max_reviews = 6;        // Default: 100
+  int32 min_rating = 7;         // Filter by rating (1-5)
+  int64 date_from = 8;          // Unix timestamp
+  int64 date_to = 9;            // Unix timestamp
+  string language = 10;         // Default: "en"
+  TaskPriority priority = 11;   // Default: NORMAL
+  int32 timeout_seconds = 12;   // Default: 300
+
+  map<string, string> metadata = 13;
+}
+
+// Platform types
+enum PlatformType {
+  PLATFORM_TYPE_UNSPECIFIED = 0;
+  PLATFORM_TYPE_GOOGLE_MAPS = 1;
+  PLATFORM_TYPE_YANDEX_MAPS = 2;
+  PLATFORM_TYPE_2GIS = 3;
+  PLATFORM_TYPE_TRUSTPILOT = 4;
+  PLATFORM_TYPE_TRIPADVISOR = 5;
+  PLATFORM_TYPE_FLAMP = 6;
+  PLATFORM_TYPE_YELL = 7;
+  PLATFORM_TYPE_CUSTOM = 8;
+}
+
+// Task priority levels
+enum TaskPriority {
+  PRIORITY_UNSPECIFIED = 0;
+  PRIORITY_LOW = 1;
+  PRIORITY_NORMAL = 2;
+  PRIORITY_HIGH = 3;
+  PRIORITY_CRITICAL = 4;
+}
+
+// Task submission response
+message TaskResponse {
+  string task_id = 1;
+  TaskStatus status = 2;
+  int64 timestamp = 3;          // Unix timestamp
+
+  // Error details (if status is FAILED)
+  ErrorDetails error = 4;
+
+  // Progress information
+  TaskProgress progress = 5;
+}
+
+// Task status enum
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_ACCEPTED = 1;
+  TASK_STATUS_PROCESSING = 2;
+  TASK_STATUS_COMPLETED = 3;
+  TASK_STATUS_FAILED = 4;
+  TASK_STATUS_CANCELLED = 5;
+  TASK_STATUS_TIMEOUT = 6;
+}
+
+// Error details
+message ErrorDetails {
+  string code = 1;
+  string message = 2;
+  map<string, string> details = 3;
+}
+
+// Task progress
+message TaskProgress {
+  float percentage = 1;         // 0-100
+  int32 current_page = 2;
+  int32 total_pages = 3;
+  int32 reviews_fetched = 4;
+}
+
+// Task status request
+message TaskStatusRequest {
+  string task_id = 1;
+}
+
+// Task status response
+message TaskStatusResponse {
+  string task_id = 1;
+  TaskStatus status = 2;
+  int64 timestamp = 3;
+
+  ErrorDetails error = 4;
+  TaskProgress progress = 5;
+}
+
+// Cancel task request
+message CancelTaskRequest {
+  string task_id = 1;
+  string reason = 2;
+}
+
+// Cancel task response
+message CancelTaskResponse {
+  string task_id = 1;
+  bool cancelled = 2;
+  string message = 3;
+}
+
+// Health check request
+message HealthCheckRequest {
+  int64 timestamp = 1;
+}
+
+// Health check response
+message HealthCheckResponse {
+  HealthStatus status = 1;
+  int64 timestamp = 2;
+  string version = 3;
+  int64 uptime_seconds = 4;
+  int32 active_tasks = 5;
+  int32 queue_size = 6;
+  int64 memory_usage_mb = 7;
+  int32 goroutines = 8;
+}
+
+// Health status enum
+enum HealthStatus {
+  HEALTH_STATUS_UNSPECIFIED = 0;
+  HEALTH_STATUS_HEALTHY = 1;
+  HEALTH_STATUS_DEGRADED = 2;
+  HEALTH_STATUS_UNHEALTHY = 3;
+}
+
+// Task progress streaming request
+message TaskProgressRequest {
+  string task_id = 1;
+}
+
+// Task progress update (streamed)
+message TaskProgressUpdate {
+  string task_id = 1;
+  TaskStatus status = 2;
+  int64 timestamp = 3;
+  TaskProgress progress = 4;
+  string message = 5;           // Optional status message
+}
+
+// Task result (final result with reviews)
+message TaskResult {
+  string task_id = 1;
+  TaskStatus status = 2;
+  int64 timestamp = 3;
+
+  repeated Review reviews = 4;
+  int32 total_reviews = 5;
+  int32 reviews_fetched = 6;
+  int32 pages_processed = 7;
+  float execution_time_seconds = 8;
+
+  ErrorDetails error = 9;
+  repeated string warnings = 10;
+  map<string, string> metadata = 11;
+}
+
+// Review data structure
+message Review {
+  string external_review_id = 1;
+  string author_name = 2;
+  int32 rating = 3;              // 1-5
+  string text = 4;
+  int64 date = 5;               // Unix timestamp
+
+  // Optional fields
+  string author_url = 6;
+  Response response = 7;
+  map<string, string> metadata = 8;
+}
+
+// Business response to review
+message Response {
+  string text = 1;
+  int64 date = 2;               // Unix timestamp
+  string author = 3;
+}

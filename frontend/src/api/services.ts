@@ -3,61 +3,149 @@
  * Все взаимодействия с backend происходят через эти функции
  */
 
-import { apiClient } from './client';
+import { createApiClient } from './client';
+import { TokenStore } from './token';
+
+// Создание API client с tokens и interceptors
+const tokens = new TokenStore(typeof localStorage === 'undefined' ? null : localStorage);
+
+export const apiClient = createApiClient({
+  baseURL: '/api',
+  tokens,
+  onUnauthorized: () => {
+    // Redirect to login on 401
+    window.location.href = '/login';
+  },
+});
+
+// Экспортируем tokens для использования в других местах
+export { tokens };
 
 // ============================================================
 // ТИПЫ
 // ============================================================
 
+// Обертка ответа API с пагинацией
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+}
+
+// Обертка для пагинированных данных
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 export interface Review {
   id: string;
-  external_review_id: string;
-  source: string;
-  author: string;
+  external_review_id: string | null;
+  platform: string | null;
+  author_name: string;
   rating: number;
   text: string;
-  date: string;
-  url: string | null;
-  sentiment: string | null;
-  topics: string[] | null;
+  sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'UNCLASSIFIED' | null;
+  tags: string[];
+  status: 'new' | 'si_processing' | 'resolved' | 'lost';
+  financial_impact: number;
+  si_response: string | null;
+  auto_reply: string | null;
+  ai_pending: boolean;
+  is_critical: boolean;
   created_at: string;
 }
 
-export interface AnalyticsSummary {
+export interface ApproveAiResponseResult {
+  review_id: string;
+  status: Review['status'];
+  ai_pending: boolean;
+}
+
+export interface DashboardSummary {
   total_reviews: number;
-  avg_rating: number;
-  sentiment_distribution: {
+  sentiment: {
     positive: number;
     neutral: number;
     negative: number;
+    unclassified: number;
+    total: number;
   };
-  top_topics: Array<{
-    topic: string;
-    count: number;
+  timeline: Array<{
+    date: string;
+    reviews: number;
   }>;
-  rating_distribution: {
-    [key: string]: number;
-  };
+  critical_reviews: number;
+  ai_pending: number;
 }
 
+export type DashboardSummaryResponse = ApiResponse<DashboardSummary>;
+
 export interface ParserJobRequest {
+  platform: string;
   url: string;
-  company_id: string;
-  limit?: number;
+}
+
+export interface ParserJobResult {
+  reviews_found: number;
+  reviews_new: number;
+  reviews_saved: number;
+  ai_enriched: number;
+  ai_pending: number;
+  duration_ms: number;
 }
 
 export interface ParserJobResponse {
   job_id: string;
-  status: string;
-  message: string;
-  platform_url: string;
-  company_id: string;
-  limit: number;
-  quota_info: {
-    estimated_tokens: number;
-    used: number;
-    limit: number;
-  };
+  state: 'queued' | 'in_progress' | 'succeeded' | 'failed';
+  result: ParserJobResult | null;
+  error: string | null;
+}
+
+export interface QuotaLimits {
+  max_llm_tokens: number;
+  max_reviews: number;
+}
+
+export interface QuotaUsage {
+  used_llm_tokens: number;
+  used_reviews: number;
+  reserved_llm_tokens: number;
+}
+
+export interface QuotaStatus {
+  tenant_id: string;
+  limits: QuotaLimits;
+  usage: QuotaUsage;
+  created_at: string;
+  updated_at: string;
+  // Computed properties
+  total_tokens_committed?: number;
+  tokens_available?: number;
+  reviews_available?: number;
+  tokens_usage_percent?: number;
+  reviews_usage_percent?: number;
+}
+
+export interface SubscriptionTier {
+  id: 'starter' | 'pro' | 'enterprise';
+  name: string;
+  price: number;
+  currency: string;
+  interval: 'month' | 'year';
+  limits: QuotaLimits;
+  features: string[];
+  recommended?: boolean;
+}
+
+export interface APIKey {
+  id: string;
+  name: string;
+  key_prefix: string; // "sk-****..."
+  created_at: string;
+  last_used_at: string | null;
 }
 
 export interface LoginRequest {
@@ -71,15 +159,22 @@ export interface RegisterRequest {
   full_name?: string;
 }
 
+export interface RegisterResponse {
+  id: string;
+  email: string;
+  tenant_id?: string;
+  created_at: string;
+}
+
 export interface AuthResponse {
   access_token: string;
-  token_type: string;
+  token_type: 'bearer';
   expires_in: number;
   refresh_token: string;
   user: {
     id: string;
     email: string;
-    tenant_id?: string;
+    tenant_id: string;
   };
 }
 
@@ -102,7 +197,7 @@ export async function login(credentials: LoginRequest): Promise<AuthResponse> {
   params.append('username', credentials.email);
   params.append('password', credentials.password);
 
-  const { data } = await apiClient.post<AuthResponse>('/api/v1/auth/login', params, {
+  const { data } = await apiClient.post<AuthResponse>('/v1/auth/login', params, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded'
     }
@@ -112,9 +207,10 @@ export async function login(credentials: LoginRequest): Promise<AuthResponse> {
 
 /**
  * Регистрация нового пользователя
+ * tenant_id больше не отправляется с клиента
  */
-export async function register(userData: RegisterRequest): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/api/v1/auth/register', userData);
+export async function register(userData: RegisterRequest): Promise<RegisterResponse> {
+  const { data } = await apiClient.post<RegisterResponse>('/v1/auth/register', userData);
   return data;
 }
 
@@ -122,7 +218,7 @@ export async function register(userData: RegisterRequest): Promise<AuthResponse>
  * Получение профиля текущего пользователя
  */
 export async function getCurrentUser(): Promise<UserProfile> {
-  const { data } = await apiClient.get<UserProfile>('/api/v1/auth/me');
+  const { data } = await apiClient.get<UserProfile>('/v1/auth/me');
   return data;
 }
 
@@ -130,14 +226,14 @@ export async function getCurrentUser(): Promise<UserProfile> {
  * Выход из системы
  */
 export async function logout(): Promise<void> {
-  await apiClient.post('/api/v1/auth/logout');
+  await apiClient.post('/v1/auth/logout');
 }
 
 /**
  * Обновление access token через refresh token
  */
 export async function refreshToken(refresh_token: string): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/api/v1/auth/refresh', { refresh_token });
+  const { data } = await apiClient.post<AuthResponse>('/v1/auth/refresh', { refresh_token });
   return data;
 }
 
@@ -147,35 +243,50 @@ export async function refreshToken(refresh_token: string): Promise<AuthResponse>
 
 /**
  * Получение списка отзывов с пагинацией
+ * Ответ обернут в { success: true, data: { items: [...], total, page, page_size, total_pages } }
  */
 export async function getReviews(params?: {
-  skip?: number;
-  limit?: number;
-  source?: string;
+  page?: number;
+  page_size?: number;
+  platform?: string;
   sentiment?: string;
-}): Promise<Review[]> {
-  const { data } = await apiClient.get<Review[]>('/api/v1/reviews/', { params });
-  return data;
+  search?: string;
+}): Promise<PaginatedResponse<Review>> {
+  const { data } = await apiClient.get<ApiResponse<PaginatedResponse<Review>>>('/v1/reviews', { params });
+  return data.data;
+}
+
+/**
+ * Подтвердить AI-ответ отзыва текущего tenant.
+ */
+export async function approveAiResponse(
+  reviewId: string,
+): Promise<ApproveAiResponseResult> {
+  const { data } = await apiClient.post<ApiResponse<ApproveAiResponseResult>>(
+    `/v1/reviews/${reviewId}/approve-ai-response`,
+  );
+  return data.data;
 }
 
 /**
  * Получение отзыва по ID
  */
 export async function getReviewById(reviewId: string): Promise<Review> {
-  const { data } = await apiClient.get<Review>(`/api/v1/reviews/${reviewId}`);
-  return data;
+  const { data } = await apiClient.get<ApiResponse<Review>>(`/v1/reviews/details/${reviewId}`);
+  return data.data;
 }
 
 // ============================================================
-// ANALYTICS SERVICES
+// DASHBOARD SERVICES
 // ============================================================
 
 /**
- * Получение аналитической сводки
+ * Получение сводки дашборда
+ * Эндпоинт: GET /api/v1/reviews/summary
  */
-export async function getAnalyticsSummary(): Promise<AnalyticsSummary> {
-  const { data } = await apiClient.get<AnalyticsSummary>('/api/v1/analytics/summary');
-  return data;
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const { data } = await apiClient.get<DashboardSummaryResponse>('/v1/reviews/summary');
+  return data.data;
 }
 
 // ============================================================
@@ -184,16 +295,50 @@ export async function getAnalyticsSummary(): Promise<AnalyticsSummary> {
 
 /**
  * Запуск задачи парсинга отзывов
+ * POST /api/v1/parser/start
+ * Body: { platform: "2gis" | "yandex" | "google", url: "https://..." }
+ * Response: 202 Accepted { job_id: "uuid" }
  */
-export async function startParserJob(jobRequest: ParserJobRequest): Promise<ParserJobResponse> {
-  const { data } = await apiClient.post<ParserJobResponse>('/api/v1/parsers/start', jobRequest);
+export async function startParserJob(jobRequest: ParserJobRequest): Promise<{ job_id: string }> {
+  const { data } = await apiClient.post<{ job_id: string }>('/v1/parser/start', jobRequest);
   return data;
 }
 
 /**
  * Получение статуса задачи парсинга
+ * GET /api/v1/parser/jobs/{job_id}
+ * Response: { job_id, state, result, error }
  */
 export async function getParserJobStatus(jobId: string): Promise<ParserJobResponse> {
-  const { data } = await apiClient.get<ParserJobResponse>(`/api/v1/parsers/status/${jobId}`);
+  const { data } = await apiClient.get<ParserJobResponse>(`/v1/parser/jobs/${jobId}`);
   return data;
+}
+
+// ============================================================
+// QUOTAS & BILLING SERVICES
+// ============================================================
+
+/**
+ * Получение статуса квот текущего tenant'а
+ * GET /api/v1/quotas/status
+ * Response: QuotaStatus
+ */
+export async function getQuotaStatus(): Promise<QuotaStatus> {
+  const { data } = await apiClient.get<QuotaStatus>('/v1/quotas/status');
+  
+  // Compute derived properties if missing
+  const totalTokens = data.usage.used_llm_tokens + data.usage.reserved_llm_tokens;
+  
+  return {
+    ...data,
+    total_tokens_committed: totalTokens,
+    tokens_available: Math.max(0, data.limits.max_llm_tokens - totalTokens),
+    reviews_available: Math.max(0, data.limits.max_reviews - data.usage.used_reviews),
+    tokens_usage_percent: data.limits.max_llm_tokens > 0 
+      ? (totalTokens / data.limits.max_llm_tokens) * 100 
+      : 0,
+    reviews_usage_percent: data.limits.max_reviews > 0
+      ? (data.usage.used_reviews / data.limits.max_reviews) * 100
+      : 0,
+  };
 }

@@ -8,20 +8,23 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 from asyncio import TimeoutError
 
 from .core.logger import configure_logging, get_logger
 from .core.middleware import (
+    CORRELATION_ID_HEADER,
     CorrelationIdMiddleware, 
     RequestLoggingMiddleware, 
     PerformanceMiddleware
 )
-from .handlers import (
+from .core.rate_limit import add_rate_limit_headers
+from .core.handlers import (
     serm_exception_handler,
     http_exception_handler, 
     validation_exception_handler,
@@ -29,11 +32,11 @@ from .handlers import (
     timeout_exception_handler,
     general_exception_handler
 )
-from .exceptions import SERMException
-from .routers import economics
-from .database import engine
-from .dependencies import cleanup_dependencies, log_dependency_graph, get_app_config
-from .worker.worker import create_arq_pool
+from .core.exceptions import SERMException
+from .routers import economics, quotas
+from .core.database import engine, get_db
+from .core.dependencies import cleanup_dependencies, log_dependency_graph, get_app_config
+from .services.worker.worker import create_arq_pool
 
 # Определяем переменные окружения
 environment = os.getenv("ENVIRONMENT", "development")
@@ -135,7 +138,7 @@ app = FastAPI(
 # 1. Correlation ID Middleware (должен быть первым)
 app.add_middleware(
     CorrelationIdMiddleware,
-    header_name="X-Correlation-ID",
+    header_name=CORRELATION_ID_HEADER,
     generate_if_missing=True
 )
 
@@ -155,13 +158,23 @@ if debug_mode:
         log_headers=True
     )
 
+# 3.5. Rate Limit Headers (автоматическое добавление X-RateLimit-* заголовков)
+app.middleware("http")(add_rate_limit_headers)
+
+# CORS origins may be provided as a comma-separated FRONTEND_URL value.
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").strip()
+allowed_origins = [
+    origin.strip() for origin in frontend_url.split(",") if origin.strip()
+] or ["http://localhost:3000"]
+
 # 4. CORS (после всех custom middleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В продакшене указать конкретные домены
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Retry-After", "X-Correlation-ID"],
 )
 
 
@@ -182,7 +195,7 @@ app.include_router(
 )
 
 # Подключаем роутеры для управления данными
-from .routers import reviews, companies, platforms, parser, analytics, auth
+from .routers import reviews, companies, platforms, parser, analytics, auth, reputation
 
 # Auth router (должен быть первым для документации)
 app.include_router(
@@ -213,9 +226,10 @@ app.include_router(parser.router)
 
 # Подключаем analytics router
 app.include_router(analytics.router, tags=["Analytics"])
+app.include_router(reputation.router)
 
 # Подключаем quotas router для биллинга
-# app.include_router(quotas.router, tags=["Quotas & Billing"])
+app.include_router(quotas.router, tags=["Quotas & Billing"])
 
 # Системные роутеры (только для разработки и тестирования)
 if __debug__:
@@ -229,12 +243,12 @@ if __debug__:
 
 # Healthcheck endpoint
 @app.get("/health", tags=["System"])
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_db)):
     """Проверка состояния системы"""
-    from .dependencies import get_health_checker
+    from .core.dependencies import get_health_checker
     
     health_checker = await get_health_checker()
-    health_results = await health_checker.run_all_checks()
+    health_results = await health_checker.run_all_checks(db)
     
     all_healthy = all(health_results.values())
     status_code = 200 if all_healthy else 503

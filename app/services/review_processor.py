@@ -10,7 +10,7 @@ from .economics import EconomicsService
 from .llm import LLMService  
 from .sentiment import SentimentService
 from ..schemas.economics import ReviewStatus, ReviewBase
-from ..exceptions import BusinessLogicError, NotFoundError
+from ..core.exceptions import BusinessLogicError, NotFoundError
 
 
 class ReviewProcessorService:

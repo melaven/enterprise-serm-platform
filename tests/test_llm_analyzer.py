@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.services.llm_analyzer import (
     FALLBACK_REPLY,
     EmptyReviewError,
+    GenerationResult,
     IssueCategory,
     LLMResponseValidationError,
     LLMReviewAnalyzer,
@@ -36,12 +37,12 @@ class FakeClient:
 
     async def generate_json(
         self, *, system_instruction: str, prompt: str, schema: type[BaseModel]
-    ) -> str:
+    ) -> GenerationResult:
         self.calls.append({"prompt": prompt, "schema": schema})
         item = self._responses.pop(0)
         if isinstance(item, Exception):
             raise item
-        return item
+        return GenerationResult(json_text=item, tokens_used=7)
 
 
 def run(coro: Any) -> Any:
@@ -50,10 +51,11 @@ def run(coro: Any) -> Any:
 
 def test_valid_response_maps_to_model_and_normalizes_entities() -> None:
     client = FakeClient(json.dumps(GOOD))
-    res = run(LLMReviewAnalyzer(client).analyze("Грубая Анна", rating=1))
+    res, tokens = run(LLMReviewAnalyzer(client).analyze("Грубая Анна", rating=1))
     assert res.sentiment is Sentiment.NEGATIVE
     assert res.issue_category is IssueCategory.SERVICE
     assert res.extracted_entities == ["Анна", "Заказ №5"]
+    assert tokens == 7
     assert client.calls[0]["schema"] is ReviewAnalysisResult
     assert "Rating: 1/5" in client.calls[0]["prompt"]
 
@@ -61,8 +63,9 @@ def test_valid_response_maps_to_model_and_normalizes_entities() -> None:
 def test_retries_once_on_invalid_then_succeeds() -> None:
     bad = json.dumps({**GOOD, "sentiment": "ANGRY"})
     client = FakeClient(bad, json.dumps(GOOD))
-    res = run(LLMReviewAnalyzer(client).analyze("текст"))
+    res, tokens = run(LLMReviewAnalyzer(client).analyze("текст"))
     assert res.is_critical and len(client.calls) == 2
+    assert tokens == 14
 
 
 @pytest.mark.parametrize("raw", ["", "not json", "{}", '{"sentiment":"POSITIVE"}'])
@@ -120,7 +123,9 @@ def test_schema_is_gemini_friendly() -> None:
 def test_logs_have_no_review_text_or_entity_names() -> None:
     # Простая проверка - что анализ работает без утечки чувствительных данных
     # В реальном проекте можно настроить более сложную проверку логов
-    result = run(LLMReviewAnalyzer(FakeClient(json.dumps(GOOD))).analyze("СЕКРЕТНЫЙ текст"))
+    result, _ = run(
+        LLMReviewAnalyzer(FakeClient(json.dumps(GOOD))).analyze("СЕКРЕТНЫЙ текст")
+    )
     
     # Проверяем что результат корректный (без утечки данных в самом результате)
     assert result.sentiment is Sentiment.NEGATIVE

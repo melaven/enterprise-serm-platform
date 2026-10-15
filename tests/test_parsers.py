@@ -21,7 +21,7 @@ from app.services.parsers.base import (
 )
 from app.services.parsers.factory import ParserDeps, create_parser
 from app.services.parsers.twogis import TwoGisParser, parse_branch_id
-from app.worker.tasks import AnalyzedReview, fetch_reviews_task
+from app.services.worker.tasks import AnalyzedReview, fetch_reviews_task
 
 URL = "https://2gis.ru/moscow/firm/70000001012345678/tab/reviews"
 CID = UUID("11111111-1111-1111-1111-111111111111")
@@ -249,7 +249,15 @@ def test_task_happy_path() -> None:
         lambda r: httpx.Response(200, json={"reviews": [review(1), review(2)]})
     )
     result = run(fetch_reviews_task(ctx, CID, "2gis", URL, correlation_id="cid-1"))
-    assert result == {"fetched": 2, "analyzed": 1, "fallbacks": 1, "saved": 2}
+    assert result == {
+        "fetched": 2,
+        "analyzed": 1,
+        "fallbacks": 1,
+        "saved": 2,
+        "tokens_reserved": 0,
+        "tokens_used": 0,
+        "tokens_returned": 0,
+    }
     assert {c[2] for c in llm.calls} == {"2gis"} and len(sink.saved) == 2
     assert store.records == []
 

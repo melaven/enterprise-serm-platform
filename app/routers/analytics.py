@@ -11,13 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from ..core.auth import get_current_tenant
-from ..dependencies import get_tenant_db, get_review_repository, get_platform_repository, get_company_repository
+from ..core.dependencies import get_tenant_db, get_review_repository, get_platform_repository, get_company_repository
 from ..services.analytics import AnalyticsService
 from ..repositories import ReviewRepository, PlatformRepository, CompanyRepository
 from ..schemas.analytics import (
     AnalyticsRequest, DetailedAnalyticsResponse, TimeRange
 )
-from ..exceptions import BusinessLogicError, NotFoundError
+from ..core.exceptions import BusinessLogicError, NotFoundError
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["Analytics"])
 

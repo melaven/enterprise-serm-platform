@@ -65,26 +65,16 @@ graph TD
 
 ```
 serm-api/
-├── 🔐 app/auth/              # Authentication & JWT handling
-├── 🧠 app/services/          # Business logic layer
-│   ├── economics.py          # LTV & financial impact calculations
-│   ├── llm.py               # AI response generation
-│   ├── sentiment.py         # Review analysis & prioritization
-│   └── review_processor.py  # Central review orchestration
-├── 🗄️ app/repositories/      # Data access layer
-│   ├── base.py              # Generic CRUD operations
-│   ├── company.py           # Company data management
-│   ├── platform.py          # Review platform handling
-│   └── review.py            # Review operations & analytics
-├── 🌐 app/routers/           # API endpoints
-│   ├── economics.py         # Financial simulation & analysis
-│   ├── reviews.py           # Review management & webhooks
-│   ├── companies.py         # Company CRUD operations
-│   └── platforms.py         # Platform management
-├── 📊 app/models/            # SQLAlchemy data models
-├── 📋 app/schemas/           # Pydantic validation schemas
-├── 🔧 app/migrations/        # Database migrations & RLS setup
-└── 📚 docs/                 # Architecture & deployment guides
+├── app/
+│   ├── routers/              # HTTP endpoints and request/response mapping
+│   ├── services/             # Business logic, parsers, queues, and ARQ worker
+│   ├── repositories/         # Database access and persistence
+│   ├── models/               # SQLAlchemy models
+│   ├── schemas/              # Pydantic API and domain schemas
+│   ├── core/                 # Configuration, auth, DB session, middleware, DI
+│   └── main.py               # FastAPI application composition
+├── scripts/                  # Migration runner and seed utilities
+└── migrations/               # Ordered SQL and legacy migration helpers
 ```
 
 ---
@@ -125,14 +115,17 @@ serm-api/
    # Edit .env with your configuration
    ```
 
-5. **Run database migrations**
+5. **Start the local PostgreSQL database and apply migrations**
    ```bash
-   # Standard migrations
-   python app/migrations/run_migration.py
-   
-   # Multi-tenancy setup
-   python app/migrations/run_multitenancy_migration.py
+   docker compose up -d postgres redis
+   python scripts/migrate.py
+   python scripts/seed_db.py
    ```
+
+   The PostgreSQL service uses `pgvector/pgvector:pg16`. Configure matching
+   `POSTGRES_*`, `APP_TENANT_PASSWORD`, and `DATABASE_URL` values in `.env`
+   before running migrations. The seed command is idempotent and writes the
+   frontend fixture to `mock_reputation_data.json`.
 
 6. **Start the development server**
    ```bash
@@ -148,6 +141,9 @@ The API will be available at `http://localhost:8000` with interactive docs at `/
 ### 🔧 **Environment Variables**
 
 Create a `.env` file based on `.env.example`:
+
+For local Docker credentials and matching PostgreSQL URLs, use the values from
+`.env.example` as the source of truth; the abbreviated sample below is generic.
 
 ```bash
 # Database Configuration
@@ -175,25 +171,10 @@ DEFAULT_POSITIVE_BOOST_COEFFICIENT=0.5
 
 ### 🗄️ **Database Setup**
 
-1. **Create PostgreSQL database**
-   ```sql
-   CREATE DATABASE serm_db;
-   ```
-
-2. **Run multi-tenancy migrations**
-   ```bash
-   python app/migrations/run_multitenancy_migration.py
-   ```
-
-3. **Set up tenant role password**
-   ```sql
-   ALTER ROLE app_tenant PASSWORD 'secure_tenant_password';
-   ```
-
-4. **Configure Supabase Custom Access Token Hook**
-   - Navigate to Supabase Dashboard
-   - Go to Authentication → Hooks → Custom Access Token
-   - Enable the hook created by migration `002_custom_access_token_hook.sql`
+Use the local PostgreSQL 16 + pgvector service and the single ordered migration
+runner described in [MIGRATION_INSTRUCTIONS.md](MIGRATION_INSTRUCTIONS.md).
+The runner provisions the `app_tenant` password from `APP_TENANT_PASSWORD`;
+do not set it manually or execute individual migration files.
 
 ---
 
@@ -368,18 +349,18 @@ GET /api/v1/system/test-errors?error_type=validation
 ### 🔍 **RLS Isolation Testing**
 
 ```bash
-# Run smoke tests to verify tenant isolation
-python app/migrations/003_rls_smoke_test.sql
+# Run tenant-isolation checks
+pytest test_rls_integration.py
 ```
 
 ### 🐳 **Docker Development**
 
 ```bash
-# Build and run with Docker
-docker-compose up -d
+# Build and start the stack. The backend entrypoint runs migrations before serving.
+docker compose up -d --build
 
-# Run migrations
-docker-compose exec api python app/migrations/run_multitenancy_migration.py
+# Seed demo reputation data after the backend is healthy
+docker compose exec backend python scripts/seed_db.py
 ```
 
 ---
@@ -444,7 +425,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Run migrations
-        run: python app/migrations/run_multitenancy_migration.py
+        run: python scripts/migrate.py
       - name: Deploy to production
         run: ./deploy.sh
 ```
@@ -487,7 +468,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - **[Architecture Guide](ARCHITECTURE.md)** - Detailed system architecture
 - **[Multi-tenancy Setup](MULTITENANCY_GUIDE.md)** - Complete RLS configuration
 - **[API Documentation](https://api.serm.com/docs)** - Interactive Swagger UI
-- **[Migration Guide](app/migrations/README.md)** - Database setup instructions
+- **[Migration Guide](migrations/README.md)** - Database setup instructions
 
 ---
 

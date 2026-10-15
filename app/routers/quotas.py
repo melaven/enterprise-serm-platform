@@ -41,16 +41,23 @@ async def get_my_quota_status(
     description="Только для администраторов. Позволяет просматривать квоты других tenant'ов.",
 )
 async def get_tenant_quota_status(
-    tenant_id: UUID,
+    requested_tenant_id: UUID,
+    current_tenant: UUID = Depends(get_current_tenant),
     quota_service: QuotaService = Depends(get_quota_service),
 ) -> QuotaStatus:
-    """Получить статус квот для конкретного tenant'а (admin only)."""
+    """Проверяет, что клиент запрашивает только собственный tenant_id из JWT."""
+    if requested_tenant_id != current_tenant:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant mismatch: JWT tenant and requested tenant must match.",
+        )
+
     try:
-        return await quota_service.get_status(tenant_id)
+        return await quota_service.get_status(current_tenant)
     except QuotaNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Quota not found for tenant {tenant_id}",
+            detail=f"Quota not found for tenant {current_tenant}",
         ) from e
 
 
@@ -65,20 +72,20 @@ async def get_tenant_quota_status(
 )
 async def update_my_quota_limits(
     limits: QuotaUpdateLimits,
-    tenant_id: UUID = Depends(get_current_tenant),
+    current_tenant: UUID = Depends(get_current_tenant),
     quota_service: QuotaService = Depends(get_quota_service),
 ) -> QuotaStatus:
-    """Обновить лимиты квот для текущего tenant'а."""
+    """Обновить лимиты квот только для текущего tenant из JWT."""
     try:
         return await quota_service.update_limits(
-            tenant_id,
+            current_tenant,
             max_llm_tokens=limits.max_llm_tokens,
             max_reviews=limits.max_reviews,
         )
     except QuotaNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Quota not found for tenant {tenant_id}",
+            detail=f"Quota not found for tenant {current_tenant}",
         ) from e
     except ValueError as e:
         raise HTTPException(
@@ -94,21 +101,28 @@ async def update_my_quota_limits(
     description="Только для супер-администраторов. Позволяет изменять квоты других tenant'ов.",
 )
 async def update_tenant_quota_limits(
-    tenant_id: UUID,
+    requested_tenant_id: UUID,
     limits: QuotaUpdateLimits,
+    current_tenant: UUID = Depends(get_current_tenant),
     quota_service: QuotaService = Depends(get_quota_service),
 ) -> QuotaStatus:
-    """Обновить лимиты квот для конкретного tenant'а (super admin only)."""
+    """Запрещает менять чужой tenant, даже если он передан в пути."""
+    if requested_tenant_id != current_tenant:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant mismatch: JWT tenant and requested tenant must match.",
+        )
+
     try:
         return await quota_service.update_limits(
-            tenant_id,
+            current_tenant,
             max_llm_tokens=limits.max_llm_tokens,
             max_reviews=limits.max_reviews,
         )
     except QuotaNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Quota not found for tenant {tenant_id}",
+            detail=f"Quota not found for tenant {current_tenant}",
         ) from e
     except ValueError as e:
         raise HTTPException(

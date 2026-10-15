@@ -1,102 +1,150 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useAuth } from '../store/useAppStore';
-import { Button } from '../components/ui/button';
-import { AuthShell } from '../components/AuthShell';
+import { Loader2 } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { useAppStore } from '@/store/useAppStore';
 
 /**
- * Страница авторизации
- * Использует centralized API через Zustand store
+ * LoginPage — строгая flat-форма входа на bg-ink-950
+ * 
+ * Интеграция:
+ * - useAppStore.performLogin() для API /api/v1/auth/login
+ * - Сохранение токена и пользователя
+ * - Редирект на /dashboard при успехе
+ * - Аккуратные ошибки через sonner toast
  */
-export const LoginPage = () => {
+export function LoginPage() {
+  const navigate = useNavigate();
+  const { performLogin, isAuthenticated } = useAppStore();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const { performLogin } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  // Если уже залогинен, редирект на главную
+  if (isAuthenticated) {
+    navigate('/');
+    return null;
+  }
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     
-    if (!email || !password) {
+    if (!email.trim() || !password.trim()) {
       toast.error('Заполните все поля');
       return;
     }
 
-    setLoading(true);
-    const success = await performLogin(email, password);
-    setLoading(false);
-
-    if (success) {
-      toast.success('Успешный вход!');
-      navigate('/');
+    setIsLoading(true);
+    
+    try {
+      const success = await performLogin(email, password);
+      
+      if (success) {
+        toast.success('Вход выполнен', {
+          description: `Добро пожаловать, ${email}`,
+        });
+        navigate('/');
+      } else {
+        toast.error('Ошибка входа', {
+          description: 'Проверьте email и пароль',
+        });
+      }
+    } catch (error) {
+      toast.error('Ошибка сети', {
+        description: error instanceof Error ? error.message : 'Не удалось подключиться к серверу',
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <AuthShell 
-      title="Tenable SERM" 
-      subtitle="Вход в систему"
-    >
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Email Field */}
-        <div>
-          <label htmlFor="email" className="text-label mb-2 block">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="input-field"
-            placeholder="user@example.com"
-            disabled={loading}
-            autoComplete="email"
-            autoFocus
-          />
+    <div className="flex min-h-screen items-center justify-center bg-ink-950 px-4">
+      <div className="w-full max-w-md space-y-8">
+        {/* Логотип / Название */}
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-white">
+            Tenable <span className="text-plum">SERM</span>
+          </h1>
+          <p className="mt-3 text-chrome-400">Система управления электронной репутацией</p>
         </div>
 
-        {/* Password Field */}
-        <div>
-          <label htmlFor="password" className="text-label mb-2 block">
-            Пароль
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="input-field"
-            placeholder="••••••••"
-            disabled={loading}
-            autoComplete="current-password"
-          />
+        {/* Форма входа */}
+        <div className="rounded-sm border-2 border-chrome-600 bg-ink-900 p-8">
+          <h2 className="mb-6 text-2xl font-semibold text-white">Вход</h2>
+          
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="email" className="block text-sm font-medium text-chrome-300">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                disabled={isLoading}
+                className="w-full rounded-sm border-2 border-chrome-600 bg-ink-950 px-4 py-2.5 text-white placeholder:text-chrome-500 transition-colors focus:border-plum focus:outline-none disabled:opacity-50"
+                autoComplete="email"
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="password" className="block text-sm font-medium text-chrome-300">
+                Пароль
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                disabled={isLoading}
+                className="w-full rounded-sm border-2 border-chrome-600 bg-ink-950 px-4 py-2.5 text-white placeholder:text-chrome-500 transition-colors focus:border-plum focus:outline-none disabled:opacity-50"
+                autoComplete="current-password"
+                required
+              />
+            </div>
+
+            <Button
+              type="submit"
+              variant="default"
+              size="lg"
+              disabled={isLoading}
+              className="w-full"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Вход...
+                </>
+              ) : (
+                'Войти'
+              )}
+            </Button>
+          </form>
+
+          <div className="mt-6 text-center text-sm text-chrome-400">
+            Нет аккаунта?{' '}
+            <button
+              type="button"
+              onClick={() => navigate('/register')}
+              className="font-medium text-plum hover:text-plum-400 transition-colors"
+            >
+              Зарегистрироваться
+            </button>
+          </div>
         </div>
 
-        {/* Submit Button */}
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={loading}
-        >
-          {loading ? 'Вход...' : 'Войти'}
-        </Button>
-
-        {/* Link to Register */}
-        <div className="text-center text-sm text-chrome-500">
-          Нет аккаунта?{' '}
-          <button
-            type="button"
-            onClick={() => navigate('/register')}
-            className="text-plum hover:text-plum/80 font-medium transition-colors"
-            disabled={loading}
-          >
-            Зарегистрироваться
-          </button>
-        </div>
-      </form>
-    </AuthShell>
+        <p className="text-center text-xs text-chrome-500">
+          © 2026 Tenable SERM. Все права защищены.
+        </p>
+      </div>
+    </div>
   );
-};
+}

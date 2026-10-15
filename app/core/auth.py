@@ -127,7 +127,7 @@ async def get_jwt_payload(
     except jwt.ExpiredSignatureError as exc:
         raise _unauthorized("Token expired") from exc
     except jwt.PyJWTError as exc:
-        raise _unauthorized(f"Invalid token: {str(exc)}") from exc
+        raise _unauthorized("Invalid token") from exc
     except ValidationError as exc:
         # токен подлинный, но к арендатору не привязан
         raise HTTPException(

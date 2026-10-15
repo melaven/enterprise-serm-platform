@@ -3,36 +3,84 @@
 @tailwind utilities;
 
 @layer base {
-  /* CSS Переменные для shadcn/ui (адаптированы под нашу палитру) */
+  /* CSS Переменные для новой палитры Royal Plum #5A189A, Electric Lime #C5FF4A */
   :root {
-    --background: 11 11 15; /* Ink #0B0B0F */
-    --foreground: 201 206 214; /* Chrome #C9CED6 */
-    
-    --card: 26 26 32; /* Ink-50 */
-    --card-foreground: 201 206 214;
-    
-    --popover: 26 26 32;
-    --popover-foreground: 201 206 214;
-    
-    --primary: 90 24 154; /* Plum #5A189A */
+    /* Ink Scale - оттенки черного */
+    --color-ink: 0 0 0;
+    --color-ink-50: 9 9 11;
+    --color-ink-100: 16 16 18;
+    --color-ink-200: 26 26 32;
+    --color-ink-300: 40 40 48;
+    --color-ink-400: 56 56 64;
+    --color-ink-500: 72 72 80;
+    --color-ink-600: 96 96 112;
+    --color-ink-700: 128 128 144;
+    --color-ink-800: 160 160 176;
+    --color-ink-900: 17 17 20;
+    --color-ink-950: 9 9 11;
+
+    /* Chrome Scale - оттенки серого (alias для zinc) */
+    --color-chrome: 22 22 28;
+    --color-chrome-50: 30 30 36;
+    --color-chrome-100: 40 40 48;
+    --color-chrome-200: 56 56 64;
+    --color-chrome-300: 72 72 80;
+    --color-chrome-400: 96 96 112;
+    --color-chrome-500: 120 120 128;
+    --color-chrome-600: 144 144 160;
+    --color-chrome-700: 176 176 192;
+    --color-chrome-800: 200 200 216;
+    --color-chrome-900: 224 224 240;
+
+    /* Royal Plum Scale - #5A189A */
+    --color-plum: 90 24 154;
+    --color-plum-50: 112 56 174;
+    --color-plum-100: 134 76 194;
+    --color-plum-200: 156 98 214;
+    --color-plum-300: 178 120 234;
+    --color-plum-400: 200 142 254;
+    --color-plum-500: 156 98 214;
+    --color-plum-600: 236 186 294;
+    --color-plum-700: 254 208 314;
+    --color-plum-800: 64 25 101;
+    --color-plum-900: 37 14 61;
+    --color-plum-deep: 67 18 122;
+
+    /* Electric Lime Scale - #C5FF4A */
+    --color-lime: 197 255 74;
+    --color-lime-50: 209 255 107;
+    --color-lime-100: 217 255 140;
+    --color-lime-200: 197 219 158;
+    --color-lime-300: 241 255 206;
+    --color-lime-400: 253 255 239;
+    --color-lime-500: 255 255 255;
+    --color-lime-600: 255 255 239;
+    --color-lime-700: 255 255 223;
+    --color-lime-800: 79 112 36;
+    --color-lime-900: 36 53 17;
+
+    /* shadcn/ui токены (сохранены для совместимости) */
+    --background: 0 0 0;
+    --foreground: 250 250 250;
+    --card: 9 9 11;
+    --card-foreground: 250 250 250;
+    --popover: 9 9 11;
+    --popover-foreground: 250 250 250;
+    --primary: 90 24 154;
     --primary-foreground: 255 255 255;
-    
-    --secondary: 107 113 125; /* Chrome-600 */
-    --secondary-foreground: 201 206 214;
-    
-    --muted: 107 113 125;
-    --muted-foreground: 168 174 184;
-    
-    --accent: 197 255 74; /* Lime #C5FF4A */
-    --accent-foreground: 11 11 15;
-    
-    --destructive: 220 38 38;
+    --secondary: 24 24 27;
+    --secondary-foreground: 250 250 250;
+    --muted: 24 24 27;
+    --muted-foreground: 168 168 184;
+    --accent: 197 255 74;
+    --accent-foreground: 0 0 0;
+    --destructive: 90 24 154;
     --destructive-foreground: 255 255 255;
-    
-    --border: 107 113 125; /* Chrome-600 */
-    --input: 107 113 125;
-    --ring: 90 24 154; /* Plum */
-    
+    --border: 39 39 42;
+    --input: 39 39 42;
+    --ring: 90 24 154;
+
+    /* Border radius */
     --radius: 0.125rem; /* 2px - максимум! */
   }
 
@@ -171,17 +219,17 @@
   [data-sonner-toast] {
     @apply bg-ink-50 border border-chrome-600 text-chrome-300 rounded-sm;
   }
-  
+
   [data-sonner-toast][data-type="success"] {
-    @apply border-[#C5FF4A] bg-black text-[#C5FF4A];
+    @apply border-lime bg-ink text-lime;
   }
-  
+
   [data-sonner-toast][data-type="error"] {
-    @apply border-[#FF5C5C] bg-black text-[#FF5C5C];
+    @apply border-chrome-600 bg-ink text-chrome-300;
   }
-  
+
   [data-sonner-toast][data-type="warning"] {
-    @apply border-white bg-black text-white;
+    @apply border-white bg-ink text-white;
   }
   
   /* Убираем shadows из Sonner */
@@ -191,7 +239,7 @@
   
   /* Кнопки внутри toast */
   [data-sonner-toast] [data-button] {
-    @apply bg-plum text-white hover:bg-plum/90 rounded-sm;
+    @apply bg-plum text-white hover:bg-plum-400 rounded-sm;
   }
   
   [data-sonner-toast] [data-cancel-button] {

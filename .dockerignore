@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.docker.example
+!.env.example
+!.env.local.example
 
 # VCS / IDE
 .git
@@ -9,6 +11,22 @@
 .github
 .idea
 .vscode
+
+# SSL certificates (never commit)
+nginx/ssl/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+
+# Databases
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
 
 # Python-мусор
 __pycache__/
@@ -24,6 +42,12 @@ htmlcov/
 # Node.js
 node_modules/
 frontend/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+server_error.log
+server_output.log
 
 # Не нужно в рантайме
 tests/

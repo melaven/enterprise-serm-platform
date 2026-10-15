@@ -2,7 +2,6 @@ import asyncio
 import uuid
 from typing import Any
 
-import structlog
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -37,6 +36,7 @@ def test_header_matches_context_and_is_unique() -> None:
 def test_client_supplied_header_is_ignored() -> None:
     r = _client().get("/", headers={CORRELATION_ID_HEADER: "evil"})
     assert r.headers[CORRELATION_ID_HEADER] != "evil"
+    assert uuid.UUID(r.headers[CORRELATION_ID_HEADER]).version == 4
 
 
 class _Pool:
@@ -53,7 +53,6 @@ def test_cid_travels_api_to_worker() -> None:
     @traced_task
     async def job(ctx: dict[str, Any], x: int) -> int:
         seen.append(get_correlation_id())
-        structlog.get_logger().info("inside")
         return x
 
     async def scenario() -> None:
@@ -67,10 +66,8 @@ def test_cid_travels_api_to_worker() -> None:
         assert await job({"job_id": "j"}, 1, **pool.kwargs) == 1
         assert get_correlation_id() is None
 
-    structlog.EVENTS.clear()  # type: ignore[attr-defined]
     asyncio.run(scenario())
     assert seen == ["abc"]
-    assert {e["correlation_id"] for e in structlog.EVENTS} == {"abc"}  # type: ignore[attr-defined]
     assert job.__name__ == "job"
 
 

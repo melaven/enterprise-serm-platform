@@ -1,0 +1,6 @@
+# cp terraform.tfvars.example terraform.tfvars   (файл в .gitignore)
+ssh_public_key    = "ssh-ed25519 AAAA... admin@laptop"
+deploy_public_key = "ssh-ed25519 AAAA... github-deploy"
+admin_cidrs       = ["203.0.113.10/32"]
+domain            = "api.example.com"
+# hcloud_token — через: export TF_VAR_hcloud_token=...

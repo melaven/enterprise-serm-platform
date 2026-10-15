@@ -6,9 +6,9 @@
 import logging
 from typing import Optional, Dict, Any
 
-from config import get_settings
+from ..core.config import get_settings
 from .llm_analyzer import build_gemini_analyzer, LLMTransportError, LLMAnalysisError, AnalysisOutcome
-from ..exceptions import LLMServiceError
+from ..core.exceptions import LLMServiceError
 from ..core.logger import get_logger
 
 logger = get_logger(__name__)

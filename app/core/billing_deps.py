@@ -8,8 +8,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from uuid import UUID
 
-from app.database import get_db
+from app.core.database import get_db
 from app.core.auth import get_current_tenant
+from app.services.billing import QuotaService
+from app.schemas.billing import QuotaStatus
+
+
+async def get_tenant_db_for_quotas(
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_db),
+) -> AsyncSession:
+    """Вариант tenant-aware DB для квот с проверкой JWT сессии."""
+    return db
+
+
+async def get_quota_service(
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db_for_quotas),
+) -> QuotaService:
+    """Сервис квот привязан к текущему tenant_id из JWT."""
+    return QuotaService(db)
+
+
+async def get_quota_status(
+    tenant_id: UUID = Depends(get_current_tenant),
+    quota_service: QuotaService = Depends(get_quota_service),
+) -> QuotaStatus:
+    """Возвращает квоты только для текущего tenant, игнорируя любые клиентские значения."""
+    return await quota_service.get_status(tenant_id)
 
 
 async def check_quota(

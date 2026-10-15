@@ -1,43 +1,61 @@
+# ========================================
+# Docker Ignore для оптимизации сборки
+# ========================================
+
 # Dependencies
-node_modules/
+node_modules
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+pnpm-debug.log*
 
-# Build output
-dist/
-build/
-.vite/
-
-# Environment files
-.env
-.env.*
-!.env.example
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
+# Build output (собирается внутри контейнера)
+dist
+build
+.vite
 
 # Git
-.git/
+.git
 .gitignore
 .gitattributes
 
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
 # Testing
-coverage/
-.nyc_output/
+coverage
+.nyc_output
+*.test.js
+*.spec.js
+__tests__
+__mocks__
+
+# Environment files (используй docker secrets/env vars)
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.env.*.local
 
 # Documentation
-*.md
-!README.md
+README.md
+CHANGELOG.md
+docs
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+.circleci
 
 # Misc
 *.log
+.cache
+.temp
+tmp

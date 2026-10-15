@@ -15,6 +15,7 @@ class Platform(str, Enum):
     TWOGIS = "2gis"
     YANDEX = "yandex"
     GOOGLE = "google"
+    TRUSTPILOT = "trustpilot"
 
 
 class RawReview(BaseModel):

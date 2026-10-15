@@ -220,8 +220,8 @@ docker-compose up -d
 The backend container automatically runs database migrations on startup:
 
 1. Waits for PostgreSQL to be ready (using netcat)
-2. Runs Python migration scripts from `app/migrations/`
-3. Executes SQL migration files from `app/migrations/*.sql`
+2. Runs `scripts/migrate.py`
+3. Executes the ordered SQL chain from `migrations/*.sql`
 4. Only then starts the uvicorn server
 
 This ensures your database schema is always up-to-date without manual intervention.

@@ -2,23 +2,27 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
-    DateTime,
     Boolean,
+    CheckConstraint,
+    DateTime,
     Enum as SQLAlchemyEnum,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
+    Index,
     Integer,
+    JSON,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
-    Index,
     text as sql_text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
-from app.database import Base
+from app.core.database import Base
 from app.schemas.economics import ReviewStatus
 
 
@@ -68,6 +72,7 @@ class Platform(Base):
     company: Mapped[Company] = relationship(back_populates="platforms")
     reviews: Mapped[list["Review"]] = relationship(
         back_populates="platform_ref",
+        foreign_keys=lambda: [Review.platform_id],
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
@@ -75,6 +80,8 @@ class Platform(Base):
     # Индексы создаются в миграциях  
     __table_args__ = (
         Index("ix_platforms_company_id", "company_id"),
+        UniqueConstraint("company_id", "name", name="uq_platforms_company_name"),
+        UniqueConstraint("id", "company_id", name="uq_platforms_id_company"),
     )
 
 
@@ -95,9 +102,10 @@ class Review(Base):
         ForeignKey("companies.id", ondelete="CASCADE"),
         nullable=False,
     )
+    tenant_id = synonym("company_id")
     # Добавляем поле для внешнего ID (интеграция с Google Maps, 2GIS и др.)
     external_review_id: Mapped[str | None] = mapped_column(
-        String(255), nullable=True, unique=True, index=True
+        String(255), nullable=True
     )
     # Добавляем поле для названия платформы как строки (для упрощения парсинга)
     platform: Mapped[str | None] = mapped_column(
@@ -119,10 +127,10 @@ class Review(Base):
     si_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     sentiment: Mapped[str | None] = mapped_column(String(20), nullable=True)
     tags: Mapped[list[str]] = mapped_column(
-        JSONB,
+        JSON().with_variant(JSONB, "postgresql"),
         nullable=False,
         default=list,
-        server_default=sql_text("'[]'::jsonb"),
+        server_default=sql_text("'[]'"),
     )
     is_critical: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sql_text("false")
@@ -136,14 +144,81 @@ class Review(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    platform_ref: Mapped[Platform] = relationship(back_populates="reviews")
-    company: Mapped[Company] = relationship()
+    tenant_id = synonym("company_id")
 
-    # Индексы для мультитенантности и производительности создаются в миграциях
+    platform_ref: Mapped[Platform] = relationship(
+        back_populates="reviews", foreign_keys=[platform_id]
+    )
+    company: Mapped[Company] = relationship(foreign_keys=[company_id])
+
     __table_args__ = (
         Index("ix_reviews_company_id", "company_id"),
         Index("ix_reviews_platform_company", "platform_id", "company_id"),
         Index("ix_reviews_status_company", "status", "company_id"),
+        Index(
+            "uq_reviews_tenant_platform_external_id",
+            "company_id",
+            "platform",
+            "external_review_id",
+            unique=True,
+        ),
+        ForeignKeyConstraint(
+            ["platform_id", "company_id"],
+            ["platforms.id", "platforms.company_id"],
+            name="fk_reviews_platform_tenant",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("rating >= 0 AND rating <= 5", name="ck_reviews_rating_range"),
+    )
+
+
+class PlatformStatistic(Base):
+    """Срез агрегированного рейтинга площадки в рамках одного tenant."""
+
+    __tablename__ = "platform_statistics"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    platform_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("platforms.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tenant_id = synonym("company_id")
+    average_rating: Mapped[float] = mapped_column(Float, nullable=False)
+    rating_change: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    review_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    platform_ref: Mapped[Platform] = relationship(foreign_keys=[platform_id])
+    company: Mapped[Company] = relationship(foreign_keys=[company_id])
+
+    __table_args__ = (
+        Index(
+            "ix_platform_statistics_tenant_platform_recorded",
+            "company_id",
+            "platform_id",
+            "recorded_at",
+        ),
+        ForeignKeyConstraint(
+            ["platform_id", "company_id"],
+            ["platforms.id", "platforms.company_id"],
+            name="fk_platform_statistics_platform_tenant",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "average_rating >= 0 AND average_rating <= 5",
+            name="ck_platform_statistics_rating_range",
+        ),
+        CheckConstraint("review_count >= 0", name="ck_platform_statistics_review_count"),
     )
 
 

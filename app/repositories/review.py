@@ -6,14 +6,14 @@ from datetime import datetime, timedelta, date
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, func, and_, or_, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from .base import BaseRepository
-from ..models.economics import Review
+from ..models.economics import Platform, Review
 from ..schemas.economics import ReviewStatus
-from ..exceptions import DatabaseError
+from ..core.exceptions import DatabaseError
 
 
 class ReviewRepository(BaseRepository[Review]):
@@ -21,6 +21,104 @@ class ReviewRepository(BaseRepository[Review]):
     
     def __init__(self, db: AsyncSession):
         super().__init__(db, Review)
+
+    async def create_for_tenant(self, tenant_id: UUID, **values: Any) -> Review:
+        """Create a review with an immutable tenant key; transaction stays caller-owned."""
+        supplied_tenant = values.pop("tenant_id", tenant_id)
+        supplied_company = values.pop("company_id", tenant_id)
+        if supplied_tenant != tenant_id or supplied_company != tenant_id:
+            raise ValueError("Review tenant cannot differ from the active tenant")
+
+        allowed_fields = {
+            column.key for column in Review.__table__.columns
+        } - {"id", "company_id"}
+        unexpected_fields = values.keys() - allowed_fields
+        if unexpected_fields:
+            raise ValueError(
+                f"Unsupported review fields: {', '.join(sorted(unexpected_fields))}"
+            )
+
+        platform_id = values.get("platform_id")
+        if platform_id is None:
+            raise ValueError("platform_id is required")
+        result = await self.db.execute(
+            select(Platform.id).where(
+                Platform.id == platform_id,
+                Platform.company_id == tenant_id,
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Platform does not belong to the requested tenant")
+
+        review = Review(company_id=tenant_id, **values)
+        self.db.add(review)
+        await self.db.flush()
+        return review
+
+    async def get_for_tenant(
+        self, tenant_id: UUID, review_id: UUID
+    ) -> Review | None:
+        result = await self.db.execute(
+            select(Review).where(
+                Review.id == review_id,
+                Review.company_id == tenant_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def list_for_tenant(
+        self, tenant_id: UUID, *, limit: int = 100, offset: int = 0
+    ) -> list[Review]:
+        if limit < 1 or offset < 0:
+            raise ValueError("limit must be positive and offset must be non-negative")
+        result = await self.db.execute(
+            select(Review)
+            .where(Review.company_id == tenant_id)
+            .order_by(Review.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        return list(result.scalars().all())
+
+    async def update_for_tenant(
+        self, tenant_id: UUID, review_id: UUID, **values: Any
+    ) -> Review | None:
+        if not values:
+            return await self.get_for_tenant(tenant_id, review_id)
+        immutable_fields = {"id", "tenant_id", "company_id", "platform_id"}
+        if immutable_fields.intersection(values):
+            raise ValueError("Review identity and tenant fields cannot be updated")
+
+        allowed_fields = {
+            column.key for column in Review.__table__.columns
+        } - {"id", "company_id", "platform_id"}
+        unexpected_fields = values.keys() - allowed_fields
+        if unexpected_fields:
+            raise ValueError(
+                f"Unsupported review fields: {', '.join(sorted(unexpected_fields))}"
+            )
+
+        result = await self.db.execute(
+            update(Review)
+            .where(Review.id == review_id, Review.company_id == tenant_id)
+            .values(**values)
+            .returning(Review.id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        await self.db.flush()
+        return await self.get_for_tenant(tenant_id, review_id)
+
+    async def delete_for_tenant(self, tenant_id: UUID, review_id: UUID) -> bool:
+        result = await self.db.execute(
+            delete(Review)
+            .where(Review.id == review_id, Review.company_id == tenant_id)
+            .returning(Review.id)
+        )
+        deleted = result.scalar_one_or_none() is not None
+        if deleted:
+            await self.db.flush()
+        return deleted
     
     async def get_by_external_id(self, external_review_id: str) -> Optional[Review]:
         """Найти отзыв по внешнему ID (для интеграций)"""

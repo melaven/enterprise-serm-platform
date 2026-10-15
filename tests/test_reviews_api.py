@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from app.database import Base
+from app.core.database import Base
 from app.models.economics import Company, Platform, Review
 from app.schemas.economics import ReviewStatus
 
@@ -160,7 +160,7 @@ async def client_factory(
     db_connection: AsyncConnection,
 ) -> AsyncIterator[ClientFactory]:
     from app.core.auth import get_current_tenant
-    from app.dependencies import get_tenant_db
+    from app.core.dependencies import get_tenant_db
     from app.main import app
 
     async def tenant_from_header(
@@ -235,17 +235,62 @@ async def test_reviews_summary_is_isolated_by_tenant(
     tenant_a_response = await tenant_a_client.get("/api/v1/reviews/summary")
 
     assert tenant_b_response.status_code == 200
-    assert tenant_b_response.json()["data"] == {
-        "total_reviews": 0,
-        "positive_reviews": 0,
-        "negative_reviews": 0,
-        "critical_reviews": 0,
+    tenant_b_summary = tenant_b_response.json()["data"]
+    assert tenant_b_summary["total_reviews"] == 0
+    assert tenant_b_summary["average_rating"] is None
+    assert tenant_b_summary["sentiment"] == {
+        "positive": 0,
+        "neutral": 0,
+        "negative": 0,
+        "unclassified": 0,
+        "total": 0,
     }
+    assert tenant_b_summary["critical_reviews"] == 0
+    assert tenant_b_summary["ai_pending"] == 0
+    assert len(tenant_b_summary["timeline"]) == 30
 
     assert tenant_a_response.status_code == 200
-    assert tenant_a_response.json()["data"] == {
-        "total_reviews": 3,
-        "positive_reviews": 2,
-        "negative_reviews": 1,
-        "critical_reviews": 1,
+    tenant_a_summary = tenant_a_response.json()["data"]
+    assert tenant_a_summary["total_reviews"] == 3
+    assert tenant_a_summary["average_rating"] == 3.33
+    assert tenant_a_summary["sentiment"] == {
+        "positive": 2,
+        "neutral": 0,
+        "negative": 1,
+        "unclassified": 0,
+        "total": 3,
     }
+    assert tenant_a_summary["critical_reviews"] == 1
+    assert sum(point["reviews"] for point in tenant_a_summary["timeline"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_reputation_statistics_match_frontend_contract(
+    client_factory: ClientFactory,
+    review_tenants: dict[str, UUID],
+) -> None:
+    tenant_a_client = client_factory(review_tenants["tenant_a"])
+    tenant_b_client = client_factory(review_tenants["tenant_b"])
+
+    tenant_a_response = await tenant_a_client.get(
+        "/api/v1/reputation/statistics", params={"period_days": 30}
+    )
+    tenant_b_response = await tenant_b_client.get(
+        "/api/v1/reputation/statistics", params={"period_days": 30}
+    )
+
+    assert tenant_a_response.status_code == 200
+    tenant_a_stats = tenant_a_response.json()
+    assert tenant_a_stats["period_days"] == 30
+    assert tenant_a_stats["updated_at"]
+    assert tenant_a_stats["platforms"] == [
+        {
+            "platform": "google",
+            "average_rating": 3.33,
+            "rating_delta": None,
+            "total_reviews": 3,
+            "new_reviews": 3,
+        }
+    ]
+    assert tenant_b_response.status_code == 200
+    assert tenant_b_response.json()["platforms"] == []

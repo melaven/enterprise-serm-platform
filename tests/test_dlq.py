@@ -7,14 +7,14 @@ from uuid import UUID
 import pytest
 from arq.worker import Retry
 
-from app.db.dlq_repository import (
+from app.repositories.dlq import (
     InMemoryDLQStore,
     SupabaseDLQStore,
     save_to_dlq,
     set_default_dlq_store,
 )
 from app.schemas.dlq import DLQRecord, DLQStatus
-from app.worker.hooks import dlq_protected, on_job_end
+from app.services.worker.hooks import dlq_protected, on_job_end
 
 CID = UUID("11111111-1111-1111-1111-111111111111")
 

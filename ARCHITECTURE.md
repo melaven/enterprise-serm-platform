@@ -164,6 +164,117 @@ LOG_LEVEL=INFO
 - Метрики производительности
 - Граф зависимостей в debug режиме
 
+## Порядок чтения проекта для нового разработчика
+
+Если открыть репозиторий “с нуля”, читать стоит в этом порядке, чтобы не потеряться в структуре.
+
+### 1. Входные документы
+- [README.md](README.md) — общее описание проекта, стек, запуск, основные сценарии
+- [ARCHITECTURE.md](ARCHITECTURE.md) — архитектурная карта и базовые принципы
+- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) — более техническая карта backend
+- [frontend/FRONTEND_ARCHITECTURE.md](frontend/FRONTEND_ARCHITECTURE.md) — фронтенд-структура и модульность
+
+### 2. Точки входа в приложение
+- [app/main.py](app/main.py) — главный entrypoint FastAPI
+- [app/core/dependencies.py](app/core/dependencies.py) — DI и фабрики сервисов/репозиториев
+- [app/core/database.py](app/core/database.py) — БД и сессии
+- [app/core/auth.py](app/core/auth.py) — аутентификация и авторизация
+- [app/core/tenant.py](app/core/tenant.py) — tenant context
+
+### 3. HTTP-уровень
+- [app/routers](app/routers) — API endpoints
+  - `auth.py` — логин/регистрация/токены
+  - `reviews.py` — отзывы
+  - `companies.py` — компании
+  - `platforms.py` — платформы
+  - `economics.py` — экономика и расчёты
+  - `analytics.py` — аналитика
+  - `parser.py` — запуск и статус парсинга
+  - `reputation.py` — репутация и сводные метрики
+
+### 4. Бизнес-логика
+- [app/services](app/services) — доменная логика
+  - `economics.py` — финансовые и экономические расчёты
+  - `review_processor.py` — основной workflow обработки отзывов
+  - `llm.py` / `llm_analyzer.py` — AI-логика и анализ текста
+  - `sentiment.py` — скоринг тональности
+  - `parser.py` — парсинг данных
+  - `billing.py` — квоты и биллинг
+  - `analytics.py` — аналитические агрегаты
+  - `worker/` — фоновые задачи и ARQ worker
+
+### 5. Данные и доступ к БД
+- [app/repositories](app/repositories) — репозитории
+  - `company.py`, `platform.py`, `review.py`
+  - `analytics_repo.py`
+  - `dlq.py`
+  - `parser.py`
+- [app/models](app/models) — SQLAlchemy модели
+- [app/schemas](app/schemas) — Pydantic контракты API и доменных объектов
+
+### 6. Интеграции и инфраструктура
+- [migrations](migrations) — миграции БД
+- [scripts](scripts) — утилиты миграций и seed
+- [docker-compose.yml](docker-compose.yml) — локальная инфраструктура
+- [docker-compose.prod.yml](docker-compose.prod.yml) — продовая конфигурация
+- [run.py](run.py) — запуск backend
+- [worker.py](worker.py) — отдельный worker entrypoint
+
+### 7. Frontend
+- [frontend](frontend) — React/Vite приложение
+  - [frontend/src](frontend/src) — основной код UI
+  - `api/` — HTTP клиент и интеграции
+  - `features/` — feature-модули
+  - `pages/` — маршруты
+  - `components/` — UI-компоненты
+
+### 8. Тесты и качества
+- [tests](tests) — backend tests
+- `*.test.ts` / `*.test.py` — проверка контрактов и логики
+- `pytest.ini` и configuration files — настройки тестового окружения
+
+## Карта ответственности проекта
+
+```text
+frontend/
+  ├─ pages/              -> маршруты и экраны
+  ├─ features/           -> бизнес-фичи
+  ├─ components/         -> переиспользуемые UI-компоненты
+  └─ api/                -> HTTP-контракты и запросы
+
+app/
+  ├─ routers/            -> HTTP API
+  ├─ services/           -> бизнес-логика
+  ├─ repositories/       -> доступ к данным
+  ├─ models/             -> сущности БД
+  ├─ schemas/            -> вход/выход контракты
+  ├─ core/               -> auth, tenant, middleware, config, DI
+  └─ main.py             -> сборка приложения
+
+worker/
+  ├─ parsing tasks       -> фоновые задачи
+  ├─ queue/ARQ           -> асинхронная очередь
+  └─ DLQ / retries       -> надежность обработчика
+
+migrations/
+  └─ database schema     -> схема и эволюция БД
+```
+
+## Быстрый маршрут для нового участника
+
+Если нужно быстро войти в проект и понять, где что лежит:
+
+1. Открыть [README.md](README.md)
+2. Прочитать [ARCHITECTURE.md](ARCHITECTURE.md)
+3. Открыть [app/main.py](app/main.py)
+4. Посмотреть [app/core/dependencies.py](app/core/dependencies.py)
+5. Далее идти по роутерам в [app/routers](app/routers)
+6. Затем в сервисы в [app/services](app/services)
+7. Потом в репозитории в [app/repositories](app/repositories)
+8. И только после этого смотреть frontend в [frontend](frontend)
+
+Это даёт “горизонтальный” путь по архитектуре без хаоса и повторных поисков по папкам.
+
 ## Масштабирование
 
 **Текущая архитектура поддерживает**:

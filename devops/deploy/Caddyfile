@@ -1,0 +1,17 @@
+{$DOMAIN} {
+	encode zstd gzip
+	request_body { max_size 1MB }
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	@scanners path_regexp scan (?i)(^|/)(\.env|\.git|wp-login|wp-admin|xmlrpc\.php|phpmyadmin|cgi-bin|\.aws)
+	respond @scanners 404
+	@docs path /docs* /redoc* /openapi.json
+	respond @docs 404
+	reverse_proxy api:8000 {
+		health_uri /health
+		header_up X-Forwarded-For {remote_host}
+	}
+}

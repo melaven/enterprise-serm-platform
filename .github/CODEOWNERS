@@ -1,0 +1,36 @@
+# Code Owners - Автоматическое назначение ревьюеров
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for everything
+* @tenable-serm/core-team
+
+# Frontend
+/frontend/ @tenable-serm/frontend-team
+/frontend/src/components/ @tenable-serm/ui-team
+/frontend/src/features/ @tenable-serm/frontend-team
+/frontend/src/api/ @tenable-serm/api-team
+
+# Backend
+/app/ @tenable-serm/backend-team
+/app/routers/ @tenable-serm/api-team
+/app/services/ @tenable-serm/backend-team
+/app/models/ @tenable-serm/database-team
+
+# Infrastructure
+/.github/ @tenable-serm/devops-team
+/docker-compose.yml @tenable-serm/devops-team
+/Dockerfile @tenable-serm/devops-team
+
+# Documentation
+/docs/ @tenable-serm/documentation-team
+/*.md @tenable-serm/documentation-team
+
+# Configuration
+/frontend/vite.config.ts @tenable-serm/frontend-lead
+/frontend/tailwind.config.js @tenable-serm/ui-team
+/app/core/config.py @tenable-serm/backend-lead
+
+# Security sensitive files
+/app/core/auth.py @tenable-serm/security-team
+/app/auth/ @tenable-serm/security-team
+/.env.example @tenable-serm/security-team

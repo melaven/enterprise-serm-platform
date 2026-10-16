@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { CircleAlert, MessageSquareText, MessagesSquare, Sparkles, TrendingUp, TrendingDown } from 'lucide-react';
+import { toast } from 'sonner';
 
 import * as api from '@/api/services';
 import * as demoApi from '@/api/demoService';
+import { ApiError } from '@/api/client';
 import { AsyncView } from '@/components/ui/async-view';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,45 +42,58 @@ export function useDashboardData() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    let isActive = true;
+  const loadDashboard = async () => {
+    setIsLoading(true);
+    setError(null);
 
-    async function loadDashboard() {
-      setIsLoading(true);
-      setError(null);
+    try {
+      const [summary, reviewsPage] = await Promise.all([
+        apiClient.getDashboardSummary(),
+        apiClient.getReviews({ page: 1, page_size: 5 }),
+      ]);
 
-      try {
-        const [summary, reviewsPage] = await Promise.all([
-          apiClient.getDashboardSummary(),
-          apiClient.getReviews({ page: 1, page_size: 5 }),
-        ]);
-
-        if (isActive) {
-          setData({ summary, reviews: reviewsPage.items });
+      setData({ summary, reviews: reviewsPage.items });
+    } catch (caughtError: unknown) {
+      const error = caughtError instanceof Error
+        ? caughtError
+        : new Error('Не удалось загрузить данные дашборда');
+      
+      setError(error);
+      
+      // Show toast notification with specific error message
+      if (caughtError instanceof ApiError) {
+        if (caughtError.status === 0) {
+          toast.error('Нет подключения к серверу', {
+            description: 'Проверьте, запущен ли backend на http://127.0.0.1:8000',
+            duration: 5000,
+          });
+        } else if (caughtError.status >= 500) {
+          toast.error('Ошибка сервера базы данных', {
+            description: 'Попробуйте обновить страницу или повторите попытку позже',
+            duration: 5000,
+          });
+        } else {
+          toast.error(caughtError.message, {
+            description: `Код ошибки: ${caughtError.status}`,
+            duration: 5000,
+          });
         }
-      } catch (caughtError: unknown) {
-        if (isActive) {
-          setError(
-            caughtError instanceof Error
-              ? caughtError
-              : new Error('Не удалось загрузить данные дашборда'),
-          );
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
+      } else {
+        toast.error('Ошибка загрузки данных', {
+          description: error.message,
+          duration: 5000,
+        });
       }
+    } finally {
+      setIsLoading(false);
     }
+  };
 
+  useEffect(() => {
     void loadDashboard();
-
-    return () => {
-      isActive = false;
-    };
   }, []);
 
-  return { data, isLoading, error };
+  return { data, isLoading, error, retry: loadDashboard };
 }
 
 const reviewColumns: readonly DataTableColumn<Review>[] = [
@@ -166,7 +181,7 @@ function DashboardLoading() {
 
 export default function Dashboard() {
   const { user, logout } = useAppStore();
-  const { data, isLoading, error } = useDashboardData();
+  const { data, isLoading, error, retry } = useDashboardData();
   const metrics: DashboardMetric[] = data
     ? [
         {
@@ -235,6 +250,7 @@ export default function Dashboard() {
           isEmpty={!isLoading && !error && !data}
           emptyMessage="Данные пока недоступны"
           loadingComponent={<DashboardLoading />}
+          onRetry={retry}
         >
           {data && (
             <div className="space-y-6">

@@ -1,11 +1,14 @@
 import * as React from "react"
+import { RefreshCw } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Skeleton } from "./skeleton"
+import { Button } from "./button"
 
 /**
  * AsyncView компонент для асинхронных операций
  * Поддерживает loading, error, empty и success состояния
+ * С graceful degradation и кнопкой повтора при ошибках
  */
 
 interface AsyncViewProps {
@@ -18,6 +21,7 @@ interface AsyncViewProps {
   errorComponent?: React.ReactNode
   emptyComponent?: React.ReactNode
   className?: string
+  onRetry?: () => void | Promise<void>
 }
 
 const AsyncView = React.forwardRef<HTMLDivElement, AsyncViewProps>(
@@ -32,10 +36,13 @@ const AsyncView = React.forwardRef<HTMLDivElement, AsyncViewProps>(
       errorComponent,
       emptyComponent,
       className,
+      onRetry,
       ...props
     },
     ref
   ) => {
+    const [isRetrying, setIsRetrying] = React.useState(false);
+
     // Loading state
     if (isLoading) {
       if (loadingComponent) {
@@ -62,7 +69,26 @@ const AsyncView = React.forwardRef<HTMLDivElement, AsyncViewProps>(
         return <>{errorComponent}</>
       }
 
-      const errorMessage = typeof error === "string" ? error : error.message
+      const errorMessage = typeof error === "string" ? error : error.message;
+      
+      // Detect error type for better UX
+      const isNetworkError = errorMessage.includes('соединения') || 
+                            errorMessage.includes('ответил') ||
+                            errorMessage.includes('Network') ||
+                            errorMessage.includes('timeout');
+      const isServerError = errorMessage.includes('сервера') || 
+                           errorMessage.includes('базы данных') ||
+                           /\b5\d{2}\b/.test(errorMessage);
+
+      const handleRetry = async () => {
+        if (!onRetry) return;
+        setIsRetrying(true);
+        try {
+          await onRetry();
+        } finally {
+          setIsRetrying(false);
+        }
+      };
 
       return (
         <div
@@ -89,11 +115,28 @@ const AsyncView = React.forwardRef<HTMLDivElement, AsyncViewProps>(
                 />
               </svg>
             </div>
-            <div className="flex-1">
-              <h4 className="text-sm font-semibold text-plum-300 mb-1">
-                Error
-              </h4>
-              <p className="text-sm text-chrome-400">{errorMessage}</p>
+            <div className="flex-1 space-y-3">
+              <div>
+                <h4 className="text-sm font-semibold text-plum-300 mb-1">
+                  {isNetworkError ? 'Нет подключения к серверу' : 
+                   isServerError ? 'Ошибка сервера базы данных' : 
+                   'Ошибка загрузки данных'}
+                </h4>
+                <p className="text-sm text-chrome-400">{errorMessage}</p>
+              </div>
+              
+              {onRetry && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRetry}
+                  disabled={isRetrying}
+                  className="gap-2"
+                >
+                  <RefreshCw className={cn("h-4 w-4", isRetrying && "animate-spin")} />
+                  {isRetrying ? 'Повтор...' : 'Повторить попытку'}
+                </Button>
+              )}
             </div>
           </div>
         </div>

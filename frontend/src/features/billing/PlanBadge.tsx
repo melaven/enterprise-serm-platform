@@ -4,10 +4,12 @@
  * Compact design with progress bar for limits
  */
 
-import { Crown, Zap } from 'lucide-react';
+import { Crown, Zap, RefreshCw, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { getQuotaStatus, type QuotaStatus } from '@/api/services';
+import { ApiError } from '@/api/client';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 // ============================================================================
@@ -34,6 +36,7 @@ interface PlanBadgeProps {
  * Plan Badge for Sidebar
  * 
  * Shows current tier and usage limits with progress bars
+ * Handles graceful degradation on backend errors
  * 
  * @example
  * ```tsx
@@ -43,19 +46,39 @@ interface PlanBadgeProps {
 export function PlanBadge({ className, compact = false }: PlanBadgeProps) {
   const [quota, setQuota] = useState<QuotaStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const fetchQuota = async () => {
+    try {
+      setError(null);
+      const status = await getQuotaStatus();
+      setQuota(status);
+    } catch (err) {
+      const errorMsg = err instanceof ApiError
+        ? err.status === 0
+          ? 'Нет подключения к серверу'
+          : err.status >= 500
+            ? 'Ошибка сервера базы данных'
+            : `Ошибка загрузки данных (${err.status})`
+        : 'Неизвестная ошибка';
+      
+      setError(errorMsg);
+      
+      // Show toast only on first error or after successful load
+      if (quota !== null || loading) {
+        toast.error(errorMsg, {
+          description: 'Попробуйте обновить страницу',
+          duration: 5000,
+        });
+      }
+      
+      console.error('Failed to fetch quota:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
   
   useEffect(() => {
-    async function fetchQuota() {
-      try {
-        const status = await getQuotaStatus();
-        setQuota(status);
-      } catch (error) {
-        console.error('Failed to fetch quota:', error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    
     void fetchQuota();
     
     // Refresh every 60 seconds
@@ -63,6 +86,7 @@ export function PlanBadge({ className, compact = false }: PlanBadgeProps) {
     return () => clearInterval(interval);
   }, []);
   
+  // Loading state
   if (loading) {
     return (
       <div className={cn('p-4 border-t-2 border-chrome-600 bg-ink-900', className)}>
@@ -74,6 +98,28 @@ export function PlanBadge({ className, compact = false }: PlanBadgeProps) {
     );
   }
   
+  // Error state with retry button
+  if (error && !quota) {
+    return (
+      <div className={cn('p-4 border-t-2 border-chrome-600 bg-ink-900', className)}>
+        <div className="flex items-start gap-3">
+          <AlertCircle className="h-4 w-4 text-plum shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-chrome-400 mb-2">{error}</p>
+            <button
+              onClick={fetchQuota}
+              className="flex items-center gap-2 text-xs text-lime hover:text-lime/80 transition-colors"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Повторить попытку
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // No data available (shouldn't happen with error handling above)
   if (!quota) {
     return null;
   }

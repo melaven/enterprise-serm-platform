@@ -1,6 +1,5 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -52,7 +51,7 @@ class ReviewBase(BaseModel):
     author_name: str
     rating: int = Field(..., ge=1, le=5)
     text: str
-    external_review_id: Optional[str] = Field(
+    external_review_id: str | None = Field(
         None, description="Внешний ID отзыва (от Google Maps, 2GIS и др.)"
     )
     status: ReviewStatus = ReviewStatus.NEW
@@ -63,16 +62,12 @@ class ReviewBase(BaseModel):
             "Плюс - если SI спас LTV."
         ),
     )
-    si_response: Optional[str] = Field(
-        None, description="Ответ, сгенерированный SI-ядром"
-    )
+    si_response: str | None = Field(None, description="Ответ, сгенерированный SI-ядром")
 
 
 class ReviewResponse(ReviewBase):
     id: UUID
     created_at: datetime
-    external_review_id: Optional[str] = None
-    auto_reply: Optional[str] = Field(
-        None, description="Ответ, предложенный AI"
-    )
+    external_review_id: str | None = None
+    auto_reply: str | None = Field(None, description="Ответ, предложенный AI")
     ai_pending: bool = False

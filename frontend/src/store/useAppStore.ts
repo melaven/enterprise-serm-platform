@@ -50,6 +50,7 @@ interface AppState {
   // Auth Actions
   login: (auth: api.AuthResponse) => void;
   logout: () => Promise<void>;
+  invalidateAuth: () => void;
   performLogin: (email: string, password: string) => Promise<boolean>;
   performRegister: (email: string, password: string, fullName?: string) => Promise<boolean>;
 
@@ -125,31 +126,39 @@ export const useAppStore = create<AppState>()(
         });
       },
 
+      invalidateAuth: () => {
+        tokens.clear();
+        set({
+          isAuthenticated: false,
+          user: null,
+          token: null,
+          refreshToken: null,
+          reviews: [],
+          reviewsLoading: false,
+          reviewsTotal: 0,
+          reviewsPage: 1,
+          reviewsPageSize: 50,
+          reviewsTotalPages: 1,
+          dashboard: null,
+          dashboardLoading: false,
+          parserJobId: null,
+          parserStatus: null,
+          parserResult: null,
+          parserError: null,
+          sidebarCollapsed: false,
+          activeNavItem: 'overview',
+        });
+        if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem('auth_token');
+        }
+      },
+
       logout: async () => {
         try {
           await withErrorHandling(async () => apiClient.logout());
         } finally {
-          tokens.clear();
-          set({
-            isAuthenticated: false,
-            user: null,
-            token: null,
-            refreshToken: null,
-            reviews: [],
-            reviewsLoading: false,
-            reviewsTotal: 0,
-            reviewsPage: 1,
-            reviewsPageSize: 50,
-            reviewsTotalPages: 1,
-            dashboard: null,
-            dashboardLoading: false,
-            parserJobId: null,
-            parserStatus: null,
-            sidebarCollapsed: false,
-            activeNavItem: 'overview',
-          });
+          get().invalidateAuth();
           if (typeof localStorage !== 'undefined') {
-            localStorage.removeItem('auth_token');
             localStorage.removeItem('tenable-serm-storage');
           }
         }
@@ -294,6 +303,8 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
+
+api.setUnauthorizedHandler(() => useAppStore.getState().invalidateAuth());
 
 /**
  * Селекторы для оптимизации перерисовок

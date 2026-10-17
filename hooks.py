@@ -20,7 +20,7 @@ import structlog
 from arq.worker import Retry
 from pydantic_core import to_jsonable_python
 
-from app.db.dlq_repository import DLQStore, save_to_dlq
+from app.repositories.dlq import DLQStore, save_to_dlq
 from app.schemas.dlq import DLQRecord, DLQStatus
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)

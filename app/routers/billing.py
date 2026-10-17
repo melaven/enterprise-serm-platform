@@ -4,13 +4,14 @@ client_reference_id = company_id из ПРОВЕРЕННОГО JWT: по нем�
 """
 
 import stripe
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from session import get_tenant_session
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth import CurrentPayload
 from app.core.config import get_settings
-from app.core.security import CurrentAuth
-from app.db.session import TenantSession
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -23,17 +24,24 @@ class CheckoutOut(BaseModel):
 
 
 @router.post("/checkout", response_model=CheckoutOut)
-async def create_checkout(auth: CurrentAuth, session: TenantSession) -> CheckoutOut:
+async def create_checkout(
+    auth: CurrentPayload, session: AsyncSession = Depends(get_tenant_session)
+) -> CheckoutOut:
     s = get_settings()
     if not (s.stripe_secret_key and s.stripe_price_pro):
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Billing not configured")
-    if auth.role not in BILLING_ROLES:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only owner/admin can change the plan")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Billing not configured"
+        )
+    if auth.company_role not in BILLING_ROLES:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only owner/admin can change the plan"
+        )
 
+    company_id = auth.tenant_id or auth.sub
     plan = (
         await session.execute(
             text("SELECT plan_code FROM app.get_entitlement(CAST(:t AS uuid))"),
-            {"t": str(auth.company_id)},
+            {"t": str(company_id)},
         )
     ).scalar_one_or_none()
     if plan == "pro":  # защита от двойной подписки
@@ -44,8 +52,8 @@ async def create_checkout(auth: CurrentAuth, session: TenantSession) -> Checkout
         api_key=s.stripe_secret_key.get_secret_value(),
         mode="subscription",
         line_items=[{"price": s.stripe_price_pro, "quantity": 1}],
-        client_reference_id=str(auth.company_id),
-        subscription_data={"metadata": {"company_id": str(auth.company_id)}},
+        client_reference_id=str(company_id),
+        subscription_data={"metadata": {"company_id": str(company_id)}},
         success_url=f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{base}/billing/cancel",
     )

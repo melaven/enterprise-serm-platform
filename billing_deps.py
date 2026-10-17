@@ -29,7 +29,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentTenant
-from app.db.session import TenantSession
+from app.core.auth_session import TenantSession
 
 logger: Final = logging.getLogger(__name__)
 
@@ -84,9 +84,15 @@ def _error(
 
 async def _load_quota(session: AsyncSession, org_id: str) -> QuotaSnapshot:
     try:
-        row = (await session.execute(_SELECT_QUOTA, {"org_id": org_id})).mappings().first()
+        row = (
+            (await session.execute(_SELECT_QUOTA, {"org_id": org_id}))
+            .mappings()
+            .first()
+        )
     except SQLAlchemyError as exc:
-        logger.exception("billing: quota lookup failed", extra={"organization_id": org_id})
+        logger.exception(
+            "billing: quota lookup failed", extra={"organization_id": org_id}
+        )
         raise _error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             QuotaErrorCode.BILLING_UNAVAILABLE,
@@ -114,7 +120,9 @@ async def _load_quota(session: AsyncSession, org_id: str) -> QuotaSnapshot:
     )
 
 
-async def check_quota(tenant_id: CurrentTenant, session: TenantSession) -> QuotaSnapshot:
+async def check_quota(
+    tenant_id: CurrentTenant, session: TenantSession
+) -> QuotaSnapshot:
     """402 Payment Required, если квота неактивна или `requests_used >= max_requests`."""
     org_id = str(tenant_id)
     quota = await _load_quota(session, org_id)
@@ -149,10 +157,18 @@ async def consume_request(
         raise ValueError("amount must be >= 1")
     try:
         row = (
-            await session.execute(_CONSUME, {"org_id": organization_id, "amount": amount})
-        ).mappings().first()
+            (
+                await session.execute(
+                    _CONSUME, {"org_id": organization_id, "amount": amount}
+                )
+            )
+            .mappings()
+            .first()
+        )
     except SQLAlchemyError as exc:
-        logger.exception("billing: consume failed", extra={"organization_id": organization_id})
+        logger.exception(
+            "billing: consume failed", extra={"organization_id": organization_id}
+        )
         raise _error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             QuotaErrorCode.BILLING_UNAVAILABLE,

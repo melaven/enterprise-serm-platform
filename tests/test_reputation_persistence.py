@@ -38,8 +38,14 @@ class _Session:
 
     async def execute(self, statement):
         self.statements.append(statement)
+        # Advisory lock statement (first call after entering save_many)
         if len(self.statements) == 1:
+            # Advisory lock doesn't return results
+            return _InsertResult([])
+        # Platform insert/select (second call)
+        if len(self.statements) == 2:
             return _InsertResult([uuid4()])
+        # Review insert (third call)
         return _InsertResult([uuid4()])
 
 
@@ -102,7 +108,8 @@ def test_sink_inserts_reviews_with_explicit_tenant_and_idempotency() -> None:
     )
 
     assert inserted == 1
-    compiled = session.statements[1].compile(dialect=postgresql.dialect())
+    # Advisory lock is statement[0], platform is statement[1], review insert is statement[2]
+    compiled = session.statements[2].compile(dialect=postgresql.dialect())
     assert "ON CONFLICT" in str(compiled)
     assert compiled.params["company_id_m0"] == tenant_id
     assert compiled.params["status_m0"] == ReviewStatus.NEW.value

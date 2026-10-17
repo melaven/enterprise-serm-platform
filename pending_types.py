@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from app.services.ai_processor import EnrichedReview
 from app.schemas.parser import RawReview
+from app.services.ai_processor import EnrichedReview
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +36,9 @@ class Failure:
 class PendingReviewStore(Protocol):
     async def tenants_with_pending(self, limit: int) -> list[UUID]: ...
 
-    async def claim(self, tenant_id: UUID, *, limit: int, token: UUID) -> list[ClaimedReview]: ...
+    async def claim(
+        self, tenant_id: UUID, *, limit: int, token: UUID
+    ) -> list[ClaimedReview]: ...
 
     async def finalize(
         self,

@@ -5,8 +5,8 @@ from uuid import UUID
 
 from supabase import acreate_client  # pip install supabase
 
-from app.db.dlq_repository import SupabaseDLQStore, set_default_dlq_store
-from app.worker.hooks import dlq_protected
+from app.repositories.dlq import SupabaseDLQStore, set_default_dlq_store
+from app.services.worker.hooks import dlq_protected
 
 MAX_TRIES = 5
 

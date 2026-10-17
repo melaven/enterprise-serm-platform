@@ -1,499 +1,251 @@
-# 🛡️ SERM API - Service & Economy Reputation Management
+# Tenable SERM
 
-<div align="center">
+**B2B SaaS для управления репутацией (SERM): собирает отзывы с площадок, размечает их Sentiment Intelligence и отвечает на негатив.**
 
-![SERM API](https://img.shields.io/badge/SERM-API-blue?style=for-the-badge&logo=fastapi&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.11+-green?style=for-the-badge&logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-teal?style=for-the-badge&logo=fastapi&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue?style=for-the-badge&logo=postgresql&logoColor=white)
+`FastAPI` · `PostgreSQL + RLS` · `Redis / ARQ` · `React + TypeScript` · `Stripe` · `Terraform + GitHub Actions + k6`
 
-*Enterprise-grade API for reputation management and economic impact analysis of customer reviews*
+> Это MVP, но инженерные решения принимались так, как принимают их для платёжной многоарендной системы:
+> изоляция данных на уровне СУБД, атомарная квота, идемпотентные очереди и вебхуки, сквозная трассировка, Zero Trust по умолчанию.
+> Раздел [Статус](#статус-что-реализовано-а-что-нет) честно разделяет «работает и проверено», «написано, не подключено» и «спроектировано».
 
-[📚 Documentation](#-documentation) • [🚀 Quick Start](#-quick-start) • [🏗️ Architecture](#️-architecture) • [🔐 Multi-tenancy](#-multi-tenancy) • [📊 API Reference](#-api-reference)
-
-</div>
+[🇬🇧 English version](README.en.md)
 
 ---
 
-## 🌟 Features
+## Что делает продукт
 
-### 🎯 **Core Capabilities**
-- **💰 Economic Impact Analysis** - Real-time LTV calculations and revenue impact assessment
-- **🤖 AI-Powered Response Generation** - Automated review responses via OpenAI GPT integration
-- **📊 Sentiment Analysis & Prioritization** - Smart review categorization with urgency detection
-- **🔄 Multi-platform Integration** - Support for Google Maps, 2GIS, Trustpilot, and custom sources
-- **📈 Advanced Analytics** - ROI tracking, conversion metrics, and financial forecasting
+| Для кого | Что получает |
+|---|---|
+| **Владелец бизнеса** (рестораны, e-commerce, HoReCa) | Сбор отзывов (Google, Яндекс, 2GIS, Otzovik), тональность и теги, черновики ответов на негатив, дашборд репутации |
 
-### 🔐 **Enterprise Security**
-- **🏢 Multi-tenant Architecture** - Complete data isolation using PostgreSQL Row Level Security (RLS)
-- **🔑 JWT Authentication** - RS256/JWKS support with Supabase integration
-- **🛡️ Role-based Access Control** - Secure tenant isolation and permission management
-- **🔒 Audit Trail** - Comprehensive logging with request tracing
+**Монетизация.** Free (жёсткая квота) → Pro (Stripe-подписка). Квота — не маркетинг, а инвариант БД: исчерпал лимит — получил `402 Payment Required` с данными для paywall-а.
 
-### ⚡ **Modern Architecture**
-- **🎯 Three-tier Design** - Clean separation: Routers → Services → Repositories
-- **🧩 Dependency Injection** - Modular, testable, and maintainable codebase
-- **🚨 Centralized Error Handling** - Standardized error responses with localization
-- **📦 Async/Await** - High-performance async operations throughout
+**Чего продукт не делает намеренно:** не удаляет честные отзывы и не обещает этого (только жалобы на нарушения правил площадок), не накручивает рейтинг.
 
 ---
 
-## 🏗️ Architecture
-
-SERM API follows a **three-tier architecture** with multi-tenant security:
-
-```mermaid
-graph TD
-    A[Client Request] --> B[FastAPI Router]
-    B --> C[Authentication Layer]
-    C --> D[Business Logic Services]
-    D --> E[Repository Layer]
-    E --> F[PostgreSQL with RLS]
-    
-    G[JWT Token] --> C
-    H[OpenAI API] --> D
-    I[Tenant Context] --> F
-    
-    subgraph "Security Layers"
-    C --> J[AuthContext]
-    J --> K[Tenant Session]
-    K --> L[RLS Policies]
-    end
-```
-
-### 📁 **Project Structure**
+## Архитектура
 
 ```
-serm-api/
-├── app/
-│   ├── routers/              # HTTP endpoints and request/response mapping
-│   ├── services/             # Business logic, parsers, queues, and ARQ worker
-│   ├── repositories/         # Database access and persistence
-│   ├── models/               # SQLAlchemy models
-│   ├── schemas/              # Pydantic API and domain schemas
-│   ├── core/                 # Configuration, auth, DB session, middleware, DI
-│   └── main.py               # FastAPI application composition
-├── scripts/                  # Migration runner and seed utilities
-└── migrations/               # Ordered SQL and legacy migration helpers
+Browser (React + TypeScript + Zustand)
+   |
+   |  Bearer JWT (from Supabase Auth)
+   |  Protected routes with auto-logout on 401
+   v
++------------------+
+| FastAPI API      |  PostgreSQL connection with pgbouncer compatibility
+| (uvicorn)        |  (statement_cache_size=0, unique prepared statement names)
+|                  |
+| - JWT validation |  RLS context set per request: app.company_id, app.user_id
+| - Quota checks   |  Atomic quota operations via SQL functions
+| - Rate limiting  |  Tenant isolation enforced by database policies
++--------+---------+
+         |
+         |  asyncpg driver with NullPool
+         |  (no connection reuse across requests)
+         v
++------------------------------------------+
+| PostgreSQL (Supabase)                    |
+| - Row Level Security on all tables       |
+| - tenant_quotas with atomic operations   |
+| - RLS policies filter by company_id      |
+| - Prepared statement compatibility       |
++------------------------------------------+
+```
+
+**Key constraints:**
+- PostgreSQL required (SQLite is not supported)
+- Connection pooler compatibility: `statement_cache_size=0` prevents prepared statement conflicts with pgbouncer/Supavisor
+- Database initialization strict: server refuses to start if connection fails (no silent fallback)
+- Tenant isolation: RLS context set on every request, enforced by PostgreSQL policies
+
+---
+
+## Ключевые инженерные решения
+
+**1. Изоляция арендаторов в СУБД, а не в `WHERE`.**
+Каждая запрос-транзакция начинается с `set_config('app.current_tenant_id', …, true)`; политики RLS отсекают чужие строки даже при ошибке в коде приложения. `company_id` берётся только из подписанного JWT (custom access token hook), не из тела запроса. Роль вебхука биллинга отделена и умеет вызывать только `app.billing_*`.
+
+**2. Конкурентность без advisory locks.**
+Гонки закрыты атомарными инструкциями и ограничениями, а не блокировками сессии:
+- квота: `UPDATE … WHERE used + :n <= limit RETURNING` в одном выражении (резерв **до** парсинга, возврат излишка после);
+- дубль задачи: детерминированный `job_id` (company + платформа + хеш URL) → второй клик получает `409`;
+- дубль отзыва: `ON CONFLICT DO NOTHING` на уникальном ключе;
+- дубль вебхука: `event_id` — PRIMARY KEY, запись события и применение — одна транзакция.
+
+Почему не advisory locks: через пулер Supavisor в transaction-режиме session-level блокировки небезопасны (соединение может смениться между запросами), а xact-level держат соединение и усложняют пул. Атомарный SQL проще, быстрее и проверяем тестом.
+
+**3. SSE-реалтайм прогресса задач.**
+Статус задачи парсинга приходит в браузер потоком `text/event-stream`, а не опросом: нативная реализация в `app/routers/parser.py`. Поток авторизуется той же HttpOnly-cookie (EventSource не умеет ставить заголовок `Authorization` — ещё один довод за cookie-сессии). Клиентский опрос `waitForJob` остаётся как фолбэк для сетей, режущих потоки.
+
+**4. Zero Trust.**
+HttpOnly + `__Host-` cookie с подписанным double-submit CSRF (токены недоступны JS), строгие заголовки (CSP, HSTS, nosniff, frame-ancestors), HMAC-псевдонимизация PII с версионируемым pepper и TTL, SSRF-защита (allowlist хостов площадок, проверка **каждого** редиректа, запрет приватных/служебных адресов; DNS-ребиндинг закрывается резолвером и egress-политикой), изоляция воркеров по сетям и ролям БД.
+
+**5. Stripe-биллинг как конечный автомат.**
+Подпись вебхука проверяется `stripe.Webhook.construct_event` по сырым байтам (окно 5 мин против replay) **до** любого разбора и обращения к БД. План меняется только подписанным событием; Pro без Stripe-подписки запрещён CHECK-ограничением. Запоздавшие и пришедшие не по порядку события безопасны.
+
+**6. Сквозная трассировка.**
+`X-Correlation-ID` проходит браузер → API → задача ARQ → воркер → JSON-логи; клиент показывает «ID запроса» в ошибке, поддержка находит весь путь одним поиском.
+
+**7. Деградация вместо падения.**
+LLM за circuit breaker-ом, «ядовитый» отзыв изолируется бисекцией пачки, отзывы без разметки получают `ai_pending` и дообрабатываются фоновым cron-ом с lease (`FOR UPDATE SKIP LOCKED`).
+
+---
+
+## Статус: что реализовано, а что нет
+
+Мы не называем систему «готовой к нагрузке», пока нет цифр. Ниже — что реально лежит в репозитории.
+
+| Область | Статус | Проверка |
+|---|---|---|
+| Мультиарендность, RLS, tenant-сессии, атомарная квота (SQL 001–012b) | Реализовано | SQL-смоук-тест в репозитории; 008 и 013 применены и проверены на PostgreSQL 16 |
+| Очередь ARQ, идемпотентная постановка, ретраи AI, трассировка | Реализовано | Юнит-тесты `tests/core`, `parser_worker` |
+| Stripe: схема, вебхук с подписью, checkout, 402-гейт | Реализовано | SQL проверен на PG16; логика событий — 14 тестов; тест подписи на реальном SDK написан, ждёт окружения со `stripe` |
+| SSE-стриминг прогресса задач | Реализовано | Нативно в `app/routers/parser.py`; интеграционный тест потока с Redis — в планах |
+| React-клиент: дизайн-токены, дашборд, 401/402/429-интерсепторы, polling-фолбэк | Реализовано | Vitest-тесты API-слоя |
+| SSRF: allowlist площадок + проверка каждого редиректа в скрейпере | Реализовано | `tests/services/scrapers/test_ssrf.py` |
+| Zero Trust (cookie/CSRF, заголовки, PII-хеширование, DNS-резолвер SSRF, nginx) | Написано, **не подключено** | `hardening/`; PII/SSRF/OpSec прогнаны, middleware и cookie-auth требуют интеграционного теста |
+| IaC и CI/CD (Terraform, GitHub Actions, Trivy, k6) | Написано, **не запускалось** | `devops/`; нужен `terraform validate` и прогон пайплайна |
+| Нагрузочные цифры (RPS, p95, ёмкость пула) | **Нет данных** | Сценарий k6 готов; результаты появятся после прогона на staging |
+
+Известные пробелы (не скрываем): несколько каталогов (`billing/`, `billing_v2/`, `parsers/`, `dlq/`, `llm/`, `obs/`, `tenant/`, `analytics_api/`) — итерации модулей, которые консолидируются в `app/` и `parser_worker/`.
+
+---
+
+## Карта репозитория
+
+```
+app/               FastAPI: `main.py`, роутеры (parser + SSE-стриминг, reviews, billing, webhooks), core (security, tracing), db, services
+parser_worker/     ARQ-воркер: скрапинг, AI-обогащение, ретраи, интеграция с квотами
+sql/               миграции: RLS, quota-функции, hardening, 013 Stripe
+redesign/          React + TypeScript + Tailwind: клиент, дизайн-система
+hardening/         Zero Trust: cookie-auth, CSRF, заголовки, PII, SSRF, nginx, изоляция
+devops/            Terraform (Hetzner), docker-compose.prod, GitHub Actions, k6
+tests/             pytest
+SYSTEM_DESIGN.md   архитектура, инварианты, модель угроз, ADR
+TRACING.md         сквозная трассировка
 ```
 
 ---
 
-## 🚀 Quick Start
+## Quick Start (Local Development)
 
-### 📋 Prerequisites
+### Prerequisites
 
-- **Python 3.11+**
-- **PostgreSQL 15+** with asyncpg support
-- **OpenAI API Key** for AI response generation
-- **JWT Provider** (Supabase recommended) or custom JWKS endpoint
+- Python 3.11+
+- Node.js 18+ and npm
+- PostgreSQL 15+ (local or Supabase)
+- Redis (optional, for background tasks)
 
-### ⚡ Installation
+### Environment Configuration
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-username/serm-api.git
-   cd serm-api
-   ```
-
-2. **Set up virtual environment**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # Linux/Mac
-   # or
-   .venv\Scripts\activate     # Windows
-   ```
-
-3. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Configure environment variables**
-   ```bash
-   cp .env.example .env
-   # Edit .env with your configuration
-   ```
-
-5. **Start the local PostgreSQL database and apply migrations**
-   ```bash
-   docker compose up -d postgres redis
-   python scripts/migrate.py
-   python scripts/seed_db.py
-   ```
-
-   The PostgreSQL service uses `pgvector/pgvector:pg16`. Configure matching
-   `POSTGRES_*`, `APP_TENANT_PASSWORD`, and `DATABASE_URL` values in `.env`
-   before running migrations. The seed command is idempotent and writes the
-   frontend fixture to `mock_reputation_data.json`.
-
-6. **Start the development server**
-   ```bash
-   python run.py
-   ```
-
-The API will be available at `http://localhost:8000` with interactive docs at `/docs`.
-
----
-
-## ⚙️ Configuration
-
-### 🔧 **Environment Variables**
-
-Create a `.env` file based on `.env.example`:
-
-For local Docker credentials and matching PostgreSQL URLs, use the values from
-`.env.example` as the source of truth; the abbreviated sample below is generic.
+Copy example environment file and configure required variables:
 
 ```bash
-# Database Configuration
-DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/serm_db
-TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:tenant_password@localhost:5432/serm_db
+cp .env.example .env
+```
+
+Required variables in `.env`:
+
+```bash
+# PostgreSQL connection (required)
+DATABASE_URL=postgresql+asyncpg://user:password@host:5432/database
+TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:password@host:5432/database
 USE_TENANT_ROLE=true
 
-# JWT Authentication
-AUTH_JWT_ALGORITHM=RS256
-AUTH_JWKS_URL=https://your-project.supabase.co/auth/v1/jwks
+# Supabase configuration (for auth)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_KEY=your-service-role-key
+SUPABASE_JWT_SECRET=your-jwt-secret
 
-# OpenAI Integration
-OPENAI_API_KEY=sk-your-openai-api-key-here
-OPENAI_MODEL=gpt-4o-mini
+# AI provider (optional, for Sentiment Intelligence features)
+GEMINI_API_KEY=your-gemini-api-key
+GEMINI_MODEL=gemini-1.5-flash
 
-# Application Settings
-DEBUG=false
-LOG_LEVEL=INFO
-SQL_ECHO=false
-
-# SERM Configuration
-DEFAULT_LOST_LEADS_COEFFICIENT=5
-DEFAULT_POSITIVE_BOOST_COEFFICIENT=0.5
+# Redis (optional, for background workers)
+REDIS_URL=redis://localhost:6379/0
 ```
 
-### 🗄️ **Database Setup**
+### Database Initialization
 
-Use the local PostgreSQL 16 + pgvector service and the single ordered migration
-runner described in [MIGRATION_INSTRUCTIONS.md](MIGRATION_INSTRUCTIONS.md).
-The runner provisions the `app_tenant` password from `APP_TENANT_PASSWORD`;
-do not set it manually or execute individual migration files.
-
----
-
-## 🔐 Multi-tenancy
-
-SERM API implements **enterprise-grade multi-tenancy** using PostgreSQL Row Level Security (RLS):
-
-### 🏢 **How It Works**
-
-1. **JWT Authentication** - Extract `company_id` from JWT token
-2. **Tenant Context** - Set `app.company_id` session variable
-3. **RLS Policies** - Automatic data filtering at database level
-4. **Complete Isolation** - Each tenant sees only their own data
-
-### 🛡️ **Security Features**
-
-- **Automatic Data Isolation** - No application-level filtering required
-- **Secure Role Separation** - `postgres` for admin, `app_tenant` for runtime
-- **Session-scoped Context** - Tenant context limited to transaction lifetime
-- **Audit Trail** - All operations logged with tenant information
-
-### 🔑 **Authentication Flow**
-
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant A as API
-    participant J as JWT Handler
-    participant D as Database
-    
-    C->>A: Request + JWT Token
-    A->>J: Verify Token
-    J->>J: Extract company_id
-    J->>A: AuthContext
-    A->>D: SET app.company_id
-    D->>D: Apply RLS Policies
-    D->>A: Filtered Results
-    A->>C: Response (tenant-isolated)
-```
-
-**👉 For detailed setup instructions, see [MULTITENANCY_GUIDE.md](MULTITENANCY_GUIDE.md)**
-
----
-
-## 📊 API Reference
-
-### 🔐 **Authentication**
-
-All endpoints require JWT authentication:
+Apply migrations in order:
 
 ```bash
-curl -H "Authorization: Bearer <your-jwt-token>" \
-     -H "Content-Type: application/json" \
-     https://api.serm.com/api/v1/economics/simulate
+python scripts/migrate.py
 ```
 
-### 🎯 **Core Endpoints**
+This applies all SQL migrations from `migrations/` directory in sequence. The script is idempotent and tracks applied migrations in `serm_schema_migrations` table.
 
-#### **Economic Analysis**
-```http
-POST /api/v1/economics/simulate
-POST /api/v1/economics/process
-POST /api/v1/economics/bulk-process
-GET  /api/v1/economics/platform/{id}/roi
-GET  /api/v1/economics/platform/{id}/risk-assessment
-```
+### Backend Startup
 
-#### **Review Management**
-```http
-POST /api/v1/reviews/webhook
-GET  /api/v1/reviews/{id}
-GET  /api/v1/reviews/platform/{id}/reviews
-PUT  /api/v1/reviews/{id}/status
-GET  /api/v1/reviews/search
-```
+Install dependencies and start server:
 
-#### **Company Operations**
-```http
-GET    /api/v1/companies/
-POST   /api/v1/companies/
-GET    /api/v1/companies/{id}
-PUT    /api/v1/companies/{id}
-GET    /api/v1/companies/{id}/dashboard
-```
-
-#### **Platform Management**
-```http
-GET    /api/v1/platforms/
-POST   /api/v1/platforms/
-GET    /api/v1/platforms/{id}
-PUT    /api/v1/platforms/{id}/metrics
-GET    /api/v1/platforms/stats
-```
-
-### 📝 **Example Requests**
-
-#### **Create Company**
 ```bash
-curl -X POST "https://api.serm.com/api/v1/companies/" \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Tech Innovations Inc",
-    "average_check": 15000.0,
-    "margin_percent": 25.0,
-    "cac": 3000.0,
-    "base_ltv": 45000.0
-  }'
+# Create virtual environment
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+source .venv/bin/activate  # Linux/Mac
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Start development server
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-#### **Simulate Review Impact**
-```bash
-curl -X POST "https://api.serm.com/api/v1/economics/simulate" \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform_id": "uuid-here",
-    "author_name": "John Doe",
-    "rating": 2,
-    "text": "Poor service quality, very disappointed"
-  }'
+Expected startup log:
+```
+✅ Подключение к PostgreSQL установлено
+   database_driver=postgresql+asyncpg
+✅ Сервисы инициализированы
 ```
 
-#### **Process Review with AI Response**
+If PostgreSQL connection fails, server will refuse to start (no fallback to SQLite).
+
+### Frontend Startup
+
+Install dependencies and start development server:
+
 ```bash
-curl -X POST "https://api.serm.com/api/v1/economics/process" \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "platform_id": "uuid-here",
-    "author_name": "Jane Smith",
-    "rating": 1,
-    "text": "Terrible experience, money wasted"
-  }'
+cd frontend
+npm install
+npm run dev
+```
+
+Access at http://localhost:3000
+
+### Verification
+
+```bash
+# Health check
+curl http://127.0.0.1:8000/health
+
+# API documentation
+open http://127.0.0.1:8000/docs
+```
+
+### Testing
+
+```bash
+# Run backend tests
+pytest
+
+# Run frontend tests
+cd frontend
+npm test
+
+# Linting
+ruff check .  # Python
+cd frontend && npm run lint  # TypeScript
 ```
 
 ---
 
-## 🧪 Testing & Development
+## Нагрузка: что мы докажем и как
 
-### 🏥 **Health Checks**
+`devops/loadtest/k6-tenable.js` — 1000 виртуальных пользователей и четыре инварианта: ровно один `202` на дублирующий URL, `used ≤ limit` после гонки за квоту, отсутствие `5xx` при исчерпании пула соединений, отсутствие утечки данных между арендаторами. Пороги — стартовые гипотезы; результаты будут опубликованы здесь после прогона на staging.
 
-```bash
-curl https://api.serm.com/health
-```
+## Лицензия и контакты
 
-**Response:**
-```json
-{
-  "status": "healthy",
-  "service": "SERM API",
-  "version": "1.0.0",
-  "checks": {
-    "database": true,
-    "llm_service": true,
-    "jwt_handler": true
-  },
-  "timestamp": "2024-01-15T10:30:00Z"
-}
-```
-
-### 🧪 **Error Handler Testing**
-
-```bash
-# Test different error types
-GET /api/v1/system/test-errors?error_type=404
-GET /api/v1/system/test-errors?error_type=timeout
-GET /api/v1/system/test-errors?error_type=llm
-GET /api/v1/system/test-errors?error_type=validation
-```
-
-### 🔍 **RLS Isolation Testing**
-
-```bash
-# Run tenant-isolation checks
-pytest test_rls_integration.py
-```
-
-### 🐳 **Docker Development**
-
-```bash
-# Build and start the stack. The backend entrypoint runs migrations before serving.
-docker compose up -d --build
-
-# Seed demo reputation data after the backend is healthy
-docker compose exec backend python scripts/seed_db.py
-```
-
----
-
-## 📈 Performance & Monitoring
-
-### ⚡ **Performance Features**
-
-- **Async/Await** throughout the application
-- **Connection pooling** optimized for Supabase
-- **Indexed queries** for multi-tenant performance
-- **Cached dependencies** (JWT validation, LLM client)
-- **Batch processing** for bulk operations
-
-### 📊 **Monitoring**
-
-- **Structured logging** with tenant context
-- **Request tracing** with unique request IDs
-- **Health check endpoints** for infrastructure monitoring
-- **Error aggregation** with detailed stack traces
-- **Performance metrics** for database operations
-
-### 🔧 **Optimization Tips**
-
-1. **Database Indexes** - Automatically created for `company_id` fields
-2. **JWT Caching** - Tokens cached until expiration
-3. **JWKS Caching** - Public keys cached for 1 hour
-4. **Singleton Services** - Stateless services reused across requests
-
----
-
-## 🚀 Deployment
-
-### 🌩️ **Production Environment**
-
-```bash
-# Production environment variables
-USE_TENANT_ROLE=true
-AUTH_JWT_ALGORITHM=RS256
-SQL_ECHO=false
-DEBUG=false
-LOG_LEVEL=WARNING
-
-# Security settings
-OPENAI_API_KEY=<production-key>
-JWT_SECRET=<strong-secret>
-DATABASE_URL=<production-db-url>
-```
-
-### 🔄 **CI/CD Pipeline**
-
-```yaml
-# GitHub Actions example
-name: Deploy SERM API
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - name: Run migrations
-        run: python scripts/migrate.py
-      - name: Deploy to production
-        run: ./deploy.sh
-```
-
-### 🏗️ **Infrastructure Requirements**
-
-- **Python 3.11+** runtime
-- **PostgreSQL 15+** with RLS support
-- **Redis** (optional, for caching)
-- **Load balancer** for high availability
-- **SSL/TLS** certificate for HTTPS
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### 🛠️ **Development Setup**
-
-1. **Fork the repository**
-2. **Create feature branch** (`git checkout -b feature/amazing-feature`)
-3. **Install dev dependencies** (`pip install -r requirements-dev.txt`)
-4. **Run pre-commit hooks** (`pre-commit install`)
-5. **Write tests** for new features
-6. **Submit pull request**
-
-### 📏 **Code Standards**
-
-- **Black** for code formatting
-- **isort** for import sorting
-- **mypy** for type checking
-- **pytest** for testing
-- **pre-commit** hooks for quality assurance
-
----
-
-## 📚 Documentation
-
-- **[Architecture Guide](ARCHITECTURE.md)** - Detailed system architecture
-- **[Multi-tenancy Setup](MULTITENANCY_GUIDE.md)** - Complete RLS configuration
-- **[API Documentation](https://api.serm.com/docs)** - Interactive Swagger UI
-- **[Migration Guide](migrations/README.md)** - Database setup instructions
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🏆 Acknowledgments
-
-- **FastAPI** - Modern, fast web framework for building APIs
-- **SQLAlchemy** - Powerful ORM for database operations
-- **Pydantic** - Data validation using Python type annotations
-- **OpenAI** - GPT integration for AI-powered responses
-- **Supabase** - Backend-as-a-Service with excellent auth support
-
----
-
-<div align="center">
-
-### 🌟 Star this repository if it helped you! 
-
-**Built with ❤️ for enterprise reputation management**
-
-[⬆ Back to Top](#️-serm-api---service--economy-reputation-management)
-
-</div>
+Maxim Nesterov — Backend & System Integration (https://t.me/melavenn) ❤️

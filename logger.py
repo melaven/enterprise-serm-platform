@@ -11,17 +11,20 @@
 """
 
 import logging
+import os
 import sys
-import uuid
 from collections.abc import Iterable
-from contextvars import ContextVar, Token
 
 import structlog
 from structlog.types import EventDict, Processor, WrappedLogger
 
-CORRELATION_ID_KEY = "correlation_id"
-
-_correlation_id: ContextVar[str | None] = ContextVar("correlation_id", default=None)
+from app.core.correlation import (  # noqa: F401  (реэкспорт: единая точка импорта)
+    CORRELATION_ID_KEY,
+    get_correlation_id,
+    new_correlation_id,
+    reset_correlation_id,
+    set_correlation_id,
+)
 
 # Логгеры сторонних библиотек со своими обработчиками: забираем их в общий формат.
 _CAPTURED_LOGGERS: tuple[str, ...] = (
@@ -33,33 +36,13 @@ _CAPTURED_LOGGERS: tuple[str, ...] = (
 
 
 # --------------------------------------------------------------------------- #
-# Доступ к contextvar
-# --------------------------------------------------------------------------- #
-def new_correlation_id() -> str:
-    return str(uuid.uuid4())
-
-
-def get_correlation_id() -> str | None:
-    return _correlation_id.get()
-
-
-def set_correlation_id(value: str) -> Token[str | None]:
-    """Возвращает token: по окончании работы вызови reset_correlation_id(token)."""
-    return _correlation_id.set(value)
-
-
-def reset_correlation_id(token: Token[str | None]) -> None:
-    _correlation_id.reset(token)
-
-
-# --------------------------------------------------------------------------- #
 # Процессор structlog
 # --------------------------------------------------------------------------- #
 def add_correlation_id(
     logger: WrappedLogger, method_name: str, event_dict: EventDict
 ) -> EventDict:
     """Добавляет correlation_id из контекста; явно переданное значение не затирает."""
-    correlation_id = _correlation_id.get()
+    correlation_id = get_correlation_id()
     if correlation_id is not None:
         event_dict.setdefault(CORRELATION_ID_KEY, correlation_id)
     return event_dict
@@ -99,7 +82,9 @@ def configure_logging(
     )
 
     renderer: Processor = (
-        structlog.processors.JSONRenderer()
+        structlog.processors.JSONRenderer(
+            ensure_ascii=False
+        )  # русский текст читаем в docker logs
         if json_logs
         else structlog.dev.ConsoleRenderer()
     )
@@ -132,3 +117,11 @@ def _passthrough(
     logger: WrappedLogger, method_name: str, event_dict: EventDict
 ) -> EventDict:
     return event_dict
+
+
+def configure_logging_from_env() -> None:
+    """LOG_LEVEL (INFO) и LOG_FORMAT (json | console) из окружения. Для api и воркера."""
+    configure_logging(
+        level=os.getenv("LOG_LEVEL", "INFO"),
+        json_logs=os.getenv("LOG_FORMAT", "json").lower() != "console",
+    )

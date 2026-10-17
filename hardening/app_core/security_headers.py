@@ -3,13 +3,16 @@
 Подключать ВНУТРИ CORSMiddleware, но снаружи роутеров:
     app.add_middleware(SecurityMiddleware, hsts=settings.is_prod)
 """
+
 from __future__ import annotations
 
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 # API отдаёт только JSON: запрещаем всё. SPA-CSP живёт в nginx (см. nginx/tenable.conf).
-API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+API_CSP = (
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+)
 
 _STATIC: dict[str, str] = {
     "X-Content-Type-Options": "nosniff",

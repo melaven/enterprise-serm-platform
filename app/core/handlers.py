@@ -4,14 +4,15 @@
 
 import logging
 from asyncio import TimeoutError
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from fastapi import HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
-from .exceptions import SERMException, DatabaseTimeoutError, DatabaseError
+from .exceptions import SERMException
 from .logger import get_correlation_id
 from .middleware import CORRELATION_ID_HEADER
 
@@ -61,7 +62,8 @@ async def serm_exception_handler(request: Request, exc: SERMException) -> JSONRe
         message=exc.message,
         error_type=type(exc).__name__,
         details=exc.details,
-        request_id=getattr(request.state, "correlation_id", None) or get_correlation_id(),
+        request_id=getattr(request.state, "correlation_id", None)
+        or get_correlation_id(),
     )
 
 
@@ -84,12 +86,15 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         message=message,
         error_type="HTTPException",
         details={"original_detail": exc.detail} if exc.detail != message else None,
-        request_id=getattr(request.state, "correlation_id", None) or get_correlation_id(),
+        request_id=getattr(request.state, "correlation_id", None)
+        or get_correlation_id(),
         headers=exc.headers,
     )
 
 
-async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
     """Обработчик ошибок валидации Pydantic."""
     logger.warning("Validation Error: %s", exc.errors())
 
@@ -110,11 +115,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         message="Ошибка валидации входных данных",
         error_type="ValidationError",
         details={"validation_errors": validation_errors},
-        request_id=getattr(request.state, "correlation_id", None) or get_correlation_id(),
+        request_id=getattr(request.state, "correlation_id", None)
+        or get_correlation_id(),
     )
 
 
-async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
+async def sqlalchemy_exception_handler(
+    request: Request, exc: SQLAlchemyError
+) -> JSONResponse:
     """Обработчик ошибок SQLAlchemy/Базы данных."""
     logger.error("Database Error: %s", str(exc), exc_info=True)
 
@@ -131,18 +139,28 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError) -
         error_type = "DatabaseError"
         status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
-    details = {"error_code": getattr(exc, "orig", {}).get("pgcode")} if hasattr(exc, "orig") else None
+    details = None
+    if hasattr(exc, "orig") and exc.orig is not None:
+        orig = exc.orig
+        # exc.orig может быть dict или Exception object
+        if isinstance(orig, dict):
+            details = {"error_code": orig.get("pgcode")}
+        elif hasattr(orig, "pgcode"):
+            details = {"error_code": getattr(orig, "pgcode", None)}
 
     return create_error_response(
         status_code=status_code,
         message=message,
         error_type=error_type,
         details=details,
-        request_id=getattr(request.state, "correlation_id", None) or get_correlation_id(),
+        request_id=getattr(request.state, "correlation_id", None)
+        or get_correlation_id(),
     )
 
 
-async def timeout_exception_handler(request: Request, exc: TimeoutError) -> JSONResponse:
+async def timeout_exception_handler(
+    request: Request, exc: TimeoutError
+) -> JSONResponse:
     """Обработчик таймаутов."""
     logger.error("Timeout Error: %s", str(exc), exc_info=True)
 
@@ -150,7 +168,8 @@ async def timeout_exception_handler(request: Request, exc: TimeoutError) -> JSON
         status_code=status.HTTP_504_GATEWAY_TIMEOUT,
         message="Превышено время ожидания операции",
         error_type="TimeoutError",
-        request_id=getattr(request.state, "correlation_id", None) or get_correlation_id(),
+        request_id=getattr(request.state, "correlation_id", None)
+        or get_correlation_id(),
     )
 
 
@@ -163,5 +182,6 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         message="Внутренняя ошибка сервера",
         error_type="InternalServerError",
         details={"exception_type": type(exc).__name__},
-        request_id=getattr(request.state, "correlation_id", None) or get_correlation_id(),
+        request_id=getattr(request.state, "correlation_id", None)
+        or get_correlation_id(),
     )

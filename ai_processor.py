@@ -18,8 +18,7 @@ import random
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Final
+from typing import Any
 
 import httpx
 import structlog
@@ -68,7 +67,9 @@ class AIProcessorConfig:
     base_url: str = "https://api.openai.com/v1"
     business_name: str = "our company"
     temperature: float = 0.2
-    token_limit_param: str = "max_completion_tokens"  # "max_tokens" для части совместимых API
+    token_limit_param: str = (
+        "max_completion_tokens"  # "max_tokens" для части совместимых API
+    )
     max_output_tokens: int = 4096
 
     batch_size: int = 10
@@ -167,7 +168,9 @@ def compute_backoff(
     return delay
 
 
-def make_batches(items: Sequence[_Item], *, max_items: int, max_chars: int) -> list[list[_Item]]:
+def make_batches(
+    items: Sequence[_Item], *, max_items: int, max_chars: int
+) -> list[list[_Item]]:
     """Жадная упаковка: пачка закрывается по числу отзывов или бюджету символов."""
     batches: list[list[_Item]] = []
     current: list[_Item] = []
@@ -227,7 +230,9 @@ class ReviewAIProcessor:
         for idx, review in enumerate(reviews):
             text = review.text.strip()
             if not text:  # рейтинг без текста: размечать нечего и ретраить незачем
-                out[idx] = EnrichedReview(review, None, (), None, False, False, "empty_text")
+                out[idx] = EnrichedReview(
+                    review, None, (), None, False, False, "empty_text"
+                )
             else:
                 items.append(_Item(idx, review, text[: self._cfg.max_review_chars]))
 
@@ -238,7 +243,12 @@ class ReviewAIProcessor:
         batches = make_batches(
             items, max_items=self._cfg.batch_size, max_chars=self._cfg.max_batch_chars
         )
-        log.info("ai.started", reviews=len(reviews), to_analyze=len(items), batches=len(batches))
+        log.info(
+            "ai.started",
+            reviews=len(reviews),
+            to_analyze=len(items),
+            batches=len(batches),
+        )
 
         resolved: dict[int, ReviewInsight] = {}
         async with asyncio.TaskGroup() as tg:
@@ -250,7 +260,13 @@ class ReviewAIProcessor:
             insight = resolved.get(item.idx)
             if insight is None:
                 out[item.idx] = EnrichedReview(
-                    item.review, None, (), None, False, True, run.errors.get(item.idx, "unresolved")
+                    item.review,
+                    None,
+                    (),
+                    None,
+                    False,
+                    True,
+                    run.errors.get(item.idx, "unresolved"),
                 )
             else:
                 out[item.idx] = EnrichedReview(
@@ -280,7 +296,9 @@ class ReviewAIProcessor:
 
     # ── разбор пачек ──
 
-    async def _safe_resolve(self, items: list[_Item], run: _Run) -> dict[int, ReviewInsight]:
+    async def _safe_resolve(
+        self, items: list[_Item], run: _Run
+    ) -> dict[int, ReviewInsight]:
         """Последний рубеж: исключение из одной пачки не должно уронить воркер."""
         try:
             return await self._resolve(items, run, pass_no=0)
@@ -305,11 +323,17 @@ class ReviewAIProcessor:
             insights = await self._call(items, run)
         except LLMOutputError as exc:
             reason = f"invalid_output:{exc}"[:120]
-            log.warning("ai.invalid_output", size=len(items), pass_no=pass_no, error=str(exc))
+            log.warning(
+                "ai.invalid_output", size=len(items), pass_no=pass_no, error=str(exc)
+            )
             for item in items:
                 run.errors[item.idx] = reason
         except (LLMUnavailableError, LLMFatalError) as exc:
-            code = "llm_unavailable" if isinstance(exc, LLMUnavailableError) else "llm_fatal"
+            code = (
+                "llm_unavailable"
+                if isinstance(exc, LLMUnavailableError)
+                else "llm_fatal"
+            )
             for item in items:
                 run.errors[item.idx] = code
             return {}  # бисекция не поможет: проблема в провайдере, а не в данных
@@ -378,7 +402,11 @@ class ReviewAIProcessor:
             ],
             "response_format": {
                 "type": "json_schema",
-                "json_schema": {"name": "review_batch_analysis", "strict": True, "schema": self._schema},
+                "json_schema": {
+                    "name": "review_batch_analysis",
+                    "strict": True,
+                    "schema": self._schema,
+                },
             },
         }
         started = time.perf_counter()
@@ -403,13 +431,21 @@ class ReviewAIProcessor:
         if code == 429:
             if _error_code(response) == "insufficient_quota":
                 raise LLMFatalError("insufficient_quota")
-            raise LLMRetryableError("rate limited (429)", retry_after_s=_retry_after(response))
+            raise LLMRetryableError(
+                "rate limited (429)", retry_after_s=_retry_after(response)
+            )
         if code in (408, 409) or code >= 500:
-            raise LLMRetryableError(f"provider {code}", retry_after_s=_retry_after(response))
+            raise LLMRetryableError(
+                f"provider {code}", retry_after_s=_retry_after(response)
+            )
         if code == 400:
-            raise LLMOutputError("bad request (400)")  # напр. content filter: бисекция изолирует
+            raise LLMOutputError(
+                "bad request (400)"
+            )  # напр. content filter: бисекция изолирует
         if code != 200:
-            raise LLMFatalError(f"provider {code}")  # 401/403/404/422: конфиг/ключ/модель
+            raise LLMFatalError(
+                f"provider {code}"
+            )  # 401/403/404/422: конфиг/ключ/модель
 
         try:
             payload = response.json()
@@ -465,7 +501,9 @@ class ReviewAIProcessor:
     # ── промпты ──
 
     def _user_payload(self, items: list[_Item]) -> str:
-        reviews = [{"id": i.key, "rating": i.review.rating, "text": i.text} for i in items]
+        reviews = [
+            {"id": i.key, "rating": i.review.rating, "text": i.text} for i in items
+        ]
         return json.dumps({"reviews": reviews}, ensure_ascii=False)
 
     def _build_system_prompt(self) -> str:

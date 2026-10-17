@@ -21,8 +21,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.worker_db import tenant_transaction
-from app.schemas.parser import Platform
 from app.repositories.pending_types import ClaimedReview, Failure, Success
+from app.schemas.parser import Platform
 from app.services.scraping import RawReview
 
 log = structlog.get_logger(__name__)
@@ -144,13 +144,20 @@ class SqlPendingReviewStore:
             )
             return [row[0] for row in result]
 
-    async def claim(self, tenant_id: UUID, *, limit: int, token: UUID) -> list[ClaimedReview]:
+    async def claim(
+        self, tenant_id: UUID, *, limit: int, token: UUID
+    ) -> list[ClaimedReview]:
         async with tenant_transaction(self._factory, tenant_id) as session:
             exhausted = await session.execute(
-                _GIVE_UP_EXHAUSTED, {"tenant": str(tenant_id), "max_attempts": self._max_attempts}
+                _GIVE_UP_EXHAUSTED,
+                {"tenant": str(tenant_id), "max_attempts": self._max_attempts},
             )
             if exhausted.rowcount:
-                log.warning("ai_retry.gave_up_exhausted", tenant_id=str(tenant_id), rows=exhausted.rowcount)
+                log.warning(
+                    "ai_retry.gave_up_exhausted",
+                    tenant_id=str(tenant_id),
+                    rows=exhausted.rowcount,
+                )
             result = await session.execute(
                 _CLAIM,
                 {
@@ -162,7 +169,11 @@ class SqlPendingReviewStore:
                 },
             )
             return [
-                ClaimedReview(id=row._mapping["id"], attempts=row._mapping["ai_attempts"], review=_to_raw_review(row))
+                ClaimedReview(
+                    id=row._mapping["id"],
+                    attempts=row._mapping["ai_attempts"],
+                    review=_to_raw_review(row),
+                )
                 for row in result
             ]
 
@@ -179,7 +190,9 @@ class SqlPendingReviewStore:
                 payload = [
                     {
                         "id": str(s.review_id),
-                        "sentiment": s.enriched.sentiment.value if s.enriched.sentiment else None,
+                        "sentiment": s.enriched.sentiment.value
+                        if s.enriched.sentiment
+                        else None,
                         "tags": list(s.enriched.tags),
                         "is_critical": s.enriched.is_critical,
                         "reply": s.enriched.reply,
@@ -188,7 +201,11 @@ class SqlPendingReviewStore:
                 ]
                 res = await session.execute(
                     _SAVE_SUCCESS,
-                    {"payload": json.dumps(payload), "tenant": str(tenant_id), "token": str(token)},
+                    {
+                        "payload": json.dumps(payload),
+                        "tenant": str(tenant_id),
+                        "token": str(token),
+                    },
                 )
                 updated += res.rowcount
             if failures:
@@ -204,7 +221,11 @@ class SqlPendingReviewStore:
                 ]
                 res = await session.execute(
                     _SAVE_FAILURE,
-                    {"payload": json.dumps(payload_f), "tenant": str(tenant_id), "token": str(token)},
+                    {
+                        "payload": json.dumps(payload_f),
+                        "tenant": str(tenant_id),
+                        "token": str(token),
+                    },
                 )
                 updated += res.rowcount
         return updated

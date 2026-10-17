@@ -5,37 +5,55 @@
 
 import logging
 import os
+from asyncio import TimeoutError
 from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.exceptions import RequestValidationError, HTTPException
+from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from redis.exceptions import RedisError
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from asyncio import TimeoutError
 
+from .core.database import engine, get_db
+from .core.dependencies import (
+    cleanup_dependencies,
+    get_app_config,
+    log_dependency_graph,
+)
+from .core.exceptions import SERMException
+from .core.handlers import (
+    general_exception_handler,
+    http_exception_handler,
+    serm_exception_handler,
+    sqlalchemy_exception_handler,
+    timeout_exception_handler,
+    validation_exception_handler,
+)
 from .core.logger import configure_logging, get_logger
 from .core.middleware import (
     CORRELATION_ID_HEADER,
-    CorrelationIdMiddleware, 
-    RequestLoggingMiddleware, 
-    PerformanceMiddleware
+    CorrelationIdMiddleware,
+    PerformanceMiddleware,
+    RequestLoggingMiddleware,
 )
 from .core.rate_limit import add_rate_limit_headers
-from .core.handlers import (
-    serm_exception_handler,
-    http_exception_handler, 
-    validation_exception_handler,
-    sqlalchemy_exception_handler,
-    timeout_exception_handler,
-    general_exception_handler
+from .routers import (
+    analytics,
+    auth,
+    billing,
+    companies,
+    economics,
+    parser,
+    platforms,
+    quotas,
+    reputation,
+    reviews,
+    stripe_webhook,
 )
-from .core.exceptions import SERMException
-from .routers import economics, quotas
-from .core.database import engine, get_db
-from .core.dependencies import cleanup_dependencies, log_dependency_graph, get_app_config
 from .services.worker.worker import create_arq_pool
 
 # Определяем переменные окружения
@@ -49,21 +67,22 @@ logger = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Управление жизненным циклом приложения с поддержкой ARQ"""
-    
+
     # Настройка enterprise-логирования при запуске
     configure_logging(
         level=logging.DEBUG if debug_mode else logging.INFO,
         json_format=not debug_mode,  # JSON для продакшна, консоль для разработки
         include_caller_info=debug_mode,
-        service_name="serm-api"
+        service_name="serm-api",
     )
-    
+
     global logger
     logger = get_logger(__name__)
-    
-    logger.info("🚀 SERM API запускается...", 
-               service="serm-api", environment=environment)
-    
+
+    logger.info(
+        "🚀 SERM API запускается...", service="serm-api", environment=environment
+    )
+
     # Проверяем конфигурацию
     config = get_app_config()
     if not config.is_valid():
@@ -71,52 +90,67 @@ async def lifespan(app: FastAPI):
         for error in config.validate():
             logger.error("Configuration error", error=error)
         raise RuntimeError("Invalid application configuration")
-    
+
     # Логируем граф зависимостей в debug режиме
     if config.debug_mode:
         log_dependency_graph()
-    
+
     # Инициализация при старте
     arq_pool = None
     try:
-        # Проверка подключения к БД
-        logger.info("✅ Подключение к базе данных установлено",
-                   database="postgresql", connection="successful")
-        
+        try:
+            async with engine.connect() as connection:
+                await connection.execute(text("SELECT 1"))
+        except Exception as exc:
+            logger.error(
+                "PostgreSQL connection failed",
+                database_driver=engine.url.drivername,
+                error_type=type(exc).__name__,
+            )
+            raise RuntimeError(
+                "Could not connect to the configured PostgreSQL database."
+            ) from exc
+
+        logger.info(
+            "✅ Подключение к PostgreSQL установлено",
+            database_driver=engine.url.drivername,
+            connection="successful",
+        )
+
         # Инициализация ARQ pool для отправки задач
         try:
             arq_pool = await create_arq_pool()
             app.state.arq_pool = arq_pool
-            logger.info("✅ ARQ Redis pool инициализирован", 
-                       component="arq", status="ready")
+            logger.info(
+                "✅ ARQ Redis pool инициализирован", component="arq", status="ready"
+            )
         except Exception as e:
-            logger.warning("⚠️ ARQ pool недоступен", 
-                          component="arq", error=str(e))
+            logger.warning("⚠️ ARQ pool недоступен", component="arq", error=str(e))
             logger.warning("Фоновые задачи будут недоступны")
             app.state.arq_pool = None
-        
-        logger.info("✅ Сервисы инициализированы", 
-                   status="startup_complete")
+
+        logger.info("✅ Сервисы инициализированы", status="startup_complete")
         yield
-        
+
     except Exception as e:
-        logger.error("❌ Ошибка инициализации", 
-                    error=str(e), error_type=type(e).__name__)
+        logger.error(
+            "❌ Ошибка инициализации", error=str(e), error_type=type(e).__name__
+        )
         raise
     finally:
         # Очистка при остановке
-        logger.info("🛑 SERM API завершает работу...", 
-                   status="shutdown_initiated")
-        
+        logger.info("🛑 SERM API завершает работу...", status="shutdown_initiated")
+
         # Закрываем ARQ pool
         if arq_pool:
             try:
                 await arq_pool.close()
                 logger.info("✅ ARQ pool закрыт", component="arq")
             except Exception as e:
-                logger.error("❌ Ошибка закрытия ARQ pool", 
-                           component="arq", error=str(e))
-        
+                logger.error(
+                    "❌ Ошибка закрытия ARQ pool", component="arq", error=str(e)
+                )
+
         await cleanup_dependencies()
         logger.info("✅ Ресурсы очищены", status="shutdown_complete")
 
@@ -137,16 +171,14 @@ app = FastAPI(
 
 # 1. Correlation ID Middleware (должен быть первым)
 app.add_middleware(
-    CorrelationIdMiddleware,
-    header_name=CORRELATION_ID_HEADER,
-    generate_if_missing=True
+    CorrelationIdMiddleware, header_name=CORRELATION_ID_HEADER, generate_if_missing=True
 )
 
 # 2. Performance Monitoring (после correlation ID)
 app.add_middleware(
     PerformanceMiddleware,
     slow_request_threshold=2.0,  # 2 секунды для SERM API
-    log_slow_requests=True
+    log_slow_requests=True,
 )
 
 # 3. Request Logging (в development режиме)
@@ -155,7 +187,7 @@ if debug_mode:
         RequestLoggingMiddleware,
         log_request_body=True,
         log_response_body=False,  # Может быть большим для аналитики
-        log_headers=True
+        log_headers=True,
     )
 
 # 3.5. Rate Limit Headers (автоматическое добавление X-RateLimit-* заголовков)
@@ -188,38 +220,16 @@ app.add_exception_handler(Exception, general_exception_handler)
 
 
 # Подключение роутеров
-app.include_router(
-    economics.router,
-    prefix="/api/v1/economics",
-    tags=["Economics"]
-)
-
-# Подключаем роутеры для управления данными
-from .routers import reviews, companies, platforms, parser, analytics, auth, reputation
+app.include_router(economics.router, prefix="/api/v1/economics", tags=["Economics"])
 
 # Auth router (должен быть первым для документации)
-app.include_router(
-    auth.router,
-    tags=["Authentication"]
-)
+app.include_router(auth.router, tags=["Authentication"])
 
-app.include_router(
-    reviews.router,
-    prefix="/api/v1/reviews",
-    tags=["Reviews"]
-)
+app.include_router(reviews.router, prefix="/api/v1/reviews", tags=["Reviews"])
 
-app.include_router(
-    companies.router,
-    prefix="/api/v1/companies",
-    tags=["Companies"]
-)
+app.include_router(companies.router, prefix="/api/v1/companies", tags=["Companies"])
 
-app.include_router(
-    platforms.router,
-    prefix="/api/v1/platforms", 
-    tags=["Platforms"]
-)
+app.include_router(platforms.router, prefix="/api/v1/platforms", tags=["Platforms"])
 
 # Подключаем parser router с LLM-аналитикой
 app.include_router(parser.router)
@@ -231,14 +241,17 @@ app.include_router(reputation.router)
 # Подключаем quotas router для биллинга
 app.include_router(quotas.router, tags=["Quotas & Billing"])
 
+# Подключаем billing router для Stripe интеграции
+app.include_router(billing.router, prefix="/api/v1", tags=["Billing & Stripe"])
+
+# Подключаем stripe webhook router
+app.include_router(stripe_webhook.router, prefix="/api/v1", tags=["Stripe Webhooks"])
+
 # Системные роутеры (только для разработки и тестирования)
 if __debug__:
     from .routers import system
-    app.include_router(
-        system.router,
-        prefix="/api/v1/system",
-        tags=["System"]
-    )
+
+    app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
 
 
 # Healthcheck endpoint
@@ -246,13 +259,13 @@ if __debug__:
 async def health_check(db: AsyncSession = Depends(get_db)):
     """Проверка состояния системы"""
     from .core.dependencies import get_health_checker
-    
+
     health_checker = await get_health_checker()
     health_results = await health_checker.run_all_checks(db)
-    
+
     all_healthy = all(health_results.values())
     status_code = 200 if all_healthy else 503
-    
+
     return JSONResponse(
         status_code=status_code,
         content={
@@ -260,8 +273,33 @@ async def health_check(db: AsyncSession = Depends(get_db)):
             "service": "SERM API",
             "version": "1.0.0",
             "checks": health_results,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+            "timestamp": datetime.utcnow().isoformat(),
+        },
+    )
+
+
+@app.get("/health/redis", tags=["System"])
+async def redis_health_check(request: Request) -> JSONResponse:
+    """Проверяет доступность Redis через тот же ARQ pool, что использует API."""
+    arq_pool = getattr(request.app.state, "arq_pool", None)
+    if arq_pool is None:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "check": "redis"},
+        )
+
+    try:
+        await arq_pool.ping()
+    except RedisError:
+        logging.getLogger(__name__).warning("Redis health check failed")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "check": "redis"},
+        )
+
+    return JSONResponse(
+        status_code=200,
+        content={"status": "healthy", "check": "redis"},
     )
 
 
@@ -273,16 +311,13 @@ async def root():
         "message": "SERM API - Service & Economy Reputation Management",
         "version": "1.0.0",
         "docs": "/docs",
-        "health": "/health"
+        "health": "/health",
     }
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
+        "app.main:app", host="0.0.0.0", port=8000, reload=True, log_level="info"
     )

@@ -7,12 +7,12 @@ import pytest
 
 from app.schemas.parser import Platform
 from app.services.scraping import (
+    DEFAULT_PROFILES,
     HttpxReviewScraper,
     PermanentScrapeError,
     RetryableScrapeError,
     ScraperConfig,
     build_headers,
-    DEFAULT_PROFILES,
     parse_retry_after,
     parse_trustpilot_page,
 )
@@ -37,7 +37,9 @@ def page_html(ids: list[str], *, current: int = 1, total: int = 1) -> str:
         "props": {
             "pageProps": {
                 "reviews": reviews,
-                "filters": {"pagination": {"currentPage": current, "totalPages": total}},
+                "filters": {
+                    "pagination": {"currentPage": current, "totalPages": total}
+                },
             }
         }
     }
@@ -103,12 +105,20 @@ def test_429_is_retryable_with_retry_after():
 
 def test_403_is_permanent():
     with pytest.raises(PermanentScrapeError, match="403"):
-        run(scraper(lambda r: httpx.Response(403)).fetch(Platform.TRUSTPILOT, URL, limit=10))
+        run(
+            scraper(lambda r: httpx.Response(403)).fetch(
+                Platform.TRUSTPILOT, URL, limit=10
+            )
+        )
 
 
 def test_503_is_retryable():
     with pytest.raises(RetryableScrapeError):
-        run(scraper(lambda r: httpx.Response(503)).fetch(Platform.TRUSTPILOT, URL, limit=10))
+        run(
+            scraper(lambda r: httpx.Response(503)).fetch(
+                Platform.TRUSTPILOT, URL, limit=10
+            )
+        )
 
 
 def test_network_error_is_retryable():
@@ -121,7 +131,9 @@ def test_network_error_is_retryable():
 
 def test_redirect_off_domain_blocked():
     def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(302, headers={"Location": "http://169.254.169.254/latest"})
+        return httpx.Response(
+            302, headers={"Location": "http://169.254.169.254/latest"}
+        )
 
     with pytest.raises(PermanentScrapeError, match="leaves platform"):
         run(scraper(handler).fetch(Platform.TRUSTPILOT, URL, limit=10))
@@ -152,12 +164,20 @@ def test_ssrf_host_rejected_before_request():
         raise AssertionError("must not be requested")
 
     with pytest.raises(PermanentScrapeError):
-        run(scraper(handler).fetch(Platform.TRUSTPILOT, "https://evil.example/x", limit=1))
+        run(
+            scraper(handler).fetch(
+                Platform.TRUSTPILOT, "https://evil.example/x", limit=1
+            )
+        )
 
 
 def test_unsupported_platform():
     with pytest.raises(PermanentScrapeError, match="not supported"):
-        run(scraper(lambda r: httpx.Response(200)).fetch(Platform.YANDEX, "https://yandex.ru/maps/org/1", limit=1))
+        run(
+            scraper(lambda r: httpx.Response(200)).fetch(
+                Platform.YANDEX, "https://yandex.ru/maps/org/1", limit=1
+            )
+        )
 
 
 def test_session_uses_one_consistent_profile_and_cookies():

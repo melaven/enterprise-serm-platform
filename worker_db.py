@@ -43,7 +43,9 @@ async def assert_rls_applies(engine: AsyncEngine) -> None:
             )
         ).one_or_none()
     if row is None or row[1] or row[2]:
-        raise RuntimeError("Worker DB role bypasses RLS: use app_tenant in DATABASE_URL")
+        raise RuntimeError(
+            "Worker DB role bypasses RLS: use app_tenant in DATABASE_URL"
+        )
 
 
 @asynccontextmanager

@@ -46,7 +46,7 @@ def to_utc(value: Any) -> datetime:
         raise ValueError("published_at must not be a bool")
     if isinstance(value, datetime):
         parsed = value
-    elif isinstance(value, (int, float)):
+    elif isinstance(value, int | float):
         parsed = _from_epoch(float(value))
     elif isinstance(value, str):
         raw = value.strip()
@@ -78,7 +78,7 @@ class RawReviewSchema(BaseModel):
     @field_validator("external_id", mode="before")
     @classmethod
     def _external_id(cls, value: Any) -> Any:
-        if isinstance(value, (str, int)) and not isinstance(value, bool):
+        if isinstance(value, str | int) and not isinstance(value, bool):
             return str(value).strip()
         return value
 
@@ -111,7 +111,7 @@ class RawReviewSchema(BaseModel):
         """4, 4.0, "4", "4,5" -> int по правилу half-up (4.5 -> 5)."""
         if isinstance(value, bool):
             raise ValueError("rating must not be a bool")
-        if isinstance(value, (int, float, str)):
+        if isinstance(value, int | float | str):
             try:
                 number = Decimal(str(value).strip().replace(",", "."))
                 return int(number.quantize(Decimal(1), rounding=ROUND_HALF_UP))

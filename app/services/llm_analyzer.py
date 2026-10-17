@@ -171,6 +171,7 @@ def build_user_prompt(text: str, *, rating: int | None, platform: str | None) ->
 @dataclass(frozen=True, slots=True)
 class GenerationResult:
     """Результат генерации с метаданными использования токенов."""
+
     json_text: str
     tokens_used: int
 
@@ -217,15 +218,17 @@ class GeminiJSONClient:
             )
         except (genai_errors.APIError, asyncio.TimeoutError, OSError) as exc:
             raise LLMTransportError(f"Gemini request failed: {exc!r}") from exc
-        
+
         # Извлекаем usage_metadata для точного учета токенов
         tokens_used = 0
-        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+        if hasattr(response, "usage_metadata") and response.usage_metadata:
             # Google Gemini возвращает usage_metadata с total_token_count
-            tokens_used = getattr(response.usage_metadata, 'total_token_count', 0)
-        
-        json_text = response.text or ""  # пусто (напр. блок safety) -> провалит валидацию
-        
+            tokens_used = getattr(response.usage_metadata, "total_token_count", 0)
+
+        json_text = (
+            response.text or ""
+        )  # пусто (напр. блок safety) -> провалит валидацию
+
         return GenerationResult(json_text=json_text, tokens_used=tokens_used)
 
 
@@ -246,7 +249,7 @@ class LLMReviewAnalyzer:
         platform: str | None = None,
     ) -> tuple[ReviewAnalysisResult, int]:
         """Строго типизированный анализ. Бросает LLMAnalysisError (см. подклассы).
-        
+
         Returns:
             Tuple[ReviewAnalysisResult, int]: результат анализа и количество токенов
         """
@@ -272,9 +275,11 @@ class LLMReviewAnalyzer:
                 schema=ReviewAnalysisResult,
             )
             total_tokens += generation_result.tokens_used
-            
+
             try:
-                result = ReviewAnalysisResult.model_validate_json(generation_result.json_text)
+                result = ReviewAnalysisResult.model_validate_json(
+                    generation_result.json_text
+                )
             except ValidationError as exc:
                 last_error = exc
                 logger.warning(
@@ -326,7 +331,9 @@ class LLMReviewAnalyzer:
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
-            return AnalysisOutcome(fallback_result(rating), is_fallback=True, tokens_used=0)
+            return AnalysisOutcome(
+                fallback_result(rating), is_fallback=True, tokens_used=0
+            )
 
 
 def fallback_result(rating: int | None) -> ReviewAnalysisResult:

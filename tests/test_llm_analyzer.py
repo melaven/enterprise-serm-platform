@@ -3,7 +3,6 @@ import json
 from typing import Any
 
 import pytest
-import structlog
 from pydantic import BaseModel
 
 from app.services.llm_analyzer import (
@@ -126,8 +125,10 @@ def test_logs_have_no_review_text_or_entity_names() -> None:
     result, _ = run(
         LLMReviewAnalyzer(FakeClient(json.dumps(GOOD))).analyze("СЕКРЕТНЫЙ текст")
     )
-    
+
     # Проверяем что результат корректный (без утечки данных в самом результате)
     assert result.sentiment is Sentiment.NEGATIVE
-    assert "СЕКРЕТНЫЙ" not in result.suggested_reply  # Входной текст не должен попасть в ответ
+    assert (
+        "СЕКРЕТНЫЙ" not in result.suggested_reply
+    )  # Входной текст не должен попасть в ответ
     # Extracted entities могут содержать имена из тестовых данных - это нормально

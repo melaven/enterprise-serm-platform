@@ -2,6 +2,7 @@ import asyncio
 import uuid
 from typing import Any
 
+from arq_tracing_example import enqueue_traced, traced_task
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -10,7 +11,6 @@ from starlette.testclient import TestClient
 
 from app.core.logger import get_correlation_id
 from app.core.middleware import CORRELATION_ID_HEADER, CorrelationIdMiddleware
-from arq_tracing_example import enqueue_traced, traced_task
 
 
 async def whoami(request: Request) -> JSONResponse:

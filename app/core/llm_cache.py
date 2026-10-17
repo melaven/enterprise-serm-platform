@@ -14,19 +14,18 @@ Key Features:
 - Cache warming strategies
 """
 
-import logging
-from typing import Optional, Dict, Any, List
-from uuid import UUID
-from datetime import datetime, timedelta
 import hashlib
 import json
+import logging
+from datetime import datetime, timedelta
+from typing import Any
 
-from sqlalchemy import text, select, func
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 try:
     from openai import AsyncOpenAI
+
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -41,13 +40,13 @@ class LLMCacheEntry:
         self,
         text_hash: str,
         text: str,
-        embedding: List[float],
+        embedding: list[float],
         sentiment: str,
         sentiment_score: float,
-        tags: List[str],
-        suggested_response: Optional[str],
-        metadata: Dict[str, Any],
-        ttl_seconds: int = 86400  # 24 hours default
+        tags: list[str],
+        suggested_response: str | None,
+        metadata: dict[str, Any],
+        ttl_seconds: int = 86400,  # 24 hours default
     ):
         self.text_hash = text_hash
         self.text = text
@@ -83,9 +82,9 @@ class LLMCache:
 
     def __init__(
         self,
-        openai_api_key: Optional[str] = None,
+        openai_api_key: str | None = None,
         enable_memory_cache: bool = True,
-        enable_pgvector_cache: bool = True
+        enable_pgvector_cache: bool = True,
     ):
         """
         Initialize LLM Cache
@@ -100,21 +99,23 @@ class LLMCache:
         self.enable_pgvector_cache = enable_pgvector_cache
 
         # Memory cache (LRU)
-        self._memory_cache: Dict[str, LLMCacheEntry] = {}
-        self._memory_cache_order: List[str] = []
+        self._memory_cache: dict[str, LLMCacheEntry] = {}
+        self._memory_cache_order: list[str] = []
 
         # OpenAI client
         if OPENAI_AVAILABLE and openai_api_key:
             self.openai_client = AsyncOpenAI(api_key=openai_api_key)
         else:
             self.openai_client = None
-            logger.warning("OpenAI client not available, cache will use stored embeddings only")
+            logger.warning(
+                "OpenAI client not available, cache will use stored embeddings only"
+            )
 
         logger.info(
             "LLM Cache initialized",
             memory_cache=enable_memory_cache,
             pgvector_cache=enable_pgvector_cache,
-            similarity_threshold=self.SIMILARITY_THRESHOLD
+            similarity_threshold=self.SIMILARITY_THRESHOLD,
         )
 
     def _generate_text_hash(self, text: str) -> str:
@@ -123,9 +124,9 @@ class LLMCache:
 
         Fast path for exact duplicates before expensive vector search
         """
-        return hashlib.sha256(text.encode('utf-8')).hexdigest()
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-    async def _generate_embedding(self, text: str) -> Optional[List[float]]:
+    async def _generate_embedding(self, text: str) -> list[float] | None:
         """
         Generate text embedding using OpenAI API
 
@@ -141,16 +142,14 @@ class LLMCache:
 
         try:
             response = await self.openai_client.embeddings.create(
-                model=self.EMBEDDING_MODEL,
-                input=text,
-                encoding_format="float"
+                model=self.EMBEDDING_MODEL, input=text, encoding_format="float"
             )
             return response.data[0].embedding
         except Exception as e:
             logger.error(f"Failed to generate embedding: {e}")
             return None
 
-    def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
+    def _cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
         """
         Calculate cosine similarity between two vectors
 
@@ -158,7 +157,7 @@ class LLMCache:
         """
         import math
 
-        dot_product = sum(a * b for a, b in zip(vec1, vec2))
+        dot_product = sum(a * b for a, b in zip(vec1, vec2, strict=False))
         magnitude1 = math.sqrt(sum(a * a for a in vec1))
         magnitude2 = math.sqrt(sum(b * b for b in vec2))
 
@@ -185,7 +184,7 @@ class LLMCache:
         self._memory_cache[text_hash] = entry
         self._memory_cache_order.append(text_hash)
 
-    def _get_from_memory_cache(self, text_hash: str) -> Optional[LLMCacheEntry]:
+    def _get_from_memory_cache(self, text_hash: str) -> LLMCacheEntry | None:
         """
         Get entry from memory cache with LRU update
         """
@@ -202,11 +201,8 @@ class LLMCache:
         return None
 
     async def _search_pgvector(
-        self,
-        session: AsyncSession,
-        embedding: List[float],
-        limit: int = 5
-    ) -> List[Dict[str, Any]]:
+        self, session: AsyncSession, embedding: list[float], limit: int = 5
+    ) -> list[dict[str, Any]]:
         """
         Search pgvector for similar embeddings
 
@@ -248,8 +244,8 @@ class LLMCache:
                 {
                     "embedding": str(embedding),
                     "threshold": self.SIMILARITY_THRESHOLD,
-                    "limit": limit
-                }
+                    "limit": limit,
+                },
             )
 
             rows = result.fetchall()
@@ -262,7 +258,7 @@ class LLMCache:
                     "tags": row.tags,
                     "suggested_response": row.suggested_response,
                     "metadata": json.loads(row.metadata) if row.metadata else {},
-                    "similarity": row.similarity
+                    "similarity": row.similarity,
                 }
                 for row in rows
             ]
@@ -272,9 +268,7 @@ class LLMCache:
             return []
 
     async def _store_pgvector(
-        self,
-        session: AsyncSession,
-        entry: LLMCacheEntry
+        self, session: AsyncSession, entry: LLMCacheEntry
     ) -> bool:
         """
         Store cache entry in pgvector
@@ -336,8 +330,8 @@ class LLMCache:
                     "suggested_response": entry.suggested_response,
                     "metadata": json.dumps(entry.metadata),
                     "created_at": entry.created_at,
-                    "expires_at": entry.expires_at
-                }
+                    "expires_at": entry.expires_at,
+                },
             )
 
             await session.commit()
@@ -350,11 +344,8 @@ class LLMCache:
             return False
 
     async def get(
-        self,
-        session: AsyncSession,
-        text: str,
-        generate_embedding: bool = True
-    ) -> Optional[Dict[str, Any]]:
+        self, session: AsyncSession, text: str, generate_embedding: bool = True
+    ) -> dict[str, Any] | None:
         """
         Get cached LLM response for text
 
@@ -383,7 +374,7 @@ class LLMCache:
                 "suggested_response": memory_entry.suggested_response,
                 "metadata": memory_entry.metadata,
                 "source": "memory_cache",
-                "similarity": 1.0
+                "similarity": 1.0,
             }
 
         # Level 2: pgvector semantic search
@@ -396,7 +387,7 @@ class LLMCache:
                     best_match = similar_entries[0]
                     logger.info(
                         f"Cache hit (pgvector): {text_hash}",
-                        similarity=best_match["similarity"]
+                        similarity=best_match["similarity"],
                     )
 
                     # Store in memory cache for faster future access
@@ -410,8 +401,8 @@ class LLMCache:
                             sentiment_score=best_match["sentiment_score"],
                             tags=best_match["tags"],
                             suggested_response=best_match["suggested_response"],
-                            metadata=best_match["metadata"]
-                        )
+                            metadata=best_match["metadata"],
+                        ),
                     )
 
                     return {
@@ -421,7 +412,7 @@ class LLMCache:
                         "suggested_response": best_match["suggested_response"],
                         "metadata": best_match["metadata"],
                         "source": "pgvector_cache",
-                        "similarity": best_match["similarity"]
+                        "similarity": best_match["similarity"],
                     }
 
         return None
@@ -432,10 +423,10 @@ class LLMCache:
         text: str,
         sentiment: str,
         sentiment_score: float,
-        tags: List[str],
-        suggested_response: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        ttl_seconds: int = None
+        tags: list[str],
+        suggested_response: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        ttl_seconds: int = None,
     ) -> bool:
         """
         Store LLM response in cache
@@ -472,7 +463,7 @@ class LLMCache:
             tags=tags,
             suggested_response=suggested_response,
             metadata=metadata or {},
-            ttl_seconds=ttl_seconds
+            ttl_seconds=ttl_seconds,
         )
 
         # Store in memory cache
@@ -489,8 +480,8 @@ class LLMCache:
     async def invalidate(
         self,
         session: AsyncSession,
-        text_hash: Optional[str] = None,
-        before_date: Optional[datetime] = None
+        text_hash: str | None = None,
+        before_date: datetime | None = None,
     ) -> int:
         """
         Invalidate cache entries
@@ -545,7 +536,7 @@ class LLMCache:
             await session.rollback()
             return 0
 
-    async def get_cache_stats(self, session: AsyncSession) -> Dict[str, Any]:
+    async def get_cache_stats(self, session: AsyncSession) -> dict[str, Any]:
         """
         Get cache statistics
 
@@ -559,7 +550,7 @@ class LLMCache:
             "memory_cache_size": len(self._memory_cache),
             "memory_cache_max_size": self.MAX_MEMORY_CACHE_SIZE,
             "pgvector_enabled": self.enable_pgvector_cache,
-            "similarity_threshold": self.SIMILARITY_THRESHOLD
+            "similarity_threshold": self.SIMILARITY_THRESHOLD,
         }
 
         if self.enable_pgvector_cache:
@@ -585,11 +576,7 @@ class LLMCache:
 
         return stats
 
-    async def warm_cache(
-        self,
-        session: AsyncSession,
-        common_phrases: List[str]
-    ) -> int:
+    async def warm_cache(self, session: AsyncSession, common_phrases: list[str]) -> int:
         """
         Warm cache with common phrases
 
@@ -623,7 +610,7 @@ class LLMCache:
                     sentiment_score=0.5,
                     tags=[],
                     suggested_response=None,
-                    metadata={"cache_warming": True}
+                    metadata={"cache_warming": True},
                 )
 
                 if await self._store_pgvector(session, entry):
@@ -634,13 +621,13 @@ class LLMCache:
 
 
 # Global cache instance
-_llm_cache: Optional[LLMCache] = None
+_llm_cache: LLMCache | None = None
 
 
 def get_llm_cache(
-    openai_api_key: Optional[str] = None,
+    openai_api_key: str | None = None,
     enable_memory_cache: bool = True,
-    enable_pgvector_cache: bool = True
+    enable_pgvector_cache: bool = True,
 ) -> LLMCache:
     """
     Get global LLM cache instance
@@ -653,7 +640,7 @@ def get_llm_cache(
         _llm_cache = LLMCache(
             openai_api_key=openai_api_key,
             enable_memory_cache=enable_memory_cache,
-            enable_pgvector_cache=enable_pgvector_cache
+            enable_pgvector_cache=enable_pgvector_cache,
         )
 
     return _llm_cache

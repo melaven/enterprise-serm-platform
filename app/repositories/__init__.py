@@ -11,7 +11,7 @@ from .review import ReviewRepository
 __all__ = [
     "BaseRepository",
     "CompanyRepository",
-    "ParserRepository", 
+    "ParserRepository",
     "PlatformRepository",
-    "ReviewRepository"
+    "ReviewRepository",
 ]

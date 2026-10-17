@@ -14,3 +14,6 @@ arq>=0.26
 redis>=5.0.0
 aiogram>=3.13,<4
 structlog>=23.2.0
+supabase>=2.0.0
+email-validator>=2.0.0
+stripe>=5.0.0

@@ -22,7 +22,9 @@ class ReviewSink(Protocol):
         self, tenant_id: UUID, platform: Platform, external_ids: Sequence[str]
     ) -> set[str]: ...
 
-    async def save_many(self, tenant_id: UUID, reviews: Sequence[EnrichedReview]) -> int: ...
+    async def save_many(
+        self, tenant_id: UUID, reviews: Sequence[EnrichedReview]
+    ) -> int: ...
 
 
 class QuotaBilling(Protocol):

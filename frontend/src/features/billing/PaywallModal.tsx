@@ -54,17 +54,17 @@ interface PaywallModalProps {
 const REASON_MESSAGES = {
   parser_limit: {
     title: 'Parser Limit Reached',
-    description: 'You've used all 5 free parser runs this month. Upgrade to Pro for unlimited parsing.',
+    description: "You've used all 5 free parser runs this month. Upgrade to Pro for unlimited parsing.",
     icon: '🚀',
   },
   review_limit: {
     title: 'Review Limit Reached',
-    description: 'You've reached your monthly review limit. Upgrade to Pro for 10,000 reviews per month.',
+    description: "You've reached your monthly review limit. Upgrade to Pro for 10,000 reviews per month.",
     icon: '📊',
   },
   token_limit: {
     title: 'LLM Token Limit Reached',
-    description: 'You've used all your LLM tokens. Upgrade to Pro for 1M tokens per month.',
+    description: "You've used all your LLM tokens. Upgrade to Pro for 1M tokens per month.",
     icon: '🤖',
   },
 };

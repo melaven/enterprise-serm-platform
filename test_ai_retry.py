@@ -36,7 +36,12 @@ def pending(r: RawReview, err: str) -> EnrichedReview:
 
 
 class FakeStore:
-    def __init__(self, queues: dict[UUID, list[ClaimedReview]], *, fail_claim: set[UUID] | None = None):
+    def __init__(
+        self,
+        queues: dict[UUID, list[ClaimedReview]],
+        *,
+        fail_claim: set[UUID] | None = None,
+    ):
         self.queues = queues
         self.fail_claim = fail_claim or set()
         self.finalized: list[tuple[UUID, UUID, list[Success], list[Failure]]] = []
@@ -79,14 +84,18 @@ def test_happy_path_batches_and_respects_per_tenant_cap():
     t = uuid4()
     store = FakeStore({t: [claimed(i) for i in range(10)]})
     summary = run(store, FakeEnricher())
-    assert summary["claimed"] == 4 and summary["enriched"] == 4  # max_per_tenant=4, claim_batch=2
+    assert (
+        summary["claimed"] == 4 and summary["enriched"] == 4
+    )  # max_per_tenant=4, claim_batch=2
     assert len(store.finalized) == 2
     assert len(set(store.tokens)) == 2  # новый lease-токен на каждый claim
 
 
 def test_fair_across_tenants():
     a, b = uuid4(), uuid4()
-    store = FakeStore({a: [claimed(i) for i in range(10)], b: [claimed(100 + i) for i in range(10)]})
+    store = FakeStore(
+        {a: [claimed(i) for i in range(10)], b: [claimed(100 + i) for i in range(10)]}
+    )
     summary = run(store, FakeEnricher())
     assert summary["tenants"] == 2 and summary["claimed"] == 8
 
@@ -103,7 +112,9 @@ def test_content_failure_counts_attempt_and_backs_off():
     store = FakeStore({t: [claimed(1, attempts=1)]})
     run(store, FakeEnricher(lambda r: pending(r, "invalid_output:x")))
     f = store.finalized[0][3][0]
-    assert not f.give_up and not f.refund_attempt and f.error.startswith("invalid_output")
+    assert (
+        not f.give_up and not f.refund_attempt and f.error.startswith("invalid_output")
+    )
 
 
 def test_content_failure_gives_up_on_last_attempt():
@@ -128,7 +139,12 @@ def test_provider_outage_refunds_attempts_and_stops_run():
 def test_partial_success_does_not_stop_run():
     t = uuid4()
     store = FakeStore({t: [claimed(1), claimed(2)]})
-    run(store, FakeEnricher(lambda r: ok(r) if r.external_id == "e1" else pending(r, "llm_unavailable")))
+    run(
+        store,
+        FakeEnricher(
+            lambda r: ok(r) if r.external_id == "e1" else pending(r, "llm_unavailable")
+        ),
+    )
     _, _, succ, fail = store.finalized[0]
     assert len(succ) == 1 and len(fail) == 1
 
@@ -157,7 +173,13 @@ def test_enricher_crash_is_contained():
 
 def test_timeout_is_provider_side():
     t = uuid4()
-    cfg = AIRetryConfig(max_attempts=3, claim_batch=2, process_timeout_s=0.05, lease_s=1.0, time_budget_s=30)
+    cfg = AIRetryConfig(
+        max_attempts=3,
+        claim_batch=2,
+        process_timeout_s=0.05,
+        lease_s=1.0,
+        time_budget_s=30,
+    )
     store = FakeStore({t: [claimed(1, attempts=3)]})
     run(store, FakeEnricher(delay=1.0), cfg)
     f = store.finalized[0][3][0]
@@ -188,7 +210,14 @@ def test_lease_lost_is_reported():
 
 def test_time_budget_stops_run():
     t = uuid4()
-    cfg = AIRetryConfig(max_attempts=3, claim_batch=1, max_per_tenant=100, time_budget_s=0.05, lease_s=10, process_timeout_s=5)
+    cfg = AIRetryConfig(
+        max_attempts=3,
+        claim_batch=1,
+        max_per_tenant=100,
+        time_budget_s=0.05,
+        lease_s=10,
+        process_timeout_s=5,
+    )
     store = FakeStore({t: [claimed(i) for i in range(50)]})
     t0 = time.monotonic()
     summary = run(store, FakeEnricher(delay=0.03), cfg)
@@ -198,14 +227,21 @@ def test_time_budget_stops_run():
 def test_skipped_empty_text_counts_as_success():
     t = uuid4()
     store = FakeStore({t: [claimed(1)]})
-    run(store, FakeEnricher(lambda r: EnrichedReview(r, None, (), None, False, False, "empty_text")))
+    run(
+        store,
+        FakeEnricher(
+            lambda r: EnrichedReview(r, None, (), None, False, False, "empty_text")
+        ),
+    )
     assert len(store.finalized[0][2]) == 1
 
 
 def test_backoff_schedule_and_classify_next_time():
     assert [next_attempt_delay(n, CFG) for n in (1, 2, 3)] == [3600, 7200, 14400]
     assert next_attempt_delay(30, CFG) == CFG.backoff_cap_s
-    f = classify(claimed(1, 1), pending(raw(1), "invalid_output"), "invalid_output", CFG, NOW)
+    f = classify(
+        claimed(1, 1), pending(raw(1), "invalid_output"), "invalid_output", CFG, NOW
+    )
     assert isinstance(f, Failure) and (f.next_attempt_at - NOW).total_seconds() == 3600
 
 

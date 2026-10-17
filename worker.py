@@ -1,4 +1,4 @@
-"""ARQ-воркер. Запуск: arq app.worker.worker.WorkerSettings"""
+"""ARQ-воркер. Запуск: arq app.services.worker.worker.WorkerSettings"""
 
 from typing import Any
 
@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.core.config import get_settings
 from app.core.redis import get_redis_settings
-from app.db.tenant import build_engine
-from app.worker.tasks import fetch_reviews_task
+from app.core.tenant import build_engine
+from app.services.worker.tasks import fetch_reviews_task
 
 MAX_JOBS = 10
 

@@ -32,20 +32,27 @@ async def stripe_webhook(
 ) -> dict[str, bool]:
     secret = settings.stripe_webhook_secret
     if secret is None:  # fail closed: без секрета никого не принимаем
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Webhook not configured")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Webhook not configured"
+        )
     if not stripe_signature:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Missing signature")
 
     declared = request.headers.get("content-length")
     if declared and declared.isdigit() and int(declared) > MAX_BODY:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Too large")
-    payload = await request.body()  # СЫРЫЕ байты: подпись считается по ним, не по перепакованному JSON
+    payload = (
+        await request.body()
+    )  # СЫРЫЕ байты: подпись считается по ним, не по перепакованному JSON
     if len(payload) > MAX_BODY:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Too large")
 
     try:
         event = stripe.Webhook.construct_event(
-            payload, stripe_signature, secret.get_secret_value(), tolerance=TOLERANCE_SECONDS
+            payload,
+            stripe_signature,
+            secret.get_secret_value(),
+            tolerance=TOLERANCE_SECONDS,
         )
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid payload") from exc
@@ -64,13 +71,19 @@ async def stripe_webhook(
         async with billing_session() as session:
             outcome = await apply_event(SqlGateway(session), event_id, event_type, obj)
     except BillingNotConfigured as exc:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Billing not configured") from exc
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Billing not configured"
+        ) from exc
     except OutOfOrder:
         log.info("stripe_out_of_order_retry", event_id=event_id, type=event_type)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Retry later") from None
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Retry later"
+        ) from None
     except Exception:  # откат транзакции уже произошёл; Stripe повторит доставку
         log.exception("stripe_event_failed", event_id=event_id, type=event_type)
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Processing failed") from None
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "Processing failed"
+        ) from None
 
     log.info("stripe_event", event_id=event_id, type=event_type, outcome=outcome)
     return {"received": True}

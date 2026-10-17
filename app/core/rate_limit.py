@@ -12,24 +12,21 @@ Rate Limiter для защиты критичных API эндпоинтов Ten
 """
 
 import time
-from typing import Optional
 from uuid import UUID
-from functools import wraps
 
 import redis.asyncio as redis
-from fastapi import HTTPException, Depends, status, Request
+from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.auth import get_current_tenant
-from app.core.database import get_db
-
+from app.core.config import get_settings
+from app.core.dependencies import get_tenant_db
 
 # ============================================================================
 # Redis Connection Pool
 # ============================================================================
 
-_redis_pool: Optional[redis.ConnectionPool] = None
+_redis_pool: redis.ConnectionPool | None = None
 
 
 async def get_redis_pool() -> redis.ConnectionPool:
@@ -55,15 +52,16 @@ async def get_redis() -> redis.Redis:
 # Rate Limiting Logic
 # ============================================================================
 
+
 class RateLimitExceeded(HTTPException):
     """429 Too Many Requests — клиент превысил лимит запросов."""
-    
+
     def __init__(
         self,
         limit: int,
         window: int,
         retry_after: int,
-        tenant_id: Optional[UUID] = None,
+        tenant_id: UUID | None = None,
     ):
         detail = {
             "error": "Rate Limit Exceeded",
@@ -74,7 +72,7 @@ class RateLimitExceeded(HTTPException):
         }
         if tenant_id:
             detail["tenant_id"] = str(tenant_id)
-            
+
         super().__init__(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=detail,
@@ -85,23 +83,23 @@ class RateLimitExceeded(HTTPException):
 class RateLimiter:
     """
     Sliding Window Rate Limiter на базе Redis.
-    
+
     Алгоритм:
     1. Каждый запрос пишет timestamp в Redis Sorted Set (ключ: rate_limit:{tenant}:{endpoint})
     2. Удаляем записи старше окна (window)
     3. Считаем количество запросов в окне
     4. Если > limit — бросаем 429
-    
+
     Плюсы Sliding Window:
     - Точнее Fixed Window (нет burst на границе окна)
     - Эффективнее Token Bucket (меньше операций в Redis)
     """
-    
+
     def __init__(
         self,
         limit: int,
         window: int = 60,
-        redis_client: Optional[redis.Redis] = None,
+        redis_client: redis.Redis | None = None,
     ):
         """
         Args:
@@ -112,13 +110,13 @@ class RateLimiter:
         self.limit = limit
         self.window = window
         self._redis_client = redis_client
-    
+
     async def _get_redis(self) -> redis.Redis:
         """Получить Redis клиент (либо переданный, либо из pool)."""
         if self._redis_client:
             return self._redis_client
         return await get_redis()
-    
+
     async def check_rate_limit(
         self,
         tenant_id: UUID,
@@ -126,14 +124,14 @@ class RateLimiter:
     ) -> tuple[int, int]:
         """
         Проверить rate limit для tenant + endpoint.
-        
+
         Args:
             tenant_id: ID организации (изоляция по tenant)
             endpoint: Имя эндпоинта (например, "parse_reviews" или "llm_analysis")
-        
+
         Returns:
             (current_count, remaining): текущее кол-во запросов и остаток
-        
+
         Raises:
             RateLimitExceeded: если лимит превышен
         """
@@ -141,26 +139,26 @@ class RateLimiter:
         key = f"rate_limit:{tenant_id}:{endpoint}"
         now = time.time()
         window_start = now - self.window
-        
+
         # Pipeline для атомарности операций
         pipe = r.pipeline()
-        
+
         # 1. Удаляем устаревшие записи (старше окна)
         pipe.zremrangebyscore(key, "-inf", window_start)
-        
+
         # 2. Добавляем текущий запрос
         pipe.zadd(key, {str(now): now})
-        
+
         # 3. Считаем количество запросов в окне
         pipe.zcard(key)
-        
+
         # 4. Устанавливаем TTL на ключ (самоочистка через window + 10 сек)
         pipe.expire(key, self.window + 10)
-        
+
         # Выполняем pipeline
         results = await pipe.execute()
         current_count = results[2]  # результат ZCARD
-        
+
         # Проверяем лимит
         if current_count > self.limit:
             # Вычисляем retry_after (когда освободится слот)
@@ -170,14 +168,14 @@ class RateLimiter:
                 retry_after = int(oldest_time + self.window - now) + 1
             else:
                 retry_after = self.window
-            
+
             raise RateLimitExceeded(
                 limit=self.limit,
                 window=self.window,
                 retry_after=retry_after,
                 tenant_id=tenant_id,
             )
-        
+
         remaining = max(0, self.limit - current_count)
         return current_count, remaining
 
@@ -186,21 +184,22 @@ class RateLimiter:
 # FastAPI Dependencies
 # ============================================================================
 
+
 class RateLimitDependency:
     """
     FastAPI Dependency для rate limiting.
-    
+
     Использование:
         @app.post("/api/parser/parse", dependencies=[Depends(RateLimitDependency(limit=10, window=60))])
         async def parse_reviews(...):
             ...
     """
-    
-    def __init__(self, limit: int, window: int = 60, endpoint: Optional[str] = None):
+
+    def __init__(self, limit: int, window: int = 60, endpoint: str | None = None):
         self.limit = limit
         self.window = window
         self.endpoint = endpoint
-    
+
     async def __call__(
         self,
         request: Request,
@@ -208,10 +207,10 @@ class RateLimitDependency:
     ):
         """Проверяет rate limit для текущего tenant."""
         endpoint = self.endpoint or request.url.path
-        
+
         limiter = RateLimiter(limit=self.limit, window=self.window)
         current, remaining = await limiter.check_rate_limit(tenant_id, endpoint)
-        
+
         # Добавляем X-RateLimit-* заголовки (информационно)
         request.state.rate_limit_headers = {
             "X-RateLimit-Limit": str(self.limit),
@@ -224,20 +223,21 @@ class RateLimitDependency:
 # Combined: Rate Limit + Quota Check
 # ============================================================================
 
+
 async def check_parser_limits(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     tenant_id: UUID = Depends(get_current_tenant),
 ) -> dict:
     """
     Комбинированная проверка для парсера:
     1. Rate Limit (429) — защита от спама: 5 запросов / 60 секунд
     2. Quota Check (402) — проверка тарифа через billing_deps
-    
+
     Порядок проверок:
     1. Сначала rate limit (дешевле, только Redis)
     2. Потом квота (дороже, запрос в Postgres)
-    
+
     Использование:
         @app.post("/api/parser/parse")
         async def parse_reviews(
@@ -247,17 +247,17 @@ async def check_parser_limits(
             # limits = {"rate": {...}, "quota": {...}}
     """
     from app.core.billing_deps import check_quota
-    
+
     # 1. Rate Limit (Redis): макс 5 запусков парсера за минуту
     limiter = RateLimiter(limit=5, window=60)
     rate_current, rate_remaining = await limiter.check_rate_limit(
         tenant_id=tenant_id,
         endpoint="parse_reviews",
     )
-    
+
     # 2. Quota Check (Postgres): проверяем лимит тарифного плана
     quota_info = await check_quota(db=db, tenant_id=tenant_id)
-    
+
     # Возвращаем объединенную информацию
     return {
         "rate": {
@@ -272,14 +272,14 @@ async def check_parser_limits(
 
 async def check_llm_limits(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_tenant_db),
     tenant_id: UUID = Depends(get_current_tenant),
 ) -> dict:
     """
     Комбинированная проверка для LLM-анализа:
     1. Rate Limit (429) — 20 запросов / 60 секунд (LLM дороже, но быстрее парсинга)
     2. Quota Check (402) — проверка тарифа
-    
+
     Использование:
         @app.post("/api/reviews/analyze")
         async def analyze_reviews(
@@ -289,17 +289,17 @@ async def check_llm_limits(
             ...
     """
     from app.core.billing_deps import check_quota
-    
+
     # 1. Rate Limit: макс 20 LLM-запросов за минуту
     limiter = RateLimiter(limit=20, window=60)
     rate_current, rate_remaining = await limiter.check_rate_limit(
         tenant_id=tenant_id,
         endpoint="llm_analysis",
     )
-    
+
     # 2. Quota Check
     quota_info = await check_quota(db=db, tenant_id=tenant_id)
-    
+
     return {
         "rate": {
             "current": rate_current,
@@ -315,20 +315,21 @@ async def check_llm_limits(
 # Response Middleware для добавления Rate Limit заголовков
 # ============================================================================
 
+
 async def add_rate_limit_headers(request: Request, call_next):
     """
     Middleware для автоматического добавления X-RateLimit-* заголовков в ответ.
-    
+
     Использование в main.py:
         app.middleware("http")(add_rate_limit_headers)
     """
     response = await call_next(request)
-    
+
     # Если RateLimitDependency установила заголовки
     if hasattr(request.state, "rate_limit_headers"):
         for key, value in request.state.rate_limit_headers.items():
             response.headers[key] = value
-    
+
     return response
 
 
@@ -336,14 +337,15 @@ async def add_rate_limit_headers(request: Request, call_next):
 # Утилиты для тестирования и мониторинга
 # ============================================================================
 
+
 async def get_rate_limit_status(
     tenant_id: UUID,
     endpoint: str,
-    redis_client: Optional[redis.Redis] = None,
+    redis_client: redis.Redis | None = None,
 ) -> dict:
     """
     Получить текущий статус rate limit (для дебага/мониторинга).
-    
+
     Returns:
         {
             "current": 3,
@@ -355,19 +357,21 @@ async def get_rate_limit_status(
     """
     r = redis_client or await get_redis()
     limiter = RateLimiter(limit=5, window=60, redis_client=r)
-    
+
     key = f"rate_limit:{tenant_id}:{endpoint}"
     now = time.time()
     window_start = now - limiter.window
-    
+
     # Чистим устаревшие + считаем текущие
     await r.zremrangebyscore(key, "-inf", window_start)
     current = await r.zcard(key)
-    
+
     # Время сброса счетчика (когда истечет самая старая запись)
     oldest = await r.zrange(key, 0, 0, withscores=True)
-    resets_at = int(oldest[0][1] + limiter.window) if oldest else int(now + limiter.window)
-    
+    resets_at = (
+        int(oldest[0][1] + limiter.window) if oldest else int(now + limiter.window)
+    )
+
     return {
         "current": current,
         "limit": limiter.limit,
@@ -380,7 +384,7 @@ async def get_rate_limit_status(
 async def reset_rate_limit(
     tenant_id: UUID,
     endpoint: str,
-    redis_client: Optional[redis.Redis] = None,
+    redis_client: redis.Redis | None = None,
 ):
     """Сбросить rate limit для tenant + endpoint (для админки/тестов)."""
     r = redis_client or await get_redis()

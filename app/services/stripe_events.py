@@ -9,7 +9,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -18,7 +18,11 @@ import structlog
 log = structlog.get_logger(__name__)
 
 HANDLED = frozenset(
-    {"checkout.session.completed", "invoice.payment_succeeded", "customer.subscription.deleted"}
+    {
+        "checkout.session.completed",
+        "invoice.payment_succeeded",
+        "customer.subscription.deleted",
+    }
 )
 _RESET_REASONS = frozenset({"subscription_create", "subscription_cycle"})
 
@@ -29,15 +33,21 @@ class OutOfOrder(Exception):
 
 class Gateway(Protocol):
     async def record_event(self, event_id: str, event_type: str) -> bool: ...
-    async def activate_pro(self, tenant_id: UUID, customer: str, subscription: str) -> None: ...
+    async def activate_pro(
+        self, tenant_id: UUID, customer: str, subscription: str
+    ) -> None: ...
     async def period_paid(
-        self, subscription: str, start: datetime | None, end: datetime | None, reset_usage: bool
+        self,
+        subscription: str,
+        start: datetime | None,
+        end: datetime | None,
+        reset_usage: bool,
     ) -> bool: ...
     async def cancel(self, subscription: str) -> bool: ...
 
 
 def _ts(v: Any) -> datetime | None:
-    return datetime.fromtimestamp(int(v), tz=UTC) if v else None
+    return datetime.fromtimestamp(int(v), tz=timezone.utc) if v else None
 
 
 def _id(v: Any) -> str | None:
@@ -58,7 +68,9 @@ def _invoice_subscription(inv: dict[str, Any]) -> str | None:
     return _id(((parent.get("subscription_details")) or {}).get("subscription"))
 
 
-async def apply_event(gw: Gateway, event_id: str, event_type: str, obj: dict[str, Any]) -> str:
+async def apply_event(
+    gw: Gateway, event_id: str, event_type: str, obj: dict[str, Any]
+) -> str:
     """Возвращает: 'duplicate' | 'ignored' | 'applied'. Исключение = откат транзакции и 500."""
     if event_type not in HANDLED:
         return "ignored"
@@ -102,7 +114,9 @@ async def apply_event(gw: Gateway, event_id: str, event_type: str, obj: dict[str
         return "ignored"
     if not await gw.cancel(sub):
         # подписка не текущая/неизвестна: запоздавшее событие старой подписки или чужой аккаунт Stripe
-        log.warning("billing_cancel_unknown_subscription", subscription=sub, event_id=event_id)
+        log.warning(
+            "billing_cancel_unknown_subscription", subscription=sub, event_id=event_id
+        )
         return "ignored"
     log.info("billing_downgraded_to_free", subscription=sub, event_id=event_id)
     return "applied"

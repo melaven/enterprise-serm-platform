@@ -5,7 +5,7 @@
  */
 
 import { Crown, Zap, RefreshCw, AlertCircle } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getQuotaStatus, type QuotaStatus } from '@/api/services';
 import { ApiError } from '@/api/client';
@@ -47,8 +47,9 @@ export function PlanBadge({ className, compact = false }: PlanBadgeProps) {
   const [quota, setQuota] = useState<QuotaStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasFetchedQuota = useRef(false);
   
-  const fetchQuota = async () => {
+  const fetchQuota = useCallback(async () => {
     try {
       setError(null);
       const status = await getQuotaStatus();
@@ -63,28 +64,23 @@ export function PlanBadge({ className, compact = false }: PlanBadgeProps) {
         : 'Неизвестная ошибка';
       
       setError(errorMsg);
-      
-      // Show toast only on first error or after successful load
-      if (quota !== null || loading) {
-        toast.error(errorMsg, {
-          description: 'Попробуйте обновить страницу',
-          duration: 5000,
-        });
-      }
-      
+
+      toast.error(errorMsg, {
+        description: 'Попробуйте обновить страницу',
+        duration: 5000,
+      });
+
       console.error('Failed to fetch quota:', err);
     } finally {
       setLoading(false);
     }
-  };
-  
-  useEffect(() => {
-    void fetchQuota();
-    
-    // Refresh every 60 seconds
-    const interval = setInterval(fetchQuota, 60_000);
-    return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (hasFetchedQuota.current) return;
+    hasFetchedQuota.current = true;
+    void fetchQuota();
+  }, [fetchQuota]);
   
   // Loading state
   if (loading) {

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 from uuid import UUID
@@ -7,24 +8,40 @@ from fastapi import HTTPException, status
 
 from app.core.billing_deps import consume_request
 
-
 TENANT_ID = UUID("11111111-1111-1111-1111-111111111111")
 
 
 @pytest.mark.asyncio
 async def test_consume_request_updates_and_commits_quota() -> None:
     db = AsyncMock()
-    db.execute.return_value = SimpleNamespace(fetchone=Mock(return_value=(3, 100)))
+    now = datetime.now(timezone.utc)
+    # Мок для consume_reviews - возвращает success=True
+    # Мок для get_status - возвращает полную структуру квоты
+    db.execute.return_value = SimpleNamespace(
+        fetchone=Mock(
+            side_effect=[
+                # Первый вызов - consume_reviews
+                SimpleNamespace(success=True),
+                # Второй вызов - get_status
+                SimpleNamespace(
+                    tenant_id=TENANT_ID,
+                    max_llm_tokens=10000,
+                    max_reviews=100,
+                    used_llm_tokens=5000,
+                    used_reviews=3,
+                    reserved_llm_tokens=0,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+        )
+    )
 
     result = await consume_request(db, TENANT_ID)
 
     assert result == {"used": 3, "limit": 100}
-    db.execute.assert_awaited_once()
-    query, params = db.execute.await_args.args
-    assert "UPDATE organization_quotas" in str(query)
-    assert "FROM billing_plans" in str(query)
-    assert "o.requests_used + :amount <= p.max_requests" in str(query)
-    assert params == {"tenant_id": TENANT_ID, "amount": 1}
+    db.execute.assert_awaited()
+    assert db.execute.await_count >= 2  # consume_reviews + get_status
     db.commit.assert_awaited_once()
 
 

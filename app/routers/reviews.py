@@ -3,16 +3,30 @@
 HTTP-обработка запросов, валидация, делегирование в сервисы
 """
 
-from typing import Optional, List
+from datetime import datetime
 from uuid import UUID
-from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select, func, and_, desc, column, or_
+from sqlalchemy import and_, column, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..schemas.economics import ReviewBase, ReviewResponse, ReviewStatus
+from ..core.auth import get_current_tenant
+from ..core.dependencies import (
+    get_review_processor_service,
+    get_review_repository,
+    get_sentiment_service,
+    get_tenant_db,
+)
+from ..core.rate_limit import check_llm_limits
+from ..models.economics import Review
+from ..repositories import ReviewRepository
+from ..repositories.analytics_repo import (
+    get_dashboard_metrics,
+)
+from ..repositories.analytics_repo import (
+    get_reviews_list as fetch_dashboard_reviews,
+)
 from ..schemas.analytics import (
     DashboardMetrics,
     DashboardMetricsResponse,
@@ -20,22 +34,8 @@ from ..schemas.analytics import (
     DashboardReviewsPage,
     DashboardReviewsResponse,
 )
-from ..core.dependencies import (
-    get_review_repository, 
-    get_review_processor_service,
-    get_sentiment_service,
-    get_tenant_db
-)
-from ..repositories import ReviewRepository
+from ..schemas.economics import ReviewBase, ReviewStatus
 from ..services import ReviewProcessorService, SentimentService
-from ..core.auth import get_current_tenant
-from ..models.economics import Review
-from ..repositories.analytics_repo import (
-    get_dashboard_metrics,
-    get_reviews_list as fetch_dashboard_reviews,
-)
-from ..core.rate_limit import check_llm_limits
-
 
 router = APIRouter()
 
@@ -80,13 +80,15 @@ async def approve_ai_response(
     )
 
 
-@router.post("/webhook",
-             status_code=status.HTTP_201_CREATED,
-             summary="Webhook для получения отзывов от внешних систем",
-             description="Endpoint для интеграции с внешними платформами отзывов")
+@router.post(
+    "/webhook",
+    status_code=status.HTTP_201_CREATED,
+    summary="Webhook для получения отзывов от внешних систем",
+    description="Endpoint для интеграции с внешними платформами отзывов",
+)
 async def receive_review_webhook(
     review_data: ReviewBase,
-    processor: ReviewProcessorService = Depends(get_review_processor_service)
+    processor: ReviewProcessorService = Depends(get_review_processor_service),
 ) -> JSONResponse:
     """
     Webhook для получения отзывов от внешних систем:
@@ -94,10 +96,10 @@ async def receive_review_webhook(
     - Автоматическая обработка и анализ
     - Генерация ответов для критических случаев
     """
-    
+
     # Полная обработка отзыва через сервис
     result = await processor.process_new_review(review_data)
-    
+
     return JSONResponse(
         status_code=201,
         content={
@@ -108,24 +110,25 @@ async def receive_review_webhook(
                 "status": result["status"],
                 "priority": result["sentiment_analysis"]["priority"],
                 "financial_impact": result["financial_impact"]["financial_impact"],
-                "response_generated": bool(result["generated_response"])
-            }
-        }
+                "response_generated": bool(result["generated_response"]),
+            },
+        },
     )
 
 
-@router.get("/details/{review_id}",
-            summary="Получить отзыв по ID",
-            description="Детальная информация об отзыве")
+@router.get(
+    "/details/{review_id}",
+    summary="Получить отзыв по ID",
+    description="Детальная информация об отзыве",
+)
 async def get_review(
-    review_id: UUID,
-    review_repo: ReviewRepository = Depends(get_review_repository)
+    review_id: UUID, review_repo: ReviewRepository = Depends(get_review_repository)
 ) -> JSONResponse:
     """
     Получение полной информации об отзыве
     включая данные платформы и компании
     """
-    
+
     review = await review_repo.get_with_platform_and_company(review_id)
     if not review:
         return JSONResponse(
@@ -134,11 +137,11 @@ async def get_review(
                 "success": False,
                 "error": {
                     "type": "NotFoundError",
-                    "message": f"Отзыв с ID {review_id} не найден"
-                }
-            }
+                    "message": f"Отзыв с ID {review_id} не найден",
+                },
+            },
         )
-    
+
     return JSONResponse(
         status_code=200,
         content={
@@ -153,23 +156,27 @@ async def get_review(
                 "status": review.status.value,
                 "financial_impact": review.financial_impact,
                 "si_response": review.si_response,
-                "created_at": review.created_at.isoformat()
-            }
-        }
+                "created_at": review.created_at.isoformat(),
+            },
+        },
     )
 
 
-@router.get("/platform/{platform_id}/reviews",
-            summary="Отзывы по платформе",
-            description="Получить отзывы для конкретной платформы с фильтрацией")
+@router.get(
+    "/platform/{platform_id}/reviews",
+    summary="Отзывы по платформе",
+    description="Получить отзывы для конкретной платформы с фильтрацией",
+)
 async def get_platform_reviews(
     platform_id: UUID,
     limit: int = Query(50, ge=1, le=200, description="Количество отзывов"),
     offset: int = Query(0, ge=0, description="Смещение для пагинации"),
-    status: Optional[ReviewStatus] = Query(None, description="Фильтр по статусу"),
-    min_rating: Optional[int] = Query(None, ge=1, le=5, description="Минимальный рейтинг"),
-    max_rating: Optional[int] = Query(None, ge=1, le=5, description="Максимальный рейтинг"),
-    review_repo: ReviewRepository = Depends(get_review_repository)
+    status: ReviewStatus | None = Query(None, description="Фильтр по статусу"),
+    min_rating: int | None = Query(None, ge=1, le=5, description="Минимальный рейтинг"),
+    max_rating: int | None = Query(
+        None, ge=1, le=5, description="Максимальный рейтинг"
+    ),
+    review_repo: ReviewRepository = Depends(get_review_repository),
 ) -> JSONResponse:
     """
     Получить отзывы для платформы с возможностью фильтрации:
@@ -177,7 +184,7 @@ async def get_platform_reviews(
     - По диапазону рейтингов
     - С пагинацией
     """
-    
+
     # Получаем отзывы с базовой фильтрацией
     if min_rating and max_rating:
         reviews = await review_repo.get_by_rating_range(
@@ -187,21 +194,23 @@ async def get_platform_reviews(
         reviews = await review_repo.get_by_platform_id(
             platform_id, limit, offset, status
         )
-    
+
     # Преобразуем в JSON-формат
     reviews_data = []
     for review in reviews:
-        reviews_data.append({
-            "review_id": str(review.id),
-            "author_name": review.author_name,
-            "rating": review.rating,
-            "text": review.text,
-            "status": review.status.value,
-            "financial_impact": review.financial_impact,
-            "has_response": bool(review.si_response),
-            "created_at": review.created_at.isoformat()
-        })
-    
+        reviews_data.append(
+            {
+                "review_id": str(review.id),
+                "author_name": review.author_name,
+                "rating": review.rating,
+                "text": review.text,
+                "status": review.status.value,
+                "financial_impact": review.financial_impact,
+                "has_response": bool(review.si_response),
+                "created_at": review.created_at.isoformat(),
+            }
+        )
+
     return JSONResponse(
         status_code=200,
         content={
@@ -210,22 +219,21 @@ async def get_platform_reviews(
                 "platform_id": str(platform_id),
                 "reviews": reviews_data,
                 "count": len(reviews_data),
-                "pagination": {
-                    "limit": limit,
-                    "offset": offset
-                }
-            }
-        }
+                "pagination": {"limit": limit, "offset": offset},
+            },
+        },
     )
 
 
-@router.get("/platform/{platform_id}/stats",
-            summary="Статистика отзывов платформы",
-            description="Аналитика отзывов за указанный период")
+@router.get(
+    "/platform/{platform_id}/stats",
+    summary="Статистика отзывов платформы",
+    description="Аналитика отзывов за указанный период",
+)
 async def get_platform_review_stats(
     platform_id: UUID,
     days: int = Query(30, ge=1, le=365, description="Период анализа в днях"),
-    review_repo: ReviewRepository = Depends(get_review_repository)
+    review_repo: ReviewRepository = Depends(get_review_repository),
 ) -> JSONResponse:
     """
     Статистика отзывов платформы:
@@ -234,26 +242,22 @@ async def get_platform_review_stats(
     - Финансовое влияние
     - Динамика за период
     """
-    
+
     stats = await review_repo.get_reviews_stats(platform_id, days)
-    
-    return JSONResponse(
-        status_code=200,
-        content={
-            "success": True,
-            "data": stats
-        }
-    )
+
+    return JSONResponse(status_code=200, content={"success": True, "data": stats})
 
 
-@router.put("/{review_id}/status",
-            summary="Обновить статус отзыва",
-            description="Изменение статуса обработки отзыва")
+@router.put(
+    "/{review_id}/status",
+    summary="Обновить статус отзыва",
+    description="Изменение статуса обработки отзыва",
+)
 async def update_review_status(
     review_id: UUID,
     new_status: ReviewStatus,
-    si_response: Optional[str] = None,
-    review_repo: ReviewRepository = Depends(get_review_repository)
+    si_response: str | None = None,
+    review_repo: ReviewRepository = Depends(get_review_repository),
 ) -> JSONResponse:
     """
     Обновление статуса отзыва:
@@ -261,13 +265,11 @@ async def update_review_status(
     - Добавление ответа SI (опционально)
     - Пересчет финансового влияния
     """
-    
+
     updated_review = await review_repo.update_status_and_response(
-        review_id=review_id,
-        status=new_status,
-        si_response=si_response
+        review_id=review_id, status=new_status, si_response=si_response
     )
-    
+
     return JSONResponse(
         status_code=200,
         content={
@@ -276,43 +278,49 @@ async def update_review_status(
             "data": {
                 "review_id": str(updated_review.id),
                 "new_status": updated_review.status.value,
-                "has_response": bool(updated_review.si_response)
-            }
-        }
+                "has_response": bool(updated_review.si_response),
+            },
+        },
     )
 
 
-@router.get("/search",
-            summary="Поиск отзывов",
-            description="Поиск отзывов по содержимому текста или автору")
+@router.get(
+    "/search",
+    summary="Поиск отзывов",
+    description="Поиск отзывов по содержимому текста или автору",
+)
 async def search_reviews(
     query: str = Query(..., min_length=2, description="Поисковый запрос"),
-    platform_id: Optional[UUID] = Query(None, description="Фильтр по платформе"),
-    limit: int = Query(50, ge=1, le=100, description="Максимальное количество результатов"),
-    review_repo: ReviewRepository = Depends(get_review_repository)
+    platform_id: UUID | None = Query(None, description="Фильтр по платформе"),
+    limit: int = Query(
+        50, ge=1, le=100, description="Максимальное количество результатов"
+    ),
+    review_repo: ReviewRepository = Depends(get_review_repository),
 ) -> JSONResponse:
     """
     Поиск отзывов по тексту или имени автора
     """
-    
+
     reviews = await review_repo.search_by_content(
-        search_term=query,
-        platform_id=platform_id,
-        limit=limit
+        search_term=query, platform_id=platform_id, limit=limit
     )
-    
+
     # Форматируем результаты
     search_results = []
     for review in reviews:
-        search_results.append({
-            "review_id": str(review.id),
-            "author_name": review.author_name,
-            "rating": review.rating,
-            "text": review.text[:200] + "..." if len(review.text) > 200 else review.text,
-            "platform_id": str(review.platform_id),
-            "created_at": review.created_at.isoformat()
-        })
-    
+        search_results.append(
+            {
+                "review_id": str(review.id),
+                "author_name": review.author_name,
+                "rating": review.rating,
+                "text": review.text[:200] + "..."
+                if len(review.text) > 200
+                else review.text,
+                "platform_id": str(review.platform_id),
+                "created_at": review.created_at.isoformat(),
+            }
+        )
+
     return JSONResponse(
         status_code=200,
         content={
@@ -320,45 +328,48 @@ async def search_reviews(
             "data": {
                 "query": query,
                 "results": search_results,
-                "count": len(search_results)
-            }
-        }
+                "count": len(search_results),
+            },
+        },
     )
 
 
-@router.get("/sentiment-analysis/{review_id}",
-            summary="🔒 Анализ тональности отзыва [Rate Limited]",
-            description="LLM-анализ тональности и рекомендации (20 req/min)")
+@router.get(
+    "/sentiment-analysis/{review_id}",
+    summary="🔒 Анализ тональности отзыва [Rate Limited]",
+    description="LLM-анализ тональности и рекомендации (20 req/min)",
+)
 async def analyze_review_sentiment(
     review_id: UUID,
     limits: dict = Depends(check_llm_limits),
     review_repo: ReviewRepository = Depends(get_review_repository),
-    sentiment_service: SentimentService = Depends(get_sentiment_service)
+    sentiment_service: SentimentService = Depends(get_sentiment_service),
 ) -> JSONResponse:
     """
     Анализ тональности конкретного отзыва (LLM-powered):
     - Определение эмоциональной окраски
     - Приоритет обработки
     - Рекомендации по времени ответа
-    
+
     **Rate Limiting:**
     - Лимит: 20 запросов / 60 секунд
     - 429 Too Many Requests при превышении
     - X-RateLimit-* headers в ответе
-    
+
     **Quota Check:**
     - 402 Payment Required при исчерпании тарифа
     """
-    
+
     review = await review_repo.get_by_id_or_404(review_id)
-    
+
     sentiment_analysis = sentiment_service.analyze_sentiment(
-        rating=review.rating,
-        review_text=review.text
+        rating=review.rating, review_text=review.text
     )
-    
-    recommendations = sentiment_service.get_processing_recommendations(sentiment_analysis)
-    
+
+    recommendations = sentiment_service.get_processing_recommendations(
+        sentiment_analysis
+    )
+
     return JSONResponse(
         status_code=200,
         content={
@@ -367,18 +378,22 @@ async def analyze_review_sentiment(
                 "review_id": str(review_id),
                 "sentiment_analysis": sentiment_analysis,
                 "processing_recommendations": recommendations,
-                "limits": limits  # Информация о лимитах: rate + quota
-            }
-        }
+                "limits": limits,  # Информация о лимитах: rate + quota
+            },
+        },
     )
 
 
-@router.get("/requiring-attention",
-            summary="Отзывы, требующие внимания",
-            description="Негативные отзывы без ответа, требующие срочной обработки")
+@router.get(
+    "/requiring-attention",
+    summary="Отзывы, требующие внимания",
+    description="Негативные отзывы без ответа, требующие срочной обработки",
+)
 async def get_reviews_requiring_attention(
-    max_hours: int = Query(24, ge=1, le=168, description="Максимальное время без ответа (часы)"),
-    review_repo: ReviewRepository = Depends(get_review_repository)
+    max_hours: int = Query(
+        24, ge=1, le=168, description="Максимальное время без ответа (часы)"
+    ),
+    review_repo: ReviewRepository = Depends(get_review_repository),
 ) -> JSONResponse:
     """
     Получить отзывы, требующие внимания:
@@ -386,26 +401,28 @@ async def get_reviews_requiring_attention(
     - Превысившие временной лимит
     - С полной информацией о платформе и компании
     """
-    
+
     reviews = await review_repo.get_reviews_requiring_attention(max_hours)
-    
+
     urgent_reviews = []
     for review in reviews:
         time_since_creation = datetime.utcnow() - review.created_at
         hours_without_response = time_since_creation.total_seconds() / 3600
-        
-        urgent_reviews.append({
-            "review_id": str(review.id),
-            "platform_name": review.platform_ref.name,
-            "company_name": review.platform_ref.company.name,
-            "author_name": review.author_name,
-            "rating": review.rating,
-            "text": review.text,
-            "created_at": review.created_at.isoformat(),
-            "hours_without_response": round(hours_without_response, 1),
-            "urgency": "critical" if hours_without_response > 48 else "high"
-        })
-    
+
+        urgent_reviews.append(
+            {
+                "review_id": str(review.id),
+                "platform_name": review.platform_ref.name,
+                "company_name": review.platform_ref.company.name,
+                "author_name": review.author_name,
+                "rating": review.rating,
+                "text": review.text,
+                "created_at": review.created_at.isoformat(),
+                "hours_without_response": round(hours_without_response, 1),
+                "urgency": "critical" if hours_without_response > 48 else "high",
+            }
+        )
+
     return JSONResponse(
         status_code=200,
         content={
@@ -413,9 +430,9 @@ async def get_reviews_requiring_attention(
             "data": {
                 "reviews": urgent_reviews,
                 "count": len(urgent_reviews),
-                "threshold_hours": max_hours
-            }
-        }
+                "threshold_hours": max_hours,
+            },
+        },
     )
 
 
@@ -424,29 +441,37 @@ async def get_reviews_requiring_attention(
 # ============================================================================
 
 
-@router.get("",
-            response_model=DashboardReviewsResponse,
-            summary="Список отзывов с пагинацией",
-            description="Основной эндпоинт для отображения отзывов в дашборде с tenant-изоляцией")
+@router.get(
+    "",
+    response_model=DashboardReviewsResponse,
+    summary="Список отзывов с пагинацией",
+    description="Основной эндпоинт для отображения отзывов в дашборде с tenant-изоляцией",
+)
 async def get_reviews_list(
     page: int = Query(1, ge=1, description="Номер страницы"),
     page_size: int = Query(20, ge=1, le=100, description="Размер страницы"),
-    limit: Optional[int] = Query(None, ge=1, le=100, description="Размер страницы"),
-    offset: Optional[int] = Query(None, ge=0, description="Смещение для пагинации"),
-    platform: Optional[str] = Query(None, description="Фильтр по платформе (google, 2gis и т.д.)"),
-    rating: Optional[int] = Query(None, ge=1, le=5, description="Фильтр по рейтингу"),
-    sentiment: Optional[str] = Query(None, description="Фильтр по тональности"),
-    search: Optional[str] = Query(None, min_length=1, max_length=200),
-    sort_by: str = Query("created_at", pattern="^(created_at|rating)$", description="Поле сортировки"),
-    sort_order: str = Query("desc", pattern="^(asc|desc)$", description="Порядок сортировки: asc или desc"),
+    limit: int | None = Query(None, ge=1, le=100, description="Размер страницы"),
+    offset: int | None = Query(None, ge=0, description="Смещение для пагинации"),
+    platform: str | None = Query(
+        None, description="Фильтр по платформе (google, 2gis и т.д.)"
+    ),
+    rating: int | None = Query(None, ge=1, le=5, description="Фильтр по рейтингу"),
+    sentiment: str | None = Query(None, description="Фильтр по тональности"),
+    search: str | None = Query(None, min_length=1, max_length=200),
+    sort_by: str = Query(
+        "created_at", pattern="^(created_at|rating)$", description="Поле сортировки"
+    ),
+    sort_order: str = Query(
+        "desc", pattern="^(asc|desc)$", description="Порядок сортировки: asc или desc"
+    ),
     tenant_id: UUID = Depends(get_current_tenant),
-    db: AsyncSession = Depends(get_tenant_db)
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> DashboardReviewsResponse:
     """
     Получить список отзывов с пагинацией и фильтрацией.
-    
+
     **RLS изоляция:** Автоматическая фильтрация по tenant_id через RLS политику.
-    
+
     **Параметры:**
     - page: номер страницы (начиная с 1)
     - page_size: количество отзывов на странице (максимум 100)
@@ -455,7 +480,7 @@ async def get_reviews_list(
     - sentiment: фильтр по тональности (positive, neutral, negative)
     - sort_by: поле для сортировки (created_at, rating)
     - sort_order: порядок сортировки (asc, desc)
-    
+
     **Возвращает:**
     - items: массив отзывов
     - total: общее количество отзывов (с учётом фильтров)
@@ -463,7 +488,7 @@ async def get_reviews_list(
     - page_size: размер страницы
     - total_pages: общее количество страниц
     """
-    
+
     effective_page_size = limit or page_size
     effective_offset = (
         offset if offset is not None else (page - 1) * effective_page_size
@@ -474,7 +499,7 @@ async def get_reviews_list(
     if platform:
         # Используем column() для обращения к text-колонке platform
         # (в модели есть конфликт: relationship platform перекрывает column platform)
-        filters.append(column('platform') == platform)
+        filters.append(column("platform") == platform)
 
     if rating is not None:
         filters.append(Review.rating == rating)
@@ -517,9 +542,7 @@ async def get_reviews_list(
         }[sort_by]
         ordering = sort_column.asc() if sort_order == "asc" else sort_column.desc()
         result = await db.execute(
-            query.order_by(ordering)
-            .limit(effective_page_size)
-            .offset(effective_offset)
+            query.order_by(ordering).limit(effective_page_size).offset(effective_offset)
         )
         reviews = list(result.scalars().all())
 
@@ -539,13 +562,15 @@ async def get_reviews_list(
     )
 
 
-@router.get("/summary",
-            response_model=DashboardMetricsResponse,
-            summary="KPI-метрики дашборда",
-            description="Сводка по отзывам: всего, тональность, критичные проблемы")
+@router.get(
+    "/summary",
+    response_model=DashboardMetricsResponse,
+    summary="KPI-метрики дашборда",
+    description="Сводка по отзывам: всего, тональность, критичные проблемы",
+)
 async def get_reviews_summary(
     tenant_id: UUID = Depends(get_current_tenant),
-    db: AsyncSession = Depends(get_tenant_db)
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> DashboardMetricsResponse:
     """
     Получить KPI-метрики для дашборда в контексте авторизованного tenant.

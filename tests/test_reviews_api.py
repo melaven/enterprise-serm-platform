@@ -6,8 +6,9 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI, Header
+from fastapi import Header
 from sqlalchemy import make_url
+from sqlalchemy import text as sa_text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
@@ -20,9 +21,8 @@ from app.core.database import Base
 from app.models.economics import Company, Platform, Review
 from app.schemas.economics import ReviewStatus
 
-TEST_DATABASE_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5432/tenable_test",
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or os.environ.get(
+    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/tenable_test"
 )
 TENANT_HEADER = "X-Test-Tenant"
 ClientFactory = Callable[[UUID], httpx.AsyncClient]
@@ -32,7 +32,10 @@ async def _prepare_test_database() -> None:
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     try:
         async with engine.begin() as connection:
-            await connection.run_sync(Base.metadata.drop_all)
+            # asyncpg doesn't support multiple commands in one statement
+            # Execute DROP and CREATE separately
+            await connection.execute(sa_text("DROP SCHEMA IF EXISTS public CASCADE"))
+            await connection.execute(sa_text("CREATE SCHEMA public"))
             await connection.run_sync(Base.metadata.create_all)
     finally:
         await engine.dispose()
@@ -41,9 +44,10 @@ async def _prepare_test_database() -> None:
 @pytest.fixture(scope="session")
 def reviews_api_schema() -> Iterator[None]:
     database_name = make_url(TEST_DATABASE_URL).database or ""
-    if not database_name.endswith("_test"):
+    # Проверяем, что используется тестовая база (имя должно содержать test)
+    if not (database_name.endswith("_test") or database_name.startswith("test_")):
         pytest.exit(
-            f"TEST_DATABASE_URL must point to a *_test database, got {database_name!r}",
+            f"TEST_DATABASE_URL must point to a test database (*_test or test_*), got {database_name!r}",
             returncode=2,
         )
 
@@ -198,6 +202,7 @@ async def client_factory(
         app.dependency_overrides.pop(get_tenant_db, None)
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_reviews_list_is_isolated_by_tenant(
     client_factory: ClientFactory,
@@ -223,6 +228,7 @@ async def test_reviews_list_is_isolated_by_tenant(
     }
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_reviews_summary_is_isolated_by_tenant(
     client_factory: ClientFactory,
@@ -264,6 +270,7 @@ async def test_reviews_summary_is_isolated_by_tenant(
     assert sum(point["reviews"] for point in tenant_a_summary["timeline"]) == 3
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_reputation_statistics_match_frontend_contract(
     client_factory: ClientFactory,

@@ -19,10 +19,14 @@ class Settings(BaseSettings):
     # Только для legacy-проектов с HS256. Пусто -> проверка подписи через JWKS.
     supabase_jwt_secret: str | None = None
     jwt_audience: str = "authenticated"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-1.5-flash"
 
     # --- Stripe. Всё необязательное: без ключей вебхук закрыт (503), checkout недоступен. ---
     stripe_secret_key: SecretStr | None = None
-    stripe_webhook_secret: SecretStr | None = None  # whsec_..., отдельный для каждого endpoint/режима
+    stripe_webhook_secret: SecretStr | None = (
+        None  # whsec_..., отдельный для каждого endpoint/режима
+    )
     stripe_price_pro: str | None = None  # price_...
     # Отдельный DSN роли billing_service (EXECUTE только на app.billing_*). НЕ тот же, что database_url.
     billing_database_url: str | None = None

@@ -10,7 +10,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_TAGS: Final = 5
 MAX_REPLY_LEN: Final = 600
-_LINK_RE: Final = re.compile(r"https?://|www\.|\b[\w.+-]+@[\w-]+\.[\w.]+", re.IGNORECASE)
+_LINK_RE: Final = re.compile(
+    r"https?://|www\.|\b[\w.+-]+@[\w-]+\.[\w.]+", re.IGNORECASE
+)
 
 
 class Sentiment(StrEnum):
@@ -27,11 +29,15 @@ class ReviewInsight(BaseModel):
 
     id: str = Field(description="Идентификатор отзыва из входных данных, без изменений")
     sentiment: Sentiment
-    tags: list[str] = Field(description="1-5 коротких тематических тегов, нижний регистр")
+    tags: list[str] = Field(
+        description="1-5 коротких тематических тегов, нижний регистр"
+    )
     is_critical: bool = Field(
         description="true: угроза судом/регулятором, вред здоровью, мошенничество, дискриминация"
     )
-    reply: str = Field(description="Вежливый ответ бренда на языке отзыва, до 400 символов")
+    reply: str = Field(
+        description="Вежливый ответ бренда на языке отзыва, до 400 символов"
+    )
 
     @field_validator("tags")
     @classmethod
@@ -67,7 +73,16 @@ class AnalysisEnvelope(BaseModel):
 
 
 _STRIP_KEYS: Final = frozenset(
-    {"title", "default", "minLength", "maxLength", "minItems", "maxItems", "minimum", "maximum"}
+    {
+        "title",
+        "default",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "minimum",
+        "maximum",
+    }
 )
 
 

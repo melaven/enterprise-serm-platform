@@ -120,7 +120,7 @@ class QuotaCommit(BaseModel):
 
     @field_validator("actual_tokens")
     @classmethod
-    def actual_not_negative(cls, v: int, info: "ValidationInfo") -> int:  # type: ignore[name-defined]
+    def actual_not_negative(cls, v: int) -> int:
         """Валидация: actual_tokens должен быть >= 0."""
         if v < 0:
             raise ValueError("actual_tokens cannot be negative")
@@ -151,9 +151,7 @@ class QuotaExceededError(BaseModel):
     error: Literal["quota_exceeded"] = "quota_exceeded"
     message: str = Field(description="Человекочитаемое описание проблемы")
     quota_status: QuotaStatus = Field(description="Текущее состояние квот")
-    requested: dict[str, int] = Field(
-        description="Что было запрошено (tokens/reviews)"
-    )
+    requested: dict[str, int] = Field(description="Что было запрошено (tokens/reviews)")
 
 
 class QuotaUpdateLimits(BaseModel):
@@ -170,7 +168,7 @@ class QuotaUpdateLimits(BaseModel):
 
     @field_validator("max_llm_tokens", "max_reviews")
     @classmethod
-    def at_least_one_field(cls, v: int | None, info: "ValidationInfo") -> int | None:  # type: ignore[name-defined]
+    def at_least_one_field(cls, v: int | None) -> int | None:
         """Хотя бы одно поле должно быть заполнено."""
         return v
 

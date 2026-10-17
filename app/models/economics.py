@@ -2,21 +2,25 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
-    Enum as SQLAlchemyEnum,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
     Uuid,
     func,
+)
+from sqlalchemy import (
+    Enum as SQLAlchemyEnum,
+)
+from sqlalchemy import (
     text as sql_text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -46,7 +50,7 @@ class Company(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    
+
     # Мультитенантность: каждая компания видит только свои данные через RLS
     # company_id не добавляем - сама Company и является tenant
 
@@ -63,7 +67,9 @@ class Platform(Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    platform_url: Mapped[str | None] = mapped_column(String(500), nullable=True, index=True)
+    platform_url: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, index=True
+    )
     monthly_views: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     conversion_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     cac_on_platform: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
@@ -77,7 +83,7 @@ class Platform(Base):
         passive_deletes=True,
     )
 
-    # Индексы создаются в миграциях  
+    # Индексы создаются в миграциях
     __table_args__ = (
         Index("ix_platforms_company_id", "company_id"),
         UniqueConstraint("company_id", "name", name="uq_platforms_company_name"),
@@ -104,13 +110,9 @@ class Review(Base):
     )
     tenant_id = synonym("company_id")
     # Добавляем поле для внешнего ID (интеграция с Google Maps, 2GIS и др.)
-    external_review_id: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    external_review_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Добавляем поле для названия платформы как строки (для упрощения парсинга)
-    platform: Mapped[str | None] = mapped_column(
-        String(255), nullable=True, index=True
-    )
+    platform: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     author_name: Mapped[str] = mapped_column(String(255), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -218,14 +220,17 @@ class PlatformStatistic(Base):
             "average_rating >= 0 AND average_rating <= 5",
             name="ck_platform_statistics_rating_range",
         ),
-        CheckConstraint("review_count >= 0", name="ck_platform_statistics_review_count"),
+        CheckConstraint(
+            "review_count >= 0", name="ck_platform_statistics_review_count"
+        ),
     )
 
 
 class CompanyMember(Base):
     """Модель для связи пользователей с компаниями"""
+
     __tablename__ = "company_members"
-    
+
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid4
     )
@@ -239,9 +244,9 @@ class CompanyMember(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    
+
     company: Mapped[Company] = relationship()
-    
+
     __table_args__ = (
         Index("ix_company_members_user_company", "user_id", "company_id"),
         Index("ix_company_members_company_id", "company_id"),

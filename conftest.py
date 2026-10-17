@@ -33,6 +33,7 @@ from sqlalchemy.pool import NullPool
 
 # app.core.database создаёт engine при импорте и читает Settings: задаём заглушки
 # ДО первого импорта app.* (сами импорты ниже сделаны лениво, внутри фикстур).
+os.environ["ENVIRONMENT"] = "testing"
 os.environ.setdefault(
     "DATABASE_URL", "postgresql+asyncpg://app_tenant:test@localhost:5432/tenable_test"
 )

@@ -11,22 +11,24 @@ QuotaService обеспечивает атомарные операции рез
 
 Пример использования:
     quota_service = QuotaService(db_session)
-    
+
     # Проверка перед запуском задачи
     check = await quota_service.check_quota(tenant_id, tokens=5000, reviews=10)
     if not check.available:
         raise HTTPException(402, detail=check.reason)
-    
+
     # Резервирование токенов перед LLM
     if not await quota_service.reserve_llm_tokens(tenant_id, 5000):
         raise QuotaExceededError("Cannot reserve tokens")
-    
+
     try:
         # LLM запрос
         result, actual_tokens = await llm.analyze(...)
-        
+
         # Точное списание
-        await quota_service.commit_llm_tokens(tenant_id, reserved=5000, actual=actual_tokens)
+        await quota_service.commit_llm_tokens(
+            tenant_id, reserved=5000, actual=actual_tokens
+        )
     except Exception:
         # Возврат при ошибке
         await quota_service.release_llm_tokens(tenant_id, 5000)
@@ -36,7 +38,7 @@ QuotaService обеспечивает атомарные операции рез
 from uuid import UUID
 
 import structlog
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..schemas.billing import (
@@ -98,16 +100,16 @@ class QuotaService:
         """
         query = text(
             """
-            SELECT 
+            SELECT
                 tenant_id,
-                max_llm_tokens,
-                max_reviews,
-                used_llm_tokens,
-                used_reviews,
+                llm_tokens_limit AS max_llm_tokens,
+                reviews_parsed_limit AS max_reviews,
+                llm_tokens_used AS used_llm_tokens,
+                reviews_parsed_used AS used_reviews,
                 reserved_llm_tokens,
                 created_at,
                 updated_at
-            FROM tenant_quotas
+            FROM public.tenant_quotas
             WHERE tenant_id = :tenant_id
             """
         )
@@ -170,7 +172,8 @@ class QuotaService:
 
         # Вызываем SQL функцию для проверки
         query = text(
-            "SELECT check_quota_available(:tenant_id, :tokens, :reviews) AS available"
+            "SELECT public.check_quota_available(:tenant_id, :tokens, :reviews) "
+            "AS available"
         )
         result = await self._session.execute(
             query,
@@ -233,7 +236,7 @@ class QuotaService:
         Raises:
             QuotaNotFoundError: Если квота не найдена
         """
-        query = text("SELECT reserve_llm_tokens(:tenant_id, :tokens) AS success")
+        query = text("SELECT public.reserve_llm_tokens(:tenant_id, :tokens) AS success")
         result = await self._session.execute(
             query,
             {
@@ -279,7 +282,7 @@ class QuotaService:
             QuotaNotFoundError: Если квота не найдена
         """
         query = text(
-            "SELECT commit_llm_tokens(:tenant_id, :reserved, :actual) AS result"
+            "SELECT public.commit_llm_tokens(:tenant_id, :reserved, :actual) AS result"
         )
 
         try:
@@ -323,7 +326,7 @@ class QuotaService:
         Raises:
             QuotaNotFoundError: Если квота не найдена
         """
-        query = text("SELECT release_llm_tokens(:tenant_id, :tokens) AS result")
+        query = text("SELECT public.release_llm_tokens(:tenant_id, :tokens) AS result")
 
         try:
             await self._session.execute(
@@ -364,7 +367,7 @@ class QuotaService:
         Raises:
             QuotaNotFoundError: Если квота не найдена
         """
-        query = text("SELECT consume_reviews(:tenant_id, :count) AS success")
+        query = text("SELECT public.consume_reviews(:tenant_id, :count) AS success")
         result = await self._session.execute(
             query,
             {
@@ -394,6 +397,7 @@ class QuotaService:
         self,
         tenant_id: UUID,
         *,
+        actor_id: UUID,
         max_llm_tokens: int | None = None,
         max_reviews: int | None = None,
     ) -> QuotaStatus:
@@ -401,6 +405,7 @@ class QuotaService:
 
         Args:
             tenant_id: UUID компании
+            actor_id: UUID пользователя, который изменяет лимиты
             max_llm_tokens: Новый лимит токенов (если нужно изменить)
             max_reviews: Новый лимит отзывов (если нужно изменить)
 
@@ -413,31 +418,27 @@ class QuotaService:
         """
         if max_llm_tokens is None and max_reviews is None:
             raise ValueError("At least one limit must be specified")
-
-        updates = []
-        params: dict[str, str | int] = {"tenant_id": str(tenant_id)}
-
-        if max_llm_tokens is not None:
-            updates.append("max_llm_tokens = :max_llm_tokens")
-            params["max_llm_tokens"] = max_llm_tokens
-
-        if max_reviews is not None:
-            updates.append("max_reviews = :max_reviews")
-            params["max_reviews"] = max_reviews
+        if (max_llm_tokens is not None and max_llm_tokens <= 0) or (
+            max_reviews is not None and max_reviews <= 0
+        ):
+            raise ValueError("Quota limits must be positive")
 
         query = text(
-            f"""
-            UPDATE tenant_quotas
-            SET {", ".join(updates)}
-            WHERE tenant_id = :tenant_id
-            RETURNING tenant_id
-            """
+            "SELECT public.update_quota_limits("
+            ":tenant_id, :actor_id, :max_llm_tokens, :max_reviews) AS updated"
         )
 
-        result = await self._session.execute(query, params)
+        result = await self._session.execute(
+            query,
+            {
+                "tenant_id": str(tenant_id),
+                "actor_id": str(actor_id),
+                "max_llm_tokens": max_llm_tokens,
+                "max_reviews": max_reviews,
+            },
+        )
         row = result.fetchone()
-
-        if row is None:
+        if row is None or not row.updated:
             raise QuotaNotFoundError(tenant_id)
 
         logger.info(

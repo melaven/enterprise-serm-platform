@@ -37,7 +37,9 @@ log = structlog.get_logger(__name__)
 Sleep = Callable[[float], Awaitable[None]]
 
 
-def compute_backoff(attempt: int, *, base: float, cap: float, hint: float | None = None) -> float:
+def compute_backoff(
+    attempt: int, *, base: float, cap: float, hint: float | None = None
+) -> float:
     """Экспонента с full-jitter; Retry-After площадки — нижняя граница."""
     ceiling = min(cap, base * 2 ** (attempt - 1))
     delay = random.uniform(base, max(base, ceiling))
@@ -52,7 +54,12 @@ def _pending(review: RawReview, reason: str) -> EnrichedReview:
 
 
 async def _scrape(
-    ctx: dict[str, Any], platform: Platform, url: str, settings: Settings, job_try: int, blog: Any
+    ctx: dict[str, Any],
+    platform: Platform,
+    url: str,
+    settings: Settings,
+    job_try: int,
+    blog: Any,
 ) -> list[RawReview]:
     scraper: ReviewScraper = ctx["scraper"]
     try:
@@ -65,7 +72,10 @@ async def _scrape(
             blog.error("sync.scrape_failed_retries_exhausted", error=reason)
             raise
         delay = compute_backoff(
-            job_try, base=settings.retry_base_delay_s, cap=settings.retry_max_delay_s, hint=hint
+            job_try,
+            base=settings.retry_base_delay_s,
+            cap=settings.retry_max_delay_s,
+            hint=hint,
         )
         blog.warning("sync.scrape_retry", error=reason, defer_s=round(delay, 1))
         raise Retry(defer=delay) from exc
@@ -75,7 +85,11 @@ async def _scrape(
 
 
 async def _drop_known(
-    sink: ReviewSink, tenant_id: UUID, platform: Platform, reviews: list[RawReview], blog: Any
+    sink: ReviewSink,
+    tenant_id: UUID,
+    platform: Platform,
+    reviews: list[RawReview],
+    blog: Any,
 ) -> list[RawReview]:
     """Не тратим токены на отзывы, которые уже в БД. Best-effort: при сбое идём дальше,
     дубликаты всё равно отсечёт ON CONFLICT."""
@@ -87,7 +101,12 @@ async def _drop_known(
         blog.exception("sync.dedup_lookup_failed")
         return reviews
     fresh = [r for r in reviews if r.external_id not in known]
-    blog.info("sync.dedup", scraped=len(reviews), known=len(reviews) - len(fresh), new=len(fresh))
+    blog.info(
+        "sync.dedup",
+        scraped=len(reviews),
+        known=len(reviews) - len(fresh),
+        new=len(fresh),
+    )
     return fresh
 
 
@@ -110,9 +129,12 @@ async def _enrich(
         return [_pending(r, "internal_error") for r in reviews]
 
     if len(enriched) != len(reviews) or any(
-        e.review.external_id != r.external_id for e, r in zip(enriched, reviews, strict=False)
+        e.review.external_id != r.external_id
+        for e, r in zip(enriched, reviews, strict=False)
     ):
-        blog.error("sync.ai_contract_violation", expected=len(reviews), got=len(enriched))
+        blog.error(
+            "sync.ai_contract_violation", expected=len(reviews), got=len(enriched)
+        )
         return [_pending(r, "internal_error") for r in reviews]
     return enriched
 
@@ -136,18 +158,24 @@ async def _save(
             last = exc
             blog.warning("sync.save_failed", attempt=attempt, error=type(exc).__name__)
             if attempt < settings.sync_save_attempts:
-                await sleep(min(2.0 ** attempt, 10.0) * random.uniform(0.5, 1.0))
+                await sleep(min(2.0**attempt, 10.0) * random.uniform(0.5, 1.0))
     assert last is not None
     if job_try >= settings.worker_max_tries:
         blog.error("sync.save_failed_retries_exhausted")
         raise last
-    delay = compute_backoff(job_try, base=settings.retry_base_delay_s, cap=settings.retry_max_delay_s)
+    delay = compute_backoff(
+        job_try, base=settings.retry_base_delay_s, cap=settings.retry_max_delay_s
+    )
     blog.error("sync.save_retry_job", defer_s=round(delay, 1))
     raise Retry(defer=delay) from last
 
 
 async def _bill(
-    ctx: dict[str, Any], tenant_id: UUID, saved: int, enriched: Sequence[EnrichedReview], blog: Any
+    ctx: dict[str, Any],
+    tenant_id: UUID,
+    saved: int,
+    enriched: Sequence[EnrichedReview],
+    blog: Any,
 ) -> None:
     billing: QuotaBilling | None = ctx.get("billing")
     if billing is None or saved <= 0:
@@ -173,7 +201,10 @@ async def sync_platform_reviews(
     started = time.perf_counter()
 
     blog = log.bind(
-        job_id=ctx.get("job_id"), tenant_id=str(tenant_id), platform=platform, attempt=job_try
+        job_id=ctx.get("job_id"),
+        tenant_id=str(tenant_id),
+        platform=platform,
+        attempt=job_try,
     )
 
     # Входные данные не доверенные: невалидное → сразу ошибка без повторов и сетевых вызовов.

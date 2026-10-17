@@ -1,65 +1,74 @@
-from datetime import datetime
+import logging
 import os
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator
 from uuid import uuid4
 
 from dotenv import load_dotenv
 from sqlalchemy import event
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
+from sqlalchemy.exc import ArgumentError
 from sqlalchemy.ext.asyncio import (
-    AsyncSession, 
-    create_async_engine, 
+    AsyncSession,
     async_sessionmaker,
+    create_async_engine,
 )
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
 
-# Load only the repository-root .env; keep process environment variables authoritative.
+logger = logging.getLogger(__name__)
+
+# Local runs must use the checked-in configuration file rather than inherited
+# shell variables. Test processes keep their isolated database configuration.
+_is_testing = os.getenv("ENVIRONMENT", "").lower() in {"test", "testing"}
 load_dotenv(
     dotenv_path=Path(__file__).resolve().parents[2] / ".env",
-    override=False,
+    override=not _is_testing,
 )
+
+
+def _postgresql_url(value: str, setting_name: str) -> URL:
+    """Parse a PostgreSQL URL and reject unsupported database backends."""
+    try:
+        url = make_url(value)
+    except ArgumentError as exc:
+        raise RuntimeError(f"{setting_name} must be a valid PostgreSQL URL.") from exc
+
+    if url.get_backend_name() != "postgresql":
+        raise RuntimeError(
+            f"{setting_name} must use PostgreSQL; SQLite and other databases "
+            "are disabled."
+        )
+
+    if url.drivername in {"postgres", "postgresql"}:
+        return url.set(drivername="postgresql+asyncpg")
+    if url.drivername == "postgresql+asyncpg":
+        return url
+
+    raise RuntimeError(f"{setting_name} must use the asyncpg PostgreSQL driver.")
+
 
 # Основная DATABASE_URL (для postgres роли - миграции)
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise RuntimeError("CRITICAL: DATABASE_URL variable is missing in .env file.")
+    raise RuntimeError("CRITICAL: DATABASE_URL is missing from the root .env file.")
+_postgresql_url(DATABASE_URL, "DATABASE_URL")
 
 # Tenant DATABASE_URL (для app_tenant роли - runtime)
 TENANT_DATABASE_URL = os.getenv("TENANT_DATABASE_URL", DATABASE_URL)
+_postgresql_url(TENANT_DATABASE_URL, "TENANT_DATABASE_URL")
 
 # Определяем какую URL использовать для runtime.
 USE_TENANT_ROLE = os.getenv("USE_TENANT_ROLE", "true").lower() == "true"
 runtime_database_url = TENANT_DATABASE_URL if USE_TENANT_ROLE else DATABASE_URL
-database_url = make_url(runtime_database_url)
-IS_SQLITE = database_url.get_backend_name() == "sqlite"
+database_url = _postgresql_url(runtime_database_url, "Runtime database URL")
 
-if IS_SQLITE:
-    if os.getenv("ENVIRONMENT", "development").lower() not in {
-        "development",
-        "dev",
-        "local",
-    }:
-        raise RuntimeError("SQLite is supported only in local development.")
-    if database_url.drivername != "sqlite+aiosqlite":
-        raise RuntimeError("SQLite must use the aiosqlite async driver.")
-    connect_args = {}
-elif database_url.drivername in {"postgres", "postgresql"}:
-    database_url = database_url.set(drivername="postgresql+asyncpg")
-    connect_args = {
-        "statement_cache_size": 0,
-        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
-    }
-elif database_url.drivername == "postgresql+asyncpg":
-    connect_args = {
-        "statement_cache_size": 0,
-        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
-    }
-else:
-    raise RuntimeError(
-        "DATABASE_URL must use PostgreSQL with asyncpg or local SQLite with aiosqlite."
-    )
+# Pgbouncer/Supavisor compatibility: disable prepared statement cache
+# to prevent "prepared statement already exists" errors in transaction pooling mode
+connect_args = {
+    "statement_cache_size": 0,
+    "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+}
 
 engine = create_async_engine(
     database_url,
@@ -68,19 +77,21 @@ engine = create_async_engine(
     connect_args=connect_args,
 )
 
-if IS_SQLITE:
-    @event.listens_for(engine.sync_engine, "connect")
-    def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+
+@event.listens_for(engine.sync_engine, "handle_error")
+def _log_database_error(exception_context) -> None:
+    logger.exception(
+        "Database operation failed (driver=%s, host=%s, port=%s): %s",
+        database_url.drivername,
+        database_url.host or "local",
+        database_url.port if database_url.port is not None else "default",
+        exception_context.original_exception,
+    )
+
 
 # Асинхронная фабрика сессий
 AsyncSessionLocal = async_sessionmaker(
-    bind=engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autoflush=False
+    bind=engine, class_=AsyncSession, expire_on_commit=False, autoflush=False
 )
 
 Base = declarative_base()
@@ -94,6 +105,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             if session.in_transaction():
                 await session.commit()
-        except Exception as error:
-            await session.rollback()
-            raise error
+        except Exception:
+            try:
+                await session.rollback()
+            except Exception:
+                logger.exception("Database rollback after request failure also failed")
+            raise

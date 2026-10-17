@@ -1,55 +1,89 @@
-"""Middleware: уникальный Correlation ID на каждый HTTP-запрос."""
+"""Сквозной Correlation ID для HTTP: чистый ASGI-middleware (без BaseHTTPMiddleware).
+
+Порядок: X-Correlation-ID → X-Request-ID → новый UUID4. ID кладётся в ContextVar
+(попадает во все логи запроса), в scope["state"] (для обработчика 500) и в заголовок
+ответа X-Correlation-ID.
+"""
 
 import time
+from typing import Any
 
 import structlog
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from app.core.logger import (
-    new_correlation_id,
+from app.core.correlation import (
+    CORRELATION_ID_HEADER,
     reset_correlation_id,
+    resolve_correlation_id,
     set_correlation_id,
 )
 
-CORRELATION_ID_HEADER = "X-Correlation-ID"
-
 log: structlog.stdlib.BoundLogger = structlog.get_logger("app.http")
 
+# Пробы живости не засоряют логи (пишутся на DEBUG).
+_QUIET_PATHS = frozenset({"/health", "/healthz", "/ready"})
 
-class CorrelationIdMiddleware(BaseHTTPMiddleware):
-    """Генерирует UUID4, кладёт в ContextVar и возвращает в X-Correlation-ID.
 
-    ID всегда генерируется на сервере: входящему заголовку от клиента не доверяем
-    (иначе им можно подделывать/засорять логи).
+class CorrelationIdMiddleware:
+    def __init__(
+        self, app: ASGIApp, quiet_paths: frozenset[str] = _QUIET_PATHS
+    ) -> None:
+        self.app = app
+        self.quiet_paths = quiet_paths
 
-    Заголовок не добавляется только к 500 от необработанных исключений: такой
-    ответ формирует ServerErrorMiddleware снаружи этого слоя. ID при этом
-    есть в логе записи об ошибке.
-    """
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] not in ("http", "websocket"):
+            await self.app(scope, receive, send)
+            return
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
-        correlation_id = new_correlation_id()
+        correlation_id = resolve_correlation_id(Headers(scope=scope))
+        scope.setdefault("state", {})["correlation_id"] = correlation_id
         token = set_correlation_id(correlation_id)
+
+        status_code = 500  # если приложение упало до отправки ответа
         started = time.perf_counter()
+
+        async def send_with_header(message: Message) -> None:
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+                MutableHeaders(scope=message)[CORRELATION_ID_HEADER] = correlation_id
+            await send(message)
+
+        path = scope.get("path", "")
+        method = scope.get("method", "WS")
         try:
-            response = await call_next(request)
-            response.headers[CORRELATION_ID_HEADER] = correlation_id
-            log.info(
-                "request_finished",
-                method=request.method,
-                path=request.url.path,
-                status_code=response.status_code,
-                duration_ms=round((time.perf_counter() - started) * 1000, 2),
-            )
-            return response
+            await self.app(scope, receive, send_with_header)
         except Exception:
-            log.exception(
-                "request_failed", method=request.method, path=request.url.path
-            )
+            log.exception("request_failed", method=method, path=path)
             raise
         finally:
+            if scope["type"] == "http":
+                emit = log.debug if path in self.quiet_paths else log.info
+                emit(
+                    "request_finished",
+                    method=method,
+                    path=path,
+                    status_code=status_code,
+                    duration_ms=round((time.perf_counter() - started) * 1000, 2),
+                )
             reset_correlation_id(token)
+
+
+async def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
+    """500 формирует ServerErrorMiddleware СНАРУЖИ нашего слоя: заголовок добавляем здесь.
+
+    ID берём из scope["state"]: ContextVar к этому моменту уже сброшен. Текст исключения
+    наружу не отдаём (может содержать внутренние детали), клиенту хватает ID для поддержки.
+    """
+    state: Any = request.scope.get("state", {})
+    correlation_id = state.get("correlation_id")
+    headers = {CORRELATION_ID_HEADER: correlation_id} if correlation_id else None
+    return JSONResponse(
+        {"detail": "Internal Server Error", "correlation_id": correlation_id},
+        status_code=500,
+        headers=headers,
+    )

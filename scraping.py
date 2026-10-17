@@ -76,7 +76,9 @@ class PermanentScrapeError(ScrapeError):
 
 
 class ReviewScraper(Protocol):
-    async def fetch(self, platform: Platform, url: str, *, limit: int) -> list[RawReview]: ...
+    async def fetch(
+        self, platform: Platform, url: str, *, limit: int
+    ) -> list[RawReview]: ...
 
 
 # ── Профили браузера ─────────────────────────────────────────────────────────
@@ -233,7 +235,9 @@ def parse_trustpilot_page(html: str, platform: Platform) -> ParsedPage:
         dates = item.get("dates") or {}
         text = item.get("text")
         title = item.get("title")
-        body = " — ".join(p.strip() for p in (title, text) if isinstance(p, str) and p.strip())
+        body = " — ".join(
+            p.strip() for p in (title, text) if isinstance(p, str) and p.strip()
+        )
         reviews.append(
             RawReview(
                 external_id=str(item["id"]),
@@ -264,7 +268,9 @@ _PARSERS: Final[dict[Platform, Callable[[str, Platform], ParsedPage]]] = {
 
 
 def _with_page(url: str, page: int) -> str:
-    return str(httpx.URL(url).copy_merge_params({"page": str(page)})) if page > 1 else url
+    return (
+        str(httpx.URL(url).copy_merge_params({"page": str(page)})) if page > 1 else url
+    )
 
 
 class HttpxReviewScraper:
@@ -280,7 +286,9 @@ class HttpxReviewScraper:
         self._cfg = config or ScraperConfig()
         self._transport = transport
 
-    async def fetch(self, platform: Platform, url: str, *, limit: int) -> list[RawReview]:
+    async def fetch(
+        self, platform: Platform, url: str, *, limit: int
+    ) -> list[RawReview]:
         parser = _PARSERS.get(platform)
         if parser is None:
             raise PermanentScrapeError(f"platform {platform.value} is not supported")
@@ -288,7 +296,9 @@ class HttpxReviewScraper:
             raise PermanentScrapeError("url host does not belong to platform")
 
         profile = random.choice(self._cfg.profiles)
-        blog = log.bind(platform=platform.value, url=url, profile=profile.name, limit=limit)
+        blog = log.bind(
+            platform=platform.value, url=url, profile=profile.name, limit=limit
+        )
         blog.info("fetch.started")
 
         collected: dict[str, RawReview] = {}
@@ -299,11 +309,18 @@ class HttpxReviewScraper:
             for page in range(1, self._cfg.max_pages + 1):
                 page_url = _with_page(url, page)
                 try:
-                    html = await self._download(client, platform, page_url, profile, referer)
+                    html = await self._download(
+                        client, platform, page_url, profile, referer
+                    )
                     parsed = self._parse(platform, html)
                 except ScrapeError as exc:
                     if not collected:
-                        blog.error("fetch.failed", page=page, error=str(exc), kind=type(exc).__name__)
+                        blog.error(
+                            "fetch.failed",
+                            page=page,
+                            error=str(exc),
+                            kind=type(exc).__name__,
+                        )
                         raise
                     blog.warning(
                         "fetch.partial",
@@ -360,7 +377,9 @@ class HttpxReviewScraper:
                 response = await client.get(current, headers=headers)
             except (httpx.TimeoutException, httpx.TransportError) as exc:
                 log.warning("http.network_error", url=current, error=type(exc).__name__)
-                raise RetryableScrapeError(f"network error: {type(exc).__name__}") from exc
+                raise RetryableScrapeError(
+                    f"network error: {type(exc).__name__}"
+                ) from exc
 
             code = response.status_code
             log.info(
@@ -378,7 +397,9 @@ class HttpxReviewScraper:
                     raise PermanentScrapeError(f"redirect {code} without Location")
                 current = str(response.url.join(location))
                 if not host_allowed(current, platform):
-                    log.warning("http.redirect_blocked", target_host=httpx.URL(current).host)
+                    log.warning(
+                        "http.redirect_blocked", target_host=httpx.URL(current).host
+                    )
                     raise PermanentScrapeError("redirect leaves platform domain")
                 continue
 

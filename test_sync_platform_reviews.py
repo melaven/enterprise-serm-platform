@@ -7,7 +7,7 @@ from arq.worker import Retry
 from app.schemas.parser import Platform
 from app.services.ai_processor import EnrichedReview
 from app.services.scraping import PermanentScrapeError, RawReview, RetryableScrapeError
-from app.worker.tasks import sync_platform_reviews
+from app.services.worker.tasks import sync_platform_reviews
 
 URL = "https://www.trustpilot.com/review/example.com"
 TENANT = uuid4()
@@ -46,7 +46,11 @@ class FakeProcessor:
 
 class FakeSink:
     def __init__(self, known=(), save_failures=0, lookup_fails=False):
-        self.known, self.save_failures, self.lookup_fails = set(known), save_failures, lookup_fails
+        self.known, self.save_failures, self.lookup_fails = (
+            set(known),
+            save_failures,
+            lookup_fails,
+        )
         self.saved: list[list[EnrichedReview]] = []
         self.save_calls = 0
 
@@ -77,37 +81,72 @@ async def _nosleep(_):  # noqa: ANN001
     return None
 
 
-def run(*, scraper, sink, processor=None, billing=None, job_try=1, platform="trustpilot", url=URL):
+def run(
+    *,
+    scraper,
+    sink,
+    processor=None,
+    billing=None,
+    job_try=1,
+    platform="trustpilot",
+    url=URL,
+):
     ctx = {
-        "scraper": scraper, "sink": sink, "ai_processor": processor, "billing": billing,
-        "job_try": job_try, "job_id": "j1", "sleep": _nosleep,
+        "scraper": scraper,
+        "sink": sink,
+        "ai_processor": processor,
+        "billing": billing,
+        "job_try": job_try,
+        "job_id": "j1",
+        "sleep": _nosleep,
     }
     return asyncio.run(sync_platform_reviews(ctx, TENANT, platform, url))
 
 
 def test_happy_path_enriches_saves_and_bills():
     sink, billing, proc = FakeSink(), FakeBilling(), FakeProcessor()
-    res = run(scraper=FakeScraper([raw(1), raw(2)]), sink=sink, processor=proc, billing=billing)
-    assert (res["reviews_found"], res["reviews_saved"], res["ai_enriched"], res["ai_pending"]) == (2, 2, 2, 0)
+    res = run(
+        scraper=FakeScraper([raw(1), raw(2)]),
+        sink=sink,
+        processor=proc,
+        billing=billing,
+    )
+    assert (
+        res["reviews_found"],
+        res["reviews_saved"],
+        res["ai_enriched"],
+        res["ai_pending"],
+    ) == (2, 2, 2, 0)
     assert billing.calls == [2]
 
 
 def test_known_reviews_never_reach_llm_or_billing():
     sink, billing, proc = FakeSink(known={"e1"}), FakeBilling(), FakeProcessor()
-    res = run(scraper=FakeScraper([raw(1), raw(2)]), sink=sink, processor=proc, billing=billing)
+    res = run(
+        scraper=FakeScraper([raw(1), raw(2)]),
+        sink=sink,
+        processor=proc,
+        billing=billing,
+    )
     assert proc.seen == [["e2"]] and res["reviews_new"] == 1 and billing.calls == [1]
 
 
 def test_all_known_skips_everything_downstream():
     sink, proc = FakeSink(known={"e1"}), FakeProcessor()
-    res = run(scraper=FakeScraper([raw(1)]), sink=sink, processor=proc, billing=FakeBilling())
+    res = run(
+        scraper=FakeScraper([raw(1)]), sink=sink, processor=proc, billing=FakeBilling()
+    )
     assert not proc.seen and not sink.saved and res["reviews_saved"] == 0
 
 
 def test_llm_crash_saves_with_ai_pending_and_job_succeeds():
     sink, billing = FakeSink(), FakeBilling()
-    res = run(scraper=FakeScraper([raw(1), raw(2)]), sink=sink,
-              processor=FakeProcessor(exc=RuntimeError("provider exploded")), billing=billing)
+    res = run(
+        scraper=FakeScraper([raw(1), raw(2)]),
+        sink=sink,
+        processor=FakeProcessor(exc=RuntimeError("provider exploded")),
+        billing=billing,
+    )
     assert all(e.ai_pending and e.sentiment is None for e in sink.saved[0])
     assert res["ai_pending"] == 2 and res["reviews_saved"] == 2
 
@@ -121,7 +160,11 @@ def test_processor_marking_pending_is_saved_as_is():
 
 def test_processor_contract_violation_degrades():
     sink = FakeSink()
-    run(scraper=FakeScraper([raw(1), raw(2)]), sink=sink, processor=FakeProcessor(wrong_len=True))
+    run(
+        scraper=FakeScraper([raw(1), raw(2)]),
+        sink=sink,
+        processor=FakeProcessor(wrong_len=True),
+    )
     assert all(e.ai_pending for e in sink.saved[0])
 
 
@@ -134,14 +177,21 @@ def test_no_processor_means_pending():
 def test_scrape_retryable_raises_arq_retry_with_retry_after():
     sink = FakeSink()
     with pytest.raises(Retry) as ei:
-        run(scraper=FakeScraper(exc=RetryableScrapeError("429", retry_after_s=120)), sink=sink)
+        run(
+            scraper=FakeScraper(exc=RetryableScrapeError("429", retry_after_s=120)),
+            sink=sink,
+        )
     assert ei.value.defer_score >= 120 if hasattr(ei.value, "defer_score") else True
     assert not sink.saved
 
 
 def test_scrape_retryable_on_last_try_fails_job():
     with pytest.raises(RetryableScrapeError):
-        run(scraper=FakeScraper(exc=RetryableScrapeError("503")), sink=FakeSink(), job_try=99)
+        run(
+            scraper=FakeScraper(exc=RetryableScrapeError("503")),
+            sink=FakeSink(),
+            job_try=99,
+        )
 
 
 def test_scrape_permanent_fails_without_retry_or_save():
@@ -168,21 +218,36 @@ def test_transient_db_failure_retried_locally_without_rescrape():
 
 def test_persistent_db_failure_retries_job_then_fails_on_last_try():
     with pytest.raises(Retry):
-        run(scraper=FakeScraper([raw(1)]), sink=FakeSink(save_failures=99), processor=FakeProcessor())
+        run(
+            scraper=FakeScraper([raw(1)]),
+            sink=FakeSink(save_failures=99),
+            processor=FakeProcessor(),
+        )
     with pytest.raises(RuntimeError):
-        run(scraper=FakeScraper([raw(1)]), sink=FakeSink(save_failures=99), processor=FakeProcessor(), job_try=99)
+        run(
+            scraper=FakeScraper([raw(1)]),
+            sink=FakeSink(save_failures=99),
+            processor=FakeProcessor(),
+            job_try=99,
+        )
 
 
 def test_billing_failure_does_not_fail_job():
     sink = FakeSink()
-    res = run(scraper=FakeScraper([raw(1)]), sink=sink, processor=FakeProcessor(),
-              billing=FakeBilling(exc=RuntimeError("quota db down")))
+    res = run(
+        scraper=FakeScraper([raw(1)]),
+        sink=sink,
+        processor=FakeProcessor(),
+        billing=FakeBilling(exc=RuntimeError("quota db down")),
+    )
     assert res["reviews_saved"] == 1 and sink.saved
 
 
 def test_dedup_lookup_failure_is_best_effort():
     proc = FakeProcessor()
-    res = run(scraper=FakeScraper([raw(1)]), sink=FakeSink(lookup_fails=True), processor=proc)
+    res = run(
+        scraper=FakeScraper([raw(1)]), sink=FakeSink(lookup_fails=True), processor=proc
+    )
     assert res["reviews_saved"] == 1 and proc.seen == [["e1"]]
 
 

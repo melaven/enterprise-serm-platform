@@ -6,16 +6,16 @@
 - RS256: поддержка для future-proof интеграций
 """
 
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Annotated
 from uuid import UUID
-import os
 
 import jwt
-from jwt import PyJWKClient
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWKClient
 from pydantic import ValidationError
 
 from app.schemas.auth import JWTPayload
@@ -44,26 +44,24 @@ def get_auth_config() -> AuthConfig:
     from app.core.config import get_settings  # локальный импорт: проще мокать
 
     settings = get_settings()
-    
+
     # Для Supabase ES256: используем JWKS endpoint
     supabase_url = os.getenv("SUPABASE_URL")
     jwks_url = None
     if supabase_url:
         # JWKS endpoint для Supabase (публичный): https://<project>.supabase.co/auth/v1/.well-known/jwks.json
         jwks_url = f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
-    
+
     # Для HS256: используем JWT secret
     secret = settings.supabase_jwt_secret
-    
+
     # Требуем хотя бы один способ валидации
     if not secret and not jwks_url:
-        raise RuntimeError("Either SUPABASE_JWT_SECRET or SUPABASE_URL must be configured")
-    
-    return AuthConfig(
-        secret=secret,
-        jwks_url=jwks_url,
-        audience=settings.jwt_audience
-    )
+        raise RuntimeError(
+            "Either SUPABASE_JWT_SECRET or SUPABASE_URL must be configured"
+        )
+
+    return AuthConfig(secret=secret, jwks_url=jwks_url, audience=settings.jwt_audience)
 
 
 def _unauthorized(detail: str) -> HTTPException:
@@ -76,7 +74,7 @@ def _unauthorized(detail: str) -> HTTPException:
 
 def decode_token(token: str, config: AuthConfig) -> JWTPayload:
     """Проверяет подпись, exp, aud и разбирает claim'ы.
-    
+
     Поддерживает оба метода валидации:
     - HS256: использует secret напрямую
     - ES256/RS256: использует JWKS для получения публичного ключа
@@ -88,7 +86,7 @@ def decode_token(token: str, config: AuthConfig) -> JWTPayload:
     # Сначала декодируем header чтобы узнать алгоритм
     unverified_header = jwt.get_unverified_header(token)
     algorithm = unverified_header.get("alg", "HS256")
-    
+
     # Выбираем метод валидации в зависимости от алгоритма
     if algorithm == "HS256" and config.secret:
         # HS256: используем secret напрямую
@@ -102,8 +100,10 @@ def decode_token(token: str, config: AuthConfig) -> JWTPayload:
         except Exception as e:
             raise jwt.PyJWTError(f"Failed to fetch JWKS signing key: {str(e)}")
     else:
-        raise jwt.PyJWTError(f"Unsupported algorithm {algorithm} or missing configuration")
-    
+        raise jwt.PyJWTError(
+            f"Unsupported algorithm {algorithm} or missing configuration"
+        )
+
     # Валидируем токен
     claims = jwt.decode(
         token,
@@ -140,7 +140,7 @@ async def get_current_tenant(
     payload: Annotated[JWTPayload, Depends(get_jwt_payload)],
 ) -> UUID:
     """Извлекает tenant_id из JWT payload.
-    
+
     Если tenant_id отсутствует в токене, используем sub (user_id) как tenant_id.
     Это позволяет работать с токенами Supabase без custom claims.
     """

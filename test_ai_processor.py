@@ -14,11 +14,20 @@ from app.services.ai_processor import (
 )
 from app.services.scraping import RawReview
 
-CFG = AIProcessorConfig(api_key="sk-test", batch_size=10, backoff_base_s=1.0, backoff_cap_s=8.0)
+CFG = AIProcessorConfig(
+    api_key="sk-test", batch_size=10, backoff_base_s=1.0, backoff_cap_s=8.0
+)
 
 
 def review(i: int, text: str | None = None) -> RawReview:
-    return RawReview(f"ext{i}", Platform.TRUSTPILOT, "a", 5, text if text is not None else f"text {i}", None)
+    return RawReview(
+        f"ext{i}",
+        Platform.TRUSTPILOT,
+        "a",
+        5,
+        text if text is not None else f"text {i}",
+        None,
+    )
 
 
 def insight(key: str, **over: Any) -> dict[str, Any]:
@@ -34,7 +43,12 @@ def insight(key: str, **over: Any) -> dict[str, Any]:
 
 def ok(results: list[dict[str, Any]]) -> httpx.Response:
     body = {
-        "choices": [{"finish_reason": "stop", "message": {"content": json.dumps({"results": results})}}],
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {"content": json.dumps({"results": results})},
+            }
+        ],
         "usage": {"prompt_tokens": 100, "completion_tokens": 50},
     }
     return httpx.Response(200, json=body)
@@ -59,7 +73,9 @@ class Env:
         async def fake_sleep(s: float) -> None:
             self.sleeps.append(s)
 
-        self.proc = ReviewAIProcessor(self.client, CFG, sleep=fake_sleep, rng=random.Random(1))
+        self.proc = ReviewAIProcessor(
+            self.client, CFG, sleep=fake_sleep, rng=random.Random(1)
+        )
 
     def run(self, reviews):
         return asyncio.run(self.proc.process(reviews))
@@ -132,7 +148,9 @@ def test_auth_error_is_fatal_no_retry():
 
 
 def test_insufficient_quota_is_fatal():
-    env = Env(lambda r: httpx.Response(429, json={"error": {"code": "insufficient_quota"}}))
+    env = Env(
+        lambda r: httpx.Response(429, json={"error": {"code": "insufficient_quota"}})
+    )
     out = env.run([review(0)])
     assert out[0].ai_pending and not env.sleeps and len(env.calls) == 1
 
@@ -141,7 +159,14 @@ def test_poison_review_isolated_by_bisection():
     def handler(req):
         user = json.loads(req.content)["messages"][1]["content"]
         if "POISON" in user:
-            return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": "not json"}}]})
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {"finish_reason": "stop", "message": {"content": "not json"}}
+                    ]
+                },
+            )
         return good_handler(req)
 
     env = Env(handler)
@@ -170,7 +195,14 @@ def test_missing_and_hallucinated_ids_are_retried():
 
 def test_reply_with_link_is_rejected_per_item():
     def handler(req):
-        return ok([insight(k, reply="Visit http://evil.example now") if k == "r1" else insight(k) for k in keys_of(req)])
+        return ok(
+            [
+                insight(k, reply="Visit http://evil.example now")
+                if k == "r1"
+                else insight(k)
+                for k in keys_of(req)
+            ]
+        )
 
     env = Env(handler)
     out = env.run([review(0), review(1)])
@@ -180,7 +212,12 @@ def test_reply_with_link_is_rejected_per_item():
 
 def test_truncated_and_refusal_degrade():
     def handler(req):
-        return httpx.Response(200, json={"choices": [{"finish_reason": "length", "message": {"content": "{"}}]})
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "length", "message": {"content": "{"}}]
+            },
+        )
 
     out = Env(handler).run([review(0)])
     assert out[0].ai_pending
@@ -217,7 +254,9 @@ def test_backoff_bounds():
 def test_schema_is_strict_compatible():
     def walk(n):
         if isinstance(n, dict):
-            assert not ({"maxLength", "minLength", "maxItems", "title", "default"} & n.keys())
+            assert not (
+                {"maxLength", "minLength", "maxItems", "title", "default"} & n.keys()
+            )
             if n.get("type") == "object":
                 assert n["additionalProperties"] is False
                 assert set(n["required"]) == set(n["properties"])

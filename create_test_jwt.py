@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Создает валидный JWT токен для тестирования API"""
 
-import jwt
 import json
 from uuid import uuid4
+
+import jwt
 
 # Тестовые данные
 tenant_id = str(uuid4())
@@ -15,7 +16,7 @@ payload = {
     "sub": user_id,
     "tenant_id": tenant_id,
     "aud": "authenticated",
-    "exp": 9999999999  # Далекое будущее
+    "exp": 9999999999,  # Далекое будущее
 }
 
 # Создаем токен
@@ -32,7 +33,7 @@ env_data = {
     "base_url": "http://localhost:8001",
     "jwt_token": token,
     "tenant_id": tenant_id,
-    "user_id": user_id
+    "user_id": user_id,
 }
 
 print("=== POSTMAN ENVIRONMENT ===")

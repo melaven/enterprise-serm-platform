@@ -56,11 +56,14 @@ class SqlGateway:
 
     async def record_event(self, event_id: str, event_type: str) -> bool:
         r = await self._s.execute(
-            text("SELECT app.billing_record_event(:i, :t)"), {"i": event_id, "t": event_type}
+            text("SELECT app.billing_record_event(:i, :t)"),
+            {"i": event_id, "t": event_type},
         )
         return bool(r.scalar_one())
 
-    async def activate_pro(self, tenant_id: UUID, customer: str, subscription: str) -> None:
+    async def activate_pro(
+        self, tenant_id: UUID, customer: str, subscription: str
+    ) -> None:
         await self._s.execute(
             text("SELECT app.billing_activate_pro(CAST(:t AS uuid), :c, :s)"),
             {"t": str(tenant_id), "c": customer, "s": subscription},
@@ -83,5 +86,7 @@ class SqlGateway:
         return bool(r.scalar_one())
 
     async def cancel(self, subscription: str) -> bool:
-        r = await self._s.execute(text("SELECT app.billing_cancel(:s)"), {"s": subscription})
+        r = await self._s.execute(
+            text("SELECT app.billing_cancel(:s)"), {"s": subscription}
+        )
         return bool(r.scalar_one())

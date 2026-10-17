@@ -9,6 +9,7 @@ Pepper — в секрет-хранилище, НЕ в БД с данными; �
 Важно: псевдонимизированные данные по GDPR остаются персональными; хеш снижает риск утечки, но не отменяет
 правовое основание и право на удаление (для opt-out нужен хеш -> он и есть «список подавления»).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -31,7 +32,9 @@ def normalize_name(value: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class Pseudonymizer:
-    peppers: dict[int, bytes]   # {1: b"...32+ bytes..."}; новые записи — current, чтение — любые версии
+    peppers: dict[
+        int, bytes
+    ]  # {1: b"...32+ bytes..."}; новые записи — current, чтение — любые версии
     current: int
 
     def __post_init__(self) -> None:
@@ -39,7 +42,9 @@ class Pseudonymizer:
             raise ValueError("pepper must be >= 32 bytes")
 
     def _h(self, version: int, namespace: str, value: str) -> str:
-        mac = hmac.new(self.peppers[version], f"{namespace}\x00{value}".encode(), hashlib.sha256)
+        mac = hmac.new(
+            self.peppers[version], f"{namespace}\x00{value}".encode(), hashlib.sha256
+        )
         return f"v{version}:{mac.hexdigest()}"
 
     def handle(self, username: str) -> str:

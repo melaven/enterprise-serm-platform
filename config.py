@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     worker_max_jobs: int = Field(10, ge=1)
     worker_job_timeout_s: int = Field(300, ge=10)  # жёсткий потолок ARQ на задачу
     worker_max_tries: int = Field(4, ge=1)
-    worker_result_ttl_s: int = Field(3600, ge=60)  # пока жив результат, тот же job_id не поставить
+    worker_result_ttl_s: int = Field(
+        3600, ge=60
+    )  # пока жив результат, тот же job_id не поставить
 
     # Пайплайн sync_platform_reviews
     sync_max_reviews: int = Field(500, ge=1, le=5000)

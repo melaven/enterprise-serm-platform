@@ -55,9 +55,7 @@ class PostgresReviewSink:
             session_factory if session_factory is not None else TenantSessionFactory()
         )
 
-    async def save(
-        self, tenant_id: UUID, reviews: Sequence[_AnalyzedReview]
-    ) -> int:
+    async def save(self, tenant_id: UUID, reviews: Sequence[_AnalyzedReview]) -> int:
         """Worker entry point; opens a session with RLS set to ``tenant_id``."""
         async with self._session_factory(tenant_id) as db:
             return await self.save_many(db, tenant_id, reviews)
@@ -70,7 +68,7 @@ class PostgresReviewSink:
         platform_id: UUID | None = None,
     ) -> int:
         """Insert a batch idempotently and return only rows inserted by this call.
-        
+
         SECURITY FIX: Advisory lock prevents race conditions when multiple workers
         process reviews for the same tenant simultaneously.
         """
@@ -79,10 +77,13 @@ class PostgresReviewSink:
 
         # ✅ CRITICAL FIX: Advisory lock for tenant isolation during concurrent writes
         # Prevents race conditions: two workers inserting same review → IntegrityError
-        lock_key = int(tenant_id.int % (2**31))  # PostgreSQL advisory lock requires int32
+        lock_key = int(
+            tenant_id.int % (2**31)
+        )  # PostgreSQL advisory lock requires int32
         await db.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_key)"),
-            {"lock_key": lock_key}
+            text("SELECT pg_advisory_xact_lock(:lock_key)").bindparams(
+                lock_key=lock_key
+            )
         )
 
         platform_names = {str(review.raw.platform.value) for review in reviews}
@@ -157,9 +158,7 @@ class PostgresReviewSink:
                 cac_on_platform=0.0,
                 average_rating=0.0,
             )
-            .on_conflict_do_nothing(
-                index_elements=[Platform.company_id, Platform.name]
-            )
+            .on_conflict_do_nothing(index_elements=[Platform.company_id, Platform.name])
             .returning(Platform.id)
         )
         result = await db.execute(stmt)

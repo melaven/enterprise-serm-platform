@@ -8,8 +8,9 @@ WORKDIR /build
 # Copy package files
 COPY frontend/package*.json ./
 
-# Install dependencies
-RUN npm ci --only=production=false
+# Install dependencies (including dev for build)
+# Skip prepare scripts (husky) since we're building in Docker
+RUN npm install --ignore-scripts
 
 # Copy source code
 COPY frontend/ ./
@@ -21,7 +22,7 @@ RUN npm run build
 FROM nginx:alpine
 
 # Copy custom nginx config
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY frontend/nginx.conf /etc/nginx/nginx.conf
 
 # Copy built assets from builder stage
 COPY --from=builder /build/dist /usr/share/nginx/html

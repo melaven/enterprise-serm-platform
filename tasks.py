@@ -21,7 +21,9 @@ from app.services.sink import ReviewSink
 log = structlog.get_logger(__name__)
 
 
-def compute_backoff(attempt: int, *, base: float, cap: float, hint: float | None = None) -> float:
+def compute_backoff(
+    attempt: int, *, base: float, cap: float, hint: float | None = None
+) -> float:
     """Экспонента с full-jitter; Retry-After площадки — нижняя граница."""
     ceiling = min(cap, base * 2 ** (attempt - 1))
     delay = random.uniform(base, max(base, ceiling))
@@ -47,7 +49,10 @@ async def parse_reviews(ctx: dict[str, Any], payload: dict[str, Any]) -> dict[st
         raise
 
     bound = log.bind(
-        job_id=job_id, tenant_id=str(job.tenant_id), platform=job.platform.value, attempt=job_try
+        job_id=job_id,
+        tenant_id=str(job.tenant_id),
+        platform=job.platform.value,
+        attempt=job_try,
     )
     bound.info("parse.started", url=job.url)
 
@@ -63,12 +68,19 @@ async def parse_reviews(ctx: dict[str, Any], payload: dict[str, Any]) -> dict[st
     except (RetryableScrapeError, TimeoutError) as exc:
         hint = exc.retry_after_s if isinstance(exc, RetryableScrapeError) else None
         if job_try >= settings.worker_max_tries:
-            bound.error("parse.failed_retries_exhausted", error=str(exc) or type(exc).__name__)
+            bound.error(
+                "parse.failed_retries_exhausted", error=str(exc) or type(exc).__name__
+            )
             raise
         delay = compute_backoff(
-            job_try, base=settings.retry_base_delay_s, cap=settings.retry_max_delay_s, hint=hint
+            job_try,
+            base=settings.retry_base_delay_s,
+            cap=settings.retry_max_delay_s,
+            hint=hint,
         )
-        bound.warning("parse.retry", error=str(exc) or type(exc).__name__, defer_s=round(delay, 1))
+        bound.warning(
+            "parse.retry", error=str(exc) or type(exc).__name__, defer_s=round(delay, 1)
+        )
         raise Retry(defer=delay) from exc
 
     except PermanentScrapeError as exc:

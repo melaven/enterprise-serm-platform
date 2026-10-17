@@ -63,4 +63,7 @@ Dockerfile
 backend.Dockerfile
 worker.Dockerfile
 frontend.Dockerfile
-nginx.conf
+# Exclude root nginx.conf but allow frontend/nginx.conf
+/nginx.conf
+nginx/nginx.conf
+deploy/nginx.conf

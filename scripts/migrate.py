@@ -29,6 +29,9 @@ MIGRATIONS: Final = (
     "010_reviews_ai_fields.sql",
     "011_reputation_data.sql",
     "012_llm_cache.sql",
+    "014_rename_quotas_table.sql",
+    "015_quota_service_contract.sql",
+    "016_admin_quota_updates.sql",
 )
 _DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _TRANSACTION_COMMANDS = {"BEGIN", "COMMIT", "ROLLBACK"}
@@ -247,7 +250,7 @@ async def apply_migrations() -> None:
             async with engine.begin() as connection:
                 password_command = await connection.scalar(
                     text(
-                        "SELECT format('ALTER ROLE app_tenant PASSWORD %L', :password)"
+                        "SELECT format('ALTER ROLE app_tenant PASSWORD %L', CAST(:password AS text))"
                     ),
                     {"password": tenant_password},
                 )

@@ -7,12 +7,21 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ..core.auth import get_current_tenant
+from ..core.auth import get_current_tenant, get_jwt_payload
 from ..core.billing_deps import get_quota_service, get_quota_status
+from ..schemas.auth import JWTPayload
 from ..schemas.billing import QuotaStatus, QuotaUpdateLimits
 from ..services.billing import QuotaNotFoundError, QuotaService
 
 router = APIRouter(prefix="/api/v1/quotas", tags=["Quotas & Billing"])
+
+
+def _require_quota_admin(payload: JWTPayload) -> None:
+    if payload.company_role not in {"owner", "admin"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only company owners and admins can update quota limits.",
+        )
 
 
 @router.get(
@@ -73,12 +82,16 @@ async def get_tenant_quota_status(
 async def update_my_quota_limits(
     limits: QuotaUpdateLimits,
     current_tenant: UUID = Depends(get_current_tenant),
+    payload: JWTPayload = Depends(get_jwt_payload),
     quota_service: QuotaService = Depends(get_quota_service),
 ) -> QuotaStatus:
     """Обновить лимиты квот только для текущего tenant из JWT."""
+    _require_quota_admin(payload)
+
     try:
         return await quota_service.update_limits(
             current_tenant,
+            actor_id=payload.sub,
             max_llm_tokens=limits.max_llm_tokens,
             max_reviews=limits.max_reviews,
         )
@@ -104,6 +117,7 @@ async def update_tenant_quota_limits(
     requested_tenant_id: UUID,
     limits: QuotaUpdateLimits,
     current_tenant: UUID = Depends(get_current_tenant),
+    payload: JWTPayload = Depends(get_jwt_payload),
     quota_service: QuotaService = Depends(get_quota_service),
 ) -> QuotaStatus:
     """Запрещает менять чужой tenant, даже если он передан в пути."""
@@ -112,10 +126,12 @@ async def update_tenant_quota_limits(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tenant mismatch: JWT tenant and requested tenant must match.",
         )
+    _require_quota_admin(payload)
 
     try:
         return await quota_service.update_limits(
             current_tenant,
+            actor_id=payload.sub,
             max_llm_tokens=limits.max_llm_tokens,
             max_reviews=limits.max_reviews,
         )

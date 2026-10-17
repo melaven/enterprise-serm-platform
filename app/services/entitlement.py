@@ -24,7 +24,9 @@ def _payment_required(plan: str, used: int, limit: int, reset: object) -> HTTPEx
             "message": "Лимит отзывов исчерпан. Повысьте тариф или дождитесь нового периода.",
             "requests_used": used,
             "max_requests": limit,
-            "reset_date": reset.isoformat() if reset is not None and hasattr(reset, "isoformat") else None,
+            "reset_date": reset.isoformat()
+            if reset is not None and hasattr(reset, "isoformat")
+            else None,
             "plan": plan,
             "upgrade_available": plan == "free",
         },

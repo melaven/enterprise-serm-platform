@@ -89,16 +89,16 @@ async def get_dashboard_metrics(
     timeline = [
         {
             "date": first_day + timedelta(days=day_offset),
-            "reviews": timeline_counts.get(
-                first_day + timedelta(days=day_offset), 0
-            ),
+            "reviews": timeline_counts.get(first_day + timedelta(days=day_offset), 0),
         }
         for day_offset in range(30)
     ]
 
     return {
         "total_reviews": total_reviews,
-        "average_rating": round(float(avg_rating), 2) if avg_rating is not None else None,
+        "average_rating": round(float(avg_rating), 2)
+        if avg_rating is not None
+        else None,
         "sentiment": {
             **sentiment_counts,
             "total": sum(sentiment_counts.values()),
@@ -123,9 +123,7 @@ async def get_reputation_statistics(
             Platform.name,
             func.count(Review.id),
             func.avg(func.nullif(Review.rating, 0)),
-            func.sum(
-                case((Review.created_at >= since, 1), else_=0)
-            ),
+            func.sum(case((Review.created_at >= since, 1), else_=0)),
         )
         .outerjoin(
             Review,
@@ -160,9 +158,7 @@ async def get_reputation_statistics(
     stats_result = await db.execute(
         select(ranked_stats).where(ranked_stats.c.position == 1)
     )
-    latest_stats = {
-        row.platform_id: row for row in stats_result.all()
-    }
+    latest_stats = {row.platform_id: row for row in stats_result.all()}
 
     platform_aliases = {
         "googlemaps": "google",

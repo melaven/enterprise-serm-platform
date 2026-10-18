@@ -303,8 +303,8 @@ export const useAppStore = create<AppState>()(
     }
   )
 );
-
-api.setUnauthorizedHandler(() => useAppStore.getState().invalidateAuth());
+// No need for setUnauthorizedHandler - handled by createApiClient onUnauthorized option
+// apiClient already has unauthorized handler configured in services.ts
 
 /**
  * Селекторы для оптимизации перерисовок

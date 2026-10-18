@@ -1,5 +1,4 @@
 import { useCallback, useSyncExternalStore } from 'react';
-import { useNavigate } from 'react-router-dom';
 
 import { PaywallModal } from '@/features/billing/PaywallModal';
 import { quotaStore } from '@/api/quota';
@@ -15,7 +14,7 @@ export interface QuotaExceededHostProps {
  * 
  * UPDATED: Использует новый PaywallModal для seamless upgrade experience
  */
-export function QuotaExceededHost({ upgradePath = '/billing' }: QuotaExceededHostProps) {
+export function QuotaExceededHost({ upgradePath: _upgradePath = '/billing' }: QuotaExceededHostProps) {
   const info = useSyncExternalStore(
     quotaStore.subscribe,
     quotaStore.getSnapshot,
@@ -42,8 +41,8 @@ export function QuotaExceededHost({ upgradePath = '/billing' }: QuotaExceededHos
       onClose={handleClose}
       reason={reason}
       usage={{
-        used: info.used ?? 0,
-        limit: info.limit ?? 0,
+        used: info.requestsUsed ?? 0,
+        limit: info.maxRequests ?? 0,
       }}
     />
   );

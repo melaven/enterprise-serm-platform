@@ -10,12 +10,10 @@ import { useNavigate } from 'react-router-dom';
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogClose,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 // ============================================================================
@@ -133,9 +131,11 @@ export function PaywallModal({
       <DialogContent className="max-w-lg border-2 border-plum-700 bg-ink-900 p-0">
         {/* Header with gradient */}
         <div className="relative overflow-hidden bg-gradient-to-br from-plum-900 to-ink-900 p-6 border-b-2 border-plum-700">
-          <DialogClose className="absolute right-4 top-4 text-chrome-400 hover:text-white transition-colors">
-            <X className="h-5 w-5" />
-            <span className="sr-only">Close</span>
+          <DialogClose asChild>
+            <button className="absolute right-4 top-4 text-chrome-400 hover:text-white transition-colors">
+              <X className="h-5 w-5" />
+              <span className="sr-only">Close</span>
+            </button>
           </DialogClose>
           
           <div className="flex items-start gap-4">

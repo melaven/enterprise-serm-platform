@@ -259,7 +259,7 @@ export const getPaginatedReviews = (params?: {
   let filtered = [...MOCK_REVIEWS];
 
   if (params?.platform) {
-    filtered = filtered.filter((r) => r.platform.toLowerCase().includes(params.platform!.toLowerCase()));
+    filtered = filtered.filter((r) => r.platform?.toLowerCase().includes(params.platform!.toLowerCase()));
   }
 
   if (params?.sentiment) {

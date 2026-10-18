@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Check, Zap, Crown, ArrowRight, Loader2 } from 'lucide-react';
+import { Check, Crown, ArrowRight, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/features/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -292,7 +292,7 @@ function UsageStats({ stats }: UsageStatsProps) {
 // ============================================================================
 
 export function BillingPage() {
-  const navigate = useNavigate();
+  const _navigate = useNavigate();
   const { user, logout } = useAppStore();
   
   const [currentPlan, setCurrentPlan] = useState<'free' | 'pro'>('free');

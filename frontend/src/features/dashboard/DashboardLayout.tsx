@@ -2,7 +2,6 @@ import { BarChart3, Inbox, LogOut, Menu, Settings, X, type LucideIcon } from 'lu
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
-import { QuotaWidget, type QuotaWidgetProps } from '@/features/dashboard/QuotaWidget';
 import { PlanBadge } from '@/features/billing/PlanBadge';
 import { Button } from '@/components/ui/button';
 import { QuotaModal } from './QuotaModal';
@@ -75,10 +74,10 @@ function SidebarNav() {
 export function DashboardLayout({
   title,
   userEmail,
-  quota,
+  quota: _quota,
   online,
   onLogout,
-  onUpgrade,
+  onUpgrade: _onUpgrade,
   children,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);

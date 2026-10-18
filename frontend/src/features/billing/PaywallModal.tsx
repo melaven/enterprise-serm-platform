@@ -131,12 +131,13 @@ export function PaywallModal({
       <DialogContent className="max-w-lg border-2 border-plum-700 bg-ink-900 p-0">
         {/* Header with gradient */}
         <div className="relative overflow-hidden bg-gradient-to-br from-plum-900 to-ink-900 p-6 border-b-2 border-plum-700">
-          <DialogClose asChild>
-            <button className="absolute right-4 top-4 text-chrome-400 hover:text-white transition-colors">
-              <X className="h-5 w-5" />
-              <span className="sr-only">Close</span>
-            </button>
-          </DialogClose>
+          <button 
+            onClick={() => onClose?.(false)}
+            className="absolute right-4 top-4 text-chrome-400 hover:text-white transition-colors"
+          >
+            <X className="h-5 w-5" />
+            <span className="sr-only">Close</span>
+          </button>
           
           <div className="flex items-start gap-4">
             <div className="flex items-center justify-center h-12 w-12 rounded-sm bg-plum-800 text-3xl shrink-0">

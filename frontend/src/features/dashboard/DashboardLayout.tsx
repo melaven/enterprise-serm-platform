@@ -24,7 +24,7 @@ export interface DashboardLayoutProps {
   title: string;
   userEmail?: string;
   /** null — квоты загружаются (скелетон) */
-  quota: Pick<QuotaWidgetProps, 'llmTokens' | 'reviewsParsed' | 'resetDate'> | null;
+  quota: { llmTokens?: unknown; reviewsParsed?: unknown; resetDate?: unknown } | null;
   online: boolean;
   onLogout: () => void;
   onUpgrade?: () => void;

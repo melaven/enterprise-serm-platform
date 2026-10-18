@@ -292,7 +292,6 @@ function UsageStats({ stats }: UsageStatsProps) {
 // ============================================================================
 
 export function BillingPage() {
-  const _navigate = useNavigate();
   const { user, logout } = useAppStore();
   
   const [currentPlan, setCurrentPlan] = useState<'free' | 'pro'>('free');

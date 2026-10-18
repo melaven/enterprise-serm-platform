@@ -11,7 +11,6 @@
 
 import { useState, useEffect } from 'react';
 import { Check, Crown, ArrowRight, Loader2 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/features/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/useAppStore';

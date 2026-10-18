@@ -11,7 +11,6 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
-  DialogClose,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -132,7 +131,7 @@ export function PaywallModal({
         {/* Header with gradient */}
         <div className="relative overflow-hidden bg-gradient-to-br from-plum-900 to-ink-900 p-6 border-b-2 border-plum-700">
           <button 
-            onClick={() => onClose?.(false)}
+            onClick={() => onClose?.()}
             className="absolute right-4 top-4 text-chrome-400 hover:text-white transition-colors"
           >
             <X className="h-5 w-5" />

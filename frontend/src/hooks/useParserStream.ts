@@ -339,7 +339,7 @@ export function useParserStream(
               disconnect();
               break;
             
-            case 'error':
+            case 'error': {
               log('Job failed:', message.data.error);
               
               const errorMsg = message.data.error || 'Unknown error';
@@ -353,6 +353,7 @@ export function useParserStream(
               // Auto-disconnect on error
               disconnect();
               break;
+            }
             
             case 'heartbeat':
               // Keep-alive ping, no action needed

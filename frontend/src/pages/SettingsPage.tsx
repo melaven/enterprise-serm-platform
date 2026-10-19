@@ -6,7 +6,8 @@ import {
   TrendingUp, 
   Key, 
   Trash2,
-  AlertCircle 
+  AlertCircle,
+  Webhook as WebhookIcon
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -17,28 +18,34 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAppStore } from '@/store/useAppStore';
-import type { QuotaStatus, SubscriptionTier, APIKey } from '@/api/services';
+import { WebhookManagement } from '@/features/webhooks/WebhookManagement';
+import type { QuotaStatus, SubscriptionTier, APIKey, Webhook } from '@/api/services';
 import * as demoApi from '@/api/demoService';
+import * as api from '@/api/services';
 
 export function SettingsPage() {
   const { user, logout } = useAppStore();
   const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null);
   const [tiers, setTiers] = useState<SubscriptionTier[]>([]);
   const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
+  const [webhooks, setWebhooks] = useState<Webhook[]>([]);
+  const [activeTab, setActiveTab] = useState<'usage' | 'subscription' | 'api-keys' | 'webhooks'>('usage');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [quota, subscriptionTiers, keys] = await Promise.all([
+        const [quota, subscriptionTiers, keys, hooks] = await Promise.all([
           demoApi.getQuotaStatus(),
           demoApi.getSubscriptionTiers(),
           demoApi.getAPIKeys(),
+          api.getWebhooks(),
         ]);
         setQuotaStatus(quota);
         setTiers(subscriptionTiers);
         setApiKeys(keys);
+        setWebhooks(hooks);
       } catch (error) {
         toast.error('Не удалось загрузить данные', {
           description: error instanceof Error ? error.message : 'Попробуйте обновить страницу',
@@ -59,6 +66,14 @@ export function SettingsPage() {
     } catch (error) {
       toast.error('Не удалось отозвать ключ');
     }
+  };
+
+  const handleWebhookCreated = (webhook: Webhook) => {
+    setWebhooks((prev) => [...prev, webhook]);
+  };
+
+  const handleWebhookDeleted = (webhookId: string) => {
+    setWebhooks((prev) => prev.filter((w) => w.id !== webhookId));
   };
 
   const handleUpgrade = (tierId: string) => {
@@ -98,12 +113,49 @@ export function SettingsPage() {
       onLogout={logout}
     >
       <div className="space-y-6">
+        {/* Tab Navigation */}
+        <div className="flex gap-2 border-b-2 border-gray-700 pb-4">
+          <Button
+            variant={activeTab === 'usage' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('usage')}
+            className={activeTab === 'usage' ? 'bg-[#5A189A] text-white hover:opacity-90' : 'text-gray-400 hover:text-white'}
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            Использование
+          </Button>
+          <Button
+            variant={activeTab === 'subscription' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('subscription')}
+            className={activeTab === 'subscription' ? 'bg-[#5A189A] text-white hover:opacity-90' : 'text-gray-400 hover:text-white'}
+          >
+            <CreditCard className="h-4 w-4 mr-2" />
+            Тарифы
+          </Button>
+          <Button
+            variant={activeTab === 'api-keys' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('api-keys')}
+            className={activeTab === 'api-keys' ? 'bg-[#5A189A] text-white hover:opacity-90' : 'text-gray-400 hover:text-white'}
+          >
+            <Key className="h-4 w-4 mr-2" />
+            API Ключи
+          </Button>
+          <Button
+            variant={activeTab === 'webhooks' ? 'default' : 'ghost'}
+            onClick={() => setActiveTab('webhooks')}
+            className={activeTab === 'webhooks' ? 'bg-[#5A189A] text-white hover:opacity-90' : 'text-gray-400 hover:text-white'}
+          >
+            <WebhookIcon className="h-4 w-4 mr-2" />
+            Webhooks
+          </Button>
+        </div>
+
         {/* Usage & Limits Section */}
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-white">
-            <Zap className="h-6 w-6 text-plum" aria-hidden="true" />
-            Использование и лимиты
-          </h2>
+        {activeTab === 'usage' && (
+          <section>
+            <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-white">
+              <Zap className="h-6 w-6 text-plum" aria-hidden="true" />
+              Использование и лимиты
+            </h2>
 
           {loading && !quotaStatus ? (
             <Card>
@@ -191,14 +243,16 @@ export function SettingsPage() {
               </CardContent>
             </Card>
           ) : null}
-        </section>
+          </section>
+        )}
 
         {/* Subscription Tiers Section */}
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-white">
-            <CreditCard className="h-6 w-6 text-plum" aria-hidden="true" />
-            Тарифные планы
-          </h2>
+        {activeTab === 'subscription' && (
+          <section>
+            <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-white">
+              <CreditCard className="h-6 w-6 text-plum" aria-hidden="true" />
+              Тарифные планы
+            </h2>
 
           {loading && tiers.length === 0 ? (
             <div className="grid gap-6 md:grid-cols-3">
@@ -277,13 +331,15 @@ export function SettingsPage() {
             </div>
           )}
         </section>
+        )}
 
         {/* API Keys Section */}
-        <section>
-          <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-white">
-            <Key className="h-6 w-6 text-plum" aria-hidden="true" />
-            API Ключи
-          </h2>
+        {activeTab === 'api-keys' && (
+          <section>
+            <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-white">
+              <Key className="h-6 w-6 text-plum" aria-hidden="true" />
+              API Ключи
+            </h2>
 
           <Card>
             <CardHeader>
@@ -351,6 +407,23 @@ export function SettingsPage() {
             </CardContent>
           </Card>
         </section>
+        )}
+
+        {/* Webhooks Section */}
+        {activeTab === 'webhooks' && (
+          <section>
+            <h2 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-white">
+              <WebhookIcon className="h-6 w-6 text-plum" aria-hidden="true" />
+              Developer / Webhooks
+            </h2>
+            <WebhookManagement
+              webhooks={webhooks}
+              loading={loading}
+              onWebhookCreated={handleWebhookCreated}
+              onWebhookDeleted={handleWebhookDeleted}
+            />
+          </section>
+        )}
       </div>
     </DashboardLayout>
   );

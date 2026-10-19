@@ -58,6 +58,38 @@ class GeminiReviewAnalysis(BaseModel):
     suggested_reply: str = Field(min_length=20, max_length=600)
 
 
+GEMINI_REVIEW_RESPONSE_SCHEMA = genai_types.Schema(
+    type=genai_types.Type.OBJECT,
+    properties={
+        "sentiment": genai_types.Schema(
+            type=genai_types.Type.STRING,
+            enum=[sentiment.value for sentiment in ReviewSentiment],
+        ),
+        "threat_level": genai_types.Schema(
+            type=genai_types.Type.INTEGER,
+            minimum=1,
+            maximum=5,
+        ),
+        "analysis_tags": genai_types.Schema(
+            type=genai_types.Type.ARRAY,
+            items=genai_types.Schema(type=genai_types.Type.STRING),
+            max_items=10,
+        ),
+        "suggested_reply": genai_types.Schema(
+            type=genai_types.Type.STRING,
+            min_length=20,
+            max_length=600,
+        ),
+    },
+    required=[
+        "sentiment",
+        "threat_level",
+        "analysis_tags",
+        "suggested_reply",
+    ],
+)
+
+
 class ReviewIntelligenceResult(GeminiReviewAnalysis):
     is_analyzed: bool = True
 
@@ -106,7 +138,7 @@ class SentimentIntelligencePipeline:
             config = genai_types.GenerateContentConfig(
                 system_instruction=SYSTEM_PROMPT,
                 response_mime_type="application/json",
-                response_schema=GeminiReviewAnalysis,
+                response_schema=GEMINI_REVIEW_RESPONSE_SCHEMA,
                 temperature=0,
             )
             response = await asyncio.wait_for(

@@ -9,7 +9,7 @@ import pytest
 
 from app.services import si_pipeline
 from app.services.si_pipeline import (
-    GeminiReviewAnalysis,
+    GEMINI_REVIEW_RESPONSE_SCHEMA,
     ReviewIntelligenceResult,
     ReviewSentiment,
     SentimentIntelligencePipeline,
@@ -126,7 +126,15 @@ async def test_analyze_review_uses_gemini_json_schema(
     config = call["config"]
     assert config.system_instruction == si_pipeline.SYSTEM_PROMPT
     assert config.response_mime_type == "application/json"
-    assert config.response_schema is GeminiReviewAnalysis
+    assert config.response_schema is GEMINI_REVIEW_RESPONSE_SCHEMA
+    schema = config.response_schema.model_dump(exclude_none=True, by_alias=True)
+    assert "additionalProperties" not in schema
+    assert schema["required"] == [
+        "sentiment",
+        "threat_level",
+        "analysis_tags",
+        "suggested_reply",
+    ]
 
 
 @pytest.mark.asyncio

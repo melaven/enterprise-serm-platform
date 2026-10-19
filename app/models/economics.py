@@ -41,6 +41,7 @@ class Company(Base):
     margin_percent: Mapped[float] = mapped_column(Float, nullable=False)
     cac: Mapped[float] = mapped_column(Float, nullable=False)
     base_ltv: Mapped[float] = mapped_column(Float, nullable=False)
+    notification_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -127,6 +128,17 @@ class Review(Base):
     )
     financial_impact: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     si_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    threat_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    suggested_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    analysis_tags: Mapped[list[str]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        default=list,
+        server_default=sql_text("'[]'"),
+    )
+    is_analyzed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_text("false")
+    )
     sentiment: Mapped[str | None] = mapped_column(String(20), nullable=True)
     tags: Mapped[list[str]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"),
@@ -169,6 +181,10 @@ class Review(Base):
             ["platforms.id", "platforms.company_id"],
             name="fk_reviews_platform_tenant",
             ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "threat_level IS NULL OR threat_level BETWEEN 1 AND 5",
+            name="ck_reviews_threat_level_range",
         ),
         CheckConstraint("rating >= 0 AND rating <= 5", name="ck_reviews_rating_range"),
     )

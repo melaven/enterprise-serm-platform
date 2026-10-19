@@ -3,23 +3,44 @@ Analytics API Router
 Эндпоинты для получения аналитики по отзывам и платформам с RLS изоляцией
 """
 
+import csv
+from collections.abc import AsyncIterator
+from io import StringIO
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.auth import get_current_tenant
+from ..core.database import AsyncSessionLocal
 from ..core.dependencies import (
     get_company_repository,
     get_platform_repository,
     get_review_repository,
 )
 from ..core.exceptions import BusinessLogicError, NotFoundError
+from ..core.tenant_session import get_tenant_session
+from ..models.economics import Review
 from ..repositories import CompanyRepository, PlatformRepository, ReviewRepository
 from ..schemas.analytics import AnalyticsRequest, DetailedAnalyticsResponse
 from ..services.analytics import AnalyticsService
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["Analytics"])
+
+
+async def get_analytics_tenant_session(
+    tenant_id: UUID = Depends(get_current_tenant),
+) -> AsyncIterator[AsyncSession]:
+    session = await get_tenant_session(
+        factory=AsyncSessionLocal,
+        tenant_id=tenant_id,
+    )
+    try:
+        yield session
+    finally:
+        await session.close()
 
 
 async def get_analytics_service(
@@ -29,6 +50,55 @@ async def get_analytics_service(
 ) -> AnalyticsService:
     """Dependency для получения AnalyticsService с RLS изоляцией"""
     return AnalyticsService(review_repo, platform_repo, company_repo)
+
+
+@router.get(
+    "/export",
+    status_code=200,
+    summary="Экспорт отзывов в CSV",
+    description="Выгрузка отзывов текущей компании для бизнес-отчетов",
+)
+async def export_reviews_csv(
+    tenant_id: UUID = Depends(get_current_tenant),
+    session: AsyncSession = Depends(get_analytics_tenant_session),
+) -> StreamingResponse:
+    result = await session.execute(
+        select(
+            Review.created_at,
+            Review.platform,
+            Review.rating,
+            Review.sentiment,
+            Review.threat_level,
+            Review.text,
+        )
+        .where(Review.company_id == tenant_id)
+        .order_by(Review.created_at)
+    )
+
+    output = StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(
+        ["date", "platform", "rating", "sentiment", "threat_level", "text"]
+    )
+    for created_at, platform, rating, sentiment, threat_level, review_text in result.all():
+        writer.writerow(
+            [
+                created_at.isoformat() if created_at else "",
+                platform or "",
+                rating if rating is not None else "",
+                sentiment or "",
+                threat_level if threat_level is not None else "",
+                review_text or "",
+            ]
+        )
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="serm_report.csv"',
+        },
+    )
 
 
 @router.post(

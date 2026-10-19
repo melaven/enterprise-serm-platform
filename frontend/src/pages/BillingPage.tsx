@@ -303,8 +303,8 @@ export function BillingPage() {
       try {
         const status = await getQuotaStatus();
         
-        // Determine current plan based on limits
-        const isPro = status.limits.max_reviews > 100;
+        // Determine current plan based on limits (Pro has 10,000 reviews)
+        const isPro = status.limits.max_reviews >= 10_000;
         setCurrentPlan(isPro ? 'pro' : 'free');
         
         setUsageStats({
@@ -315,7 +315,7 @@ export function BillingPage() {
         });
       } catch (error) {
         console.error('Failed to fetch quota status:', error);
-        toast.error('Failed to load usage data');
+        toast.error('Не удалось загрузить данные квот');
       }
     }
     
@@ -328,7 +328,7 @@ export function BillingPage() {
    */
   const handleUpgrade = async (tierId: string) => {
     if (tierId === 'free') {
-      toast.info('You are already on the Free plan');
+      toast.info('Вы уже используете бесплатный тариф');
       return;
     }
     
@@ -354,13 +354,13 @@ export function BillingPage() {
           throw new Error('Failed to create checkout session');
         }
         
-        const { checkout_url } = await response.json();
+        const { checkout_url } = await response.json() as { checkout_url: string };
         
         // Redirect to Stripe Checkout
         window.location.href = checkout_url;
       } catch (error) {
         console.error('Upgrade error:', error);
-        toast.error('Failed to start checkout. Please try again.');
+        toast.error('Не удалось начать оформление. Попробуйте снова.');
         setLoading(false);
       }
     }

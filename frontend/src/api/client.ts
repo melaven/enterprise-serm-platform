@@ -5,6 +5,7 @@ import axios, {
   type AxiosInstance,
   type InternalAxiosRequestConfig,
 } from 'axios';
+import { toast } from 'sonner';
 
 import { parseQuotaExceeded, quotaStore, type QuotaExceededInfo } from './quota';
 import { parseRetryAfter, rateLimitStore } from './rateLimit';
@@ -153,6 +154,10 @@ export function createApiClient(options: ApiClientOptions): AxiosInstance {
         quotaStore.open(apiError.info);
       } else if (apiError instanceof RateLimitedApiError) {
         rateLimitStore.open(apiError.retryAfterSeconds, apiError.correlationId);
+        toast.error('Слишком много запросов', {
+          description: `Подождите ${apiError.retryAfterSeconds} сек. и повторите попытку`,
+          duration: Math.min(5000, apiError.retryAfterSeconds * 1000),
+        });
       }
       
       return Promise.reject(apiError);

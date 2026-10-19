@@ -17,3 +17,4 @@ structlog>=23.2.0
 supabase>=2.0.0
 email-validator>=2.0.0
 stripe>=5.0.0
+aiosmtplib>=3.0.0

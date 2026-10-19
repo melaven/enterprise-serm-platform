@@ -32,6 +32,7 @@ MIGRATIONS: Final = (
     "014_rename_quotas_table.sql",
     "015_quota_service_contract.sql",
     "016_admin_quota_updates.sql",
+    "020_company_notification_email.sql",
 )
 _DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _TRANSACTION_COMMANDS = {"BEGIN", "COMMIT", "ROLLBACK"}

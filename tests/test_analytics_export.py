@@ -33,9 +33,9 @@ class FakeSession:
 
 
 @pytest_asyncio.fixture
-async def analytics_export_client() -> AsyncIterator[
-    tuple[httpx.AsyncClient, FakeSession, UUID]
-]:
+async def analytics_export_client() -> (
+    AsyncIterator[tuple[httpx.AsyncClient, FakeSession, UUID]]
+):
     tenant_id = uuid4()
     session = FakeSession(
         [

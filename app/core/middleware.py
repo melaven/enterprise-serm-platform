@@ -2,8 +2,10 @@
 Enterprise middleware для Correlation ID и трассировки запросов
 """
 
+import json
 import time
 from collections.abc import Callable
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import Request, Response
@@ -190,11 +192,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             try:
                 body = await request.body()
                 if body:
-                    # Пытаемся декодировать как текст
-                    try:
-                        request_data["body"] = body.decode("utf-8")
-                    except UnicodeDecodeError:
-                        request_data["body"] = f"<binary data, {len(body)} bytes>"
+                    request_data["body"] = self._filter_request_body(body)
             except Exception as e:
                 request_data["body_error"] = str(e)
 
@@ -225,6 +223,42 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 filtered[key] = value
 
         return filtered
+
+    def _filter_request_body(self, body: bytes) -> str:
+        try:
+            decoded_body = body.decode("utf-8")
+        except UnicodeDecodeError:
+            return f"<binary request body, {len(body)} bytes>"
+
+        try:
+            data = json.loads(decoded_body)
+        except json.JSONDecodeError:
+            return f"<non-JSON request body, {len(body)} bytes>"
+
+        sensitive_fields = {
+            "access_token",
+            "api_key",
+            "client_secret",
+            "password",
+            "refresh_token",
+            "secret",
+            "secret_key",
+            "token",
+        }
+
+        def redact(value: Any) -> Any:
+            if isinstance(value, dict):
+                return {
+                    key: "***HIDDEN***"
+                    if key.lower().replace("-", "_") in sensitive_fields
+                    else redact(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, list):
+                return [redact(item) for item in value]
+            return value
+
+        return json.dumps(redact(data), ensure_ascii=False)
 
 
 class PerformanceMiddleware(BaseHTTPMiddleware):

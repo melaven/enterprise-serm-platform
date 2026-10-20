@@ -1,4 +1,4 @@
-"""ARQ-воркер. Запуск: arq app.services.worker.worker.WorkerSettings"""
+"""ARQ-воркер. Запуск: arq app.worker.worker.WorkerSettings"""
 
 from typing import Any
 
@@ -6,9 +6,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.core.config import get_settings
+from app.core.logger import configure_logging_from_env
 from app.core.redis import get_redis_settings
-from app.core.tenant import build_engine
-from app.services.worker.tasks import fetch_reviews_task
+from app.db.tenant import build_engine
+from app.services.si_pipeline import build_insights_service
+from app.worker.analysis_tasks import process_reviews_batch
+from app.worker.tasks import fetch_reviews_task
 
 MAX_JOBS = 10
 
@@ -39,6 +42,7 @@ async def _assert_rls_applies(engine: AsyncEngine) -> None:
 
 
 async def startup(ctx: dict[str, Any]) -> None:
+    configure_logging_from_env()  # воркер — отдельный процесс: JSON-логи с correlation_id
     # Свой engine воркера: создаётся в event loop ARQ и закрывается в shutdown.
     engine = build_engine(get_settings().database_url, pool_size=MAX_JOBS)
     try:
@@ -49,6 +53,8 @@ async def startup(ctx: dict[str, Any]) -> None:
         raise
     ctx["engine"] = engine
     ctx["session_factory"] = async_sessionmaker(engine, expire_on_commit=False)
+    # Любой объект с протоколом ReviewInsightsService. Есть GEMINI_API_KEY -> LLM-пайплайн, иначе эвристика.
+    ctx["insights_service"] = build_insights_service()
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
@@ -56,13 +62,13 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
-    functions = [fetch_reviews_task]
+    functions = [fetch_reviews_task, process_reviews_batch]
     redis_settings = get_redis_settings()
     on_startup = startup
     on_shutdown = shutdown
 
     max_jobs = MAX_JOBS  # параллельных задач; pool_size БД = max_jobs
-    job_timeout = 120  # сек на задачу
+    job_timeout = 300  # сек на задачу (батч до 200 отзывов через LLM при ограниченной параллельности)
     max_tries = 3  # лимит попыток (Retry и перезапуски после падения воркера)
     keep_result = 120  # сек хранить результат; пока он жив, тот же _job_id не поставить
     health_check_interval = 30

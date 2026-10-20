@@ -27,6 +27,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.core.database import Base
+from app.core.security import EncryptionError, decrypt_token, encrypt_token
 from app.schemas.economics import ReviewStatus
 
 
@@ -128,6 +129,7 @@ class Review(Base):
     )
     financial_impact: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     si_response: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sentiment: Mapped[str | None] = mapped_column(String(20), nullable=True)
     threat_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     suggested_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_tags: Mapped[list[str]] = mapped_column(
@@ -139,7 +141,6 @@ class Review(Base):
     is_analyzed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sql_text("false")
     )
-    sentiment: Mapped[str | None] = mapped_column(String(20), nullable=True)
     tags: Mapped[list[str]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"),
         nullable=False,
@@ -182,11 +183,36 @@ class Review(Base):
             name="fk_reviews_platform_tenant",
             ondelete="CASCADE",
         ),
+        CheckConstraint("rating >= 0 AND rating <= 5", name="ck_reviews_rating_range"),
         CheckConstraint(
             "threat_level IS NULL OR threat_level BETWEEN 1 AND 5",
             name="ck_reviews_threat_level_range",
         ),
-        CheckConstraint("rating >= 0 AND rating <= 5", name="ck_reviews_rating_range"),
+    )
+
+
+class WebhookEndpoint(Base):
+    __tablename__ = "webhook_endpoints"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    secret_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sql_text("true")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_webhook_endpoints_company_active", "company_id", "is_active"),
     )
 
 
@@ -266,4 +292,115 @@ class CompanyMember(Base):
     __table_args__ = (
         Index("ix_company_members_user_company", "user_id", "company_id"),
         Index("ix_company_members_company_id", "company_id"),
+    )
+
+
+class PlatformIntegration(Base):
+    """Модель для хранения интеграций с платформами (Google Business, Trustpilot, Yelp)"""
+
+    __tablename__ = "platform_integrations"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    company_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    platform: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # 'google_business', 'trustpilot', 'yelp'
+    encrypted_api_key: Mapped[str] = mapped_column(
+        Text, nullable=False
+    )  # Encrypted API token
+    meta_config: Mapped[dict[str, object]] = mapped_column(
+        JSON().with_variant(JSONB, "postgresql"),
+        nullable=False,
+        default=dict,
+        server_default=sql_text("'{}'"),
+    )
+    external_account_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_location_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=sql_text("true")
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    company: Mapped[Company] = relationship()
+
+    # Property for transparent encryption/decryption
+    @property
+    def api_key(self) -> str:
+        """Decrypt and return the API key"""
+        try:
+            return decrypt_token(self.encrypted_api_key)
+        except EncryptionError as e:
+            from app.core.logger import get_logger
+
+            logger = get_logger("platform_integration")
+            logger.error(
+                "Failed to decrypt API key",
+                integration_id=str(self.id),
+                platform=self.platform,
+                error=str(e),
+            )
+            raise
+
+    @api_key.setter
+    def api_key(self, plain_token: str) -> None:
+        """Encrypt and store the API key"""
+        try:
+            self.encrypted_api_key = encrypt_token(plain_token)
+        except EncryptionError as e:
+            from app.core.logger import get_logger
+
+            logger = get_logger("platform_integration")
+            logger.error(
+                "Failed to encrypt API key",
+                integration_id=str(self.id),
+                platform=self.platform,
+                error=str(e),
+            )
+            raise
+
+    __table_args__ = (
+        Index("ix_platform_integrations_company_id", "company_id"),
+        UniqueConstraint(
+            "company_id", "platform", name="uq_platform_integrations_company_platform"
+        ),
+    )
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid4
+    )
+    tenant_id: Mapped[UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_audit_logs_tenant_timestamp", "tenant_id", "timestamp"),
     )

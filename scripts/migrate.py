@@ -32,7 +32,14 @@ MIGRATIONS: Final = (
     "014_rename_quotas_table.sql",
     "015_quota_service_contract.sql",
     "016_admin_quota_updates.sql",
+    "017_reviews_threat_level.sql",
+    "018_api_keys.sql",
+    "019_webhook_endpoints.sql",
     "020_company_notification_email.sql",
+    "021_platform_integration_reply_targets.sql",
+    "022_security_audit_log.sql",
+    "023_weekly_digest_recipients.sql",
+    "024_platform_metadata.sql",
 )
 _DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _TRANSACTION_COMMANDS = {"BEGIN", "COMMIT", "ROLLBACK"}

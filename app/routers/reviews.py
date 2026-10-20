@@ -6,8 +6,9 @@ HTTP-обработка запросов, валидация, делегиров
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import and_, column, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +20,7 @@ from ..core.dependencies import (
     get_tenant_db,
 )
 from ..core.rate_limit import check_llm_limits
-from ..models.economics import Review
+from ..models.economics import PlatformIntegration, Review
 from ..repositories import ReviewRepository
 from ..repositories.analytics_repo import (
     get_dashboard_metrics,
@@ -38,6 +39,100 @@ from ..schemas.economics import ReviewBase, ReviewStatus
 from ..services import ReviewProcessorService, SentimentService
 
 router = APIRouter()
+
+
+class PublishReplyRequest(BaseModel):
+    reply_text: str = Field(min_length=1, max_length=4096)
+
+    @field_validator("reply_text")
+    @classmethod
+    def strip_reply_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Reply text must not be blank")
+        return value
+
+
+@router.post(
+    "/{review_id}/reply",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Опубликовать ответ на отзыв",
+)
+async def publish_review_reply(
+    review_id: UUID,
+    body: PublishReplyRequest,
+    request: Request,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> JSONResponse:
+    review = await db.scalar(
+        select(Review).where(
+            Review.id == review_id,
+            Review.company_id == tenant_id,
+        )
+    )
+    if review is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Review not found",
+        )
+
+    if (review.platform or "").lower() not in {"google", "google_business"}:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Reply publishing is currently supported for Google Business only",
+        )
+    if not review.external_review_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Review does not have an external platform ID",
+        )
+
+    integration_result = await db.scalars(
+        select(PlatformIntegration).where(
+            PlatformIntegration.company_id == tenant_id,
+            PlatformIntegration.platform.in_(("google", "google_business")),
+            PlatformIntegration.is_active.is_(True),
+        )
+    )
+    integrations = list(integration_result.all())
+    if len(integrations) != 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An active Google Business integration is required",
+        )
+    integration = integrations[0]
+    if not integration.external_account_id or not integration.external_location_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google Business account and location IDs must be configured",
+        )
+
+    arq_pool = getattr(request.app.state, "arq_pool", None)
+    if arq_pool is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Reply publishing queue is unavailable",
+        )
+
+    job_id = f"review-reply-{review_id}"
+    job = await arq_pool.enqueue_job(
+        "publish_review_reply",
+        str(tenant_id),
+        str(review_id),
+        body.reply_text,
+        _job_id=job_id,
+    )
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A reply for this review is already queued",
+        )
+
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        content={"review_id": str(review_id), "status": "queued", "job_id": job_id},
+    )
 
 
 @router.post(

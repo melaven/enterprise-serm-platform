@@ -48,6 +48,8 @@ export interface Review {
   rating: number;
   text: string;
   sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'UNCLASSIFIED' | null;
+  threat_level: number | null;
+  suggested_reply: string | null;
   tags: string[];
   status: 'new' | 'si_processing' | 'resolved' | 'lost';
   financial_impact: number;
@@ -62,6 +64,19 @@ export interface ApproveAiResponseResult {
   review_id: string;
   status: Review['status'];
   ai_pending: boolean;
+}
+
+export interface PublishReviewReplyResult {
+  review_id: string;
+  status: 'queued';
+  job_id: string;
+}
+
+export interface GoogleBusinessIntegration {
+  platform: 'google_business';
+  external_account_id: string;
+  external_location_id: string;
+  is_active: boolean;
 }
 
 export interface DashboardSummary {
@@ -143,9 +158,46 @@ export interface SubscriptionTier {
 export interface APIKey {
   id: string;
   name: string;
-  key_prefix: string; // "sk-****..."
+  key_prefix: string; // "sk_live_****..."
   created_at: string;
   last_used_at: string | null;
+}
+
+export interface CreateAPIKeyRequest {
+  name: string;
+}
+
+export interface CreateAPIKeyResponse {
+  id: string;
+  name: string;
+  key: string; // Full key shown ONLY once
+  key_prefix: string;
+  created_at: string;
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  secret_key_prefix: string; // "whsec_****..."
+  events: string[];
+  active: boolean;
+  created_at: string;
+  last_triggered_at: string | null;
+}
+
+export interface CreateWebhookRequest {
+  url: string;
+  events?: string[];
+}
+
+export interface CreateWebhookResponse {
+  id: string;
+  url: string;
+  secret_key: string; // Full secret shown ONLY once
+  secret_key_prefix: string;
+  events: string[];
+  active: boolean;
+  created_at: string;
 }
 
 export interface LoginRequest {
@@ -269,6 +321,32 @@ export async function approveAiResponse(
 }
 
 /**
+ * Queue publication of an edited or generated reply to the review platform.
+ */
+export async function publishReviewReply(
+  reviewId: string,
+  replyText: string,
+): Promise<PublishReviewReplyResult> {
+  const { data } = await apiClient.post<PublishReviewReplyResult>(
+    `/v1/reviews/${encodeURIComponent(reviewId)}/reply`,
+    { reply_text: replyText },
+  );
+  return data;
+}
+
+export async function configureGoogleBusinessIntegration(input: {
+  access_token: string;
+  external_account_id: string;
+  external_location_id: string;
+}): Promise<GoogleBusinessIntegration> {
+  const { data } = await apiClient.put<GoogleBusinessIntegration>(
+    '/v1/platforms/integrations/google-business',
+    input,
+  );
+  return data;
+}
+
+/**
  * Получение отзыва по ID
  */
 export async function getReviewById(reviewId: string): Promise<Review> {
@@ -341,4 +419,84 @@ export async function getQuotaStatus(): Promise<QuotaStatus> {
       ? (data.usage.used_reviews / data.limits.max_reviews) * 100
       : 0,
   };
+}
+
+
+// ============================================================
+// API KEYS SERVICES
+// ============================================================
+
+/**
+ * Получение списка API ключей текущего tenant
+ * GET /api/v1/api-keys
+ */
+export async function getAPIKeys(): Promise<APIKey[]> {
+  const { data } = await apiClient.get<APIKey[]>('/v1/api-keys');
+  return data;
+}
+
+/**
+ * Создание нового API ключа
+ * POST /api/v1/api-keys
+ * ВАЖНО: Полный ключ возвращается только один раз!
+ */
+export async function createAPIKey(request: CreateAPIKeyRequest): Promise<CreateAPIKeyResponse> {
+  const { data } = await apiClient.post<CreateAPIKeyResponse>('/v1/api-keys', request);
+  return data;
+}
+
+/**
+ * Отзыв (удаление) API ключа
+ * DELETE /api/v1/api-keys/{key_id}
+ */
+export async function revokeAPIKey(keyId: string): Promise<void> {
+  await apiClient.delete(`/v1/api-keys/${keyId}`);
+}
+
+// ============================================================
+// WEBHOOKS SERVICES
+// ============================================================
+
+/**
+ * Получение списка вебхуков текущего tenant
+ * GET /api/v1/webhooks
+ */
+export async function getWebhooks(): Promise<Webhook[]> {
+  const { data } = await apiClient.get<Webhook[]>('/v1/webhooks');
+  return data;
+}
+
+/**
+ * Создание нового вебхука
+ * POST /api/v1/webhooks
+ * ВАЖНО: Полный secret_key возвращается только один раз!
+ */
+export async function createWebhook(request: CreateWebhookRequest): Promise<CreateWebhookResponse> {
+  const { data } = await apiClient.post<CreateWebhookResponse>('/v1/webhooks', request);
+  return data;
+}
+
+/**
+ * Удаление вебхука
+ * DELETE /api/v1/webhooks/{webhook_id}
+ */
+export async function deleteWebhook(webhookId: string): Promise<void> {
+  await apiClient.delete(`/v1/webhooks/${webhookId}`);
+}
+
+// ============================================================
+// ANALYTICS EXPORT SERVICES
+// ============================================================
+
+/**
+ * Экспорт аналитики в CSV
+ * GET /api/v1/analytics/export
+ * Возвращает файл для скачивания
+ */
+export async function exportAnalyticsToCSV(params?: { days?: number }): Promise<Blob> {
+  const response = await apiClient.get('/v1/analytics/export', {
+    params,
+    responseType: 'blob',
+  });
+  return response.data;
 }

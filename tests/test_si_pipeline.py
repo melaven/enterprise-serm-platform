@@ -77,7 +77,9 @@ class FakeSession:
 
 
 @pytest.fixture
-def make_pipeline(monkeypatch: pytest.MonkeyPatch) -> Callable[..., SentimentIntelligencePipeline]:
+def make_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> Callable[..., SentimentIntelligencePipeline]:
     monkeypatch.setattr(
         si_pipeline,
         "get_settings",
@@ -204,8 +206,12 @@ async def test_process_batch_limits_concurrent_gemini_calls_and_persists_results
     assert len(updates) == len(review_ids)
     assert all(row["is_analyzed"] is True for row in updates)
     assert all(row["ai_pending"] is False for row in updates)
-    assert all(row["analysis_tags"] == VALID_ANALYSIS["analysis_tags"] for row in updates)
-    assert all(row["suggested_reply"] == VALID_ANALYSIS["suggested_reply"] for row in updates)
+    assert all(
+        row["analysis_tags"] == VALID_ANALYSIS["analysis_tags"] for row in updates
+    )
+    assert all(
+        row["suggested_reply"] == VALID_ANALYSIS["suggested_reply"] for row in updates
+    )
 
 
 @pytest.mark.asyncio

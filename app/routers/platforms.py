@@ -5,14 +5,88 @@ HTTP-обработка, валидация, делегирование в ре�
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.dependencies import get_platform_repository
+from ..core.auth import get_current_tenant
+from ..core.dependencies import get_platform_repository, get_tenant_db
+from ..models.economics import PlatformIntegration
 from ..repositories import PlatformRepository
 from ..schemas.economics import PlatformBase
 
 router = APIRouter()
+
+
+class GoogleBusinessIntegrationRequest(BaseModel):
+    access_token: SecretStr = Field(min_length=1, max_length=8192)
+    external_account_id: str = Field(min_length=1, max_length=255)
+    external_location_id: str = Field(min_length=1, max_length=255)
+
+    @field_validator("access_token")
+    @classmethod
+    def strip_access_token(cls, value: SecretStr) -> SecretStr:
+        token = value.get_secret_value().strip()
+        if not token:
+            raise ValueError("Google Business access token must not be blank")
+        return SecretStr(token)
+
+    @field_validator("external_account_id", "external_location_id")
+    @classmethod
+    def strip_external_ids(cls, value: str) -> str:
+        value = value.strip()
+        if not value or "/" in value:
+            raise ValueError("Provide a non-empty provider ID, not a resource path")
+        return value
+
+
+class GoogleBusinessIntegrationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    platform: str
+    external_account_id: str
+    external_location_id: str
+    is_active: bool
+
+
+@router.put(
+    "/integrations/google-business",
+    response_model=GoogleBusinessIntegrationResponse,
+    summary="Настроить интеграцию Google Business",
+)
+async def upsert_google_business_integration(
+    body: GoogleBusinessIntegrationRequest,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> PlatformIntegration:
+    integration = await db.scalar(
+        select(PlatformIntegration).where(
+            PlatformIntegration.company_id == tenant_id,
+            PlatformIntegration.platform == "google_business",
+        )
+    )
+    if integration is None:
+        integration = PlatformIntegration(
+            company_id=tenant_id,
+            platform="google_business",
+            encrypted_api_key="pending-encryption",
+            is_active=True,
+        )
+        db.add(integration)
+
+    integration.api_key = body.access_token.get_secret_value()
+    integration.external_account_id = body.external_account_id.strip()
+    integration.external_location_id = body.external_location_id.strip()
+    integration.is_active = True
+    if not integration.external_account_id or not integration.external_location_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Google Business account and location IDs must not be blank",
+        )
+    await db.flush()
+    return integration
 
 
 @router.post(

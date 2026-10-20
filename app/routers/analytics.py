@@ -77,10 +77,15 @@ async def export_reviews_csv(
 
     output = StringIO(newline="")
     writer = csv.writer(output)
-    writer.writerow(
-        ["date", "platform", "rating", "sentiment", "threat_level", "text"]
-    )
-    for created_at, platform, rating, sentiment, threat_level, review_text in result.all():
+    writer.writerow(["date", "platform", "rating", "sentiment", "threat_level", "text"])
+    for (
+        created_at,
+        platform,
+        rating,
+        sentiment,
+        threat_level,
+        review_text,
+    ) in result.all():
         writer.writerow(
             [
                 created_at.isoformat() if created_at else "",

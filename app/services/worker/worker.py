@@ -3,26 +3,18 @@ ARQ Worker настройки для SERM с enterprise-логированием
 """
 
 import os
+from datetime import timezone
 
-from arq import create_pool
-from arq.connections import RedisSettings
-from dotenv import load_dotenv
+from arq import create_pool, cron
 
 from ...core.logger import configure_logging, get_logger
+from ...core.redis import get_redis_settings
+from .analysis_tasks import process_reviews_batch
+from .digest import enqueue_weekly_digests, send_company_weekly_digest
+from .reply_tasks import publish_review_reply
 from .tasks import fetch_reviews_task
 
 logger = get_logger(__name__)
-
-
-def get_redis_settings() -> RedisSettings:
-    """Настройки Redis для ARQ"""
-    load_dotenv()
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-    if redis_url == "dummy://skip":
-        return RedisSettings(host="127.0.0.1", port=6379)
-
-    return RedisSettings.from_dsn(redis_url)
 
 
 class WorkerSettings:
@@ -32,7 +24,17 @@ class WorkerSettings:
     redis_settings = get_redis_settings()
 
     # Задачи для выполнения
-    functions = [fetch_reviews_task]
+    functions = [
+        fetch_reviews_task,
+        process_reviews_batch,
+        publish_review_reply,
+        send_company_weekly_digest,
+        enqueue_weekly_digests,
+    ]
+    cron_jobs = [
+        cron(enqueue_weekly_digests, weekday="mon", hour=9, minute=0),
+    ]
+    timezone = timezone.utc
 
     # Настройки воркера
     max_jobs = 10

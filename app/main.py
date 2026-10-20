@@ -18,6 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .core.audit_middleware import SecurityAuditMiddleware
 from .core.database import engine, get_db
 from .core.dependencies import (
     cleanup_dependencies,
@@ -40,19 +41,22 @@ from .core.middleware import (
     PerformanceMiddleware,
     RequestLoggingMiddleware,
 )
-from .core.rate_limit import add_rate_limit_headers
+from .core.rate_limit import RateLimitDependency, add_rate_limit_headers
 from .routers import (
     analytics,
+    api_keys,
     auth,
     billing,
     companies,
     economics,
+    external_api,
     parser,
     platforms,
     quotas,
     reputation,
     reviews,
     stripe_webhook,
+    webhooks_config,
 )
 from .services.worker.worker import create_arq_pool
 
@@ -121,6 +125,7 @@ async def lifespan(app: FastAPI):
         try:
             arq_pool = await create_arq_pool()
             app.state.arq_pool = arq_pool
+            app.state.redis_pool = arq_pool
             logger.info(
                 "✅ ARQ Redis pool инициализирован", component="arq", status="ready"
             )
@@ -128,6 +133,7 @@ async def lifespan(app: FastAPI):
             logger.warning("⚠️ ARQ pool недоступен", component="arq", error=str(e))
             logger.warning("Фоновые задачи будут недоступны")
             app.state.arq_pool = None
+            app.state.redis_pool = None
 
         logger.info("✅ Сервисы инициализированы", status="startup_complete")
         yield
@@ -161,10 +167,12 @@ app = FastAPI(
     description="API для управления репутацией и расчета экономического влияния отзывов",
     version="1.0.0",
     lifespan=lifespan,
+    dependencies=[Depends(RateLimitDependency())],
     # Отключаем автоматические docs в продакшене
     docs_url="/docs" if __debug__ else None,
     redoc_url="/redoc" if __debug__ else None,
 )
+app.state.redis_pool = None
 
 
 # Enterprise Middleware Stack (порядок важен!)
@@ -173,6 +181,7 @@ app = FastAPI(
 app.add_middleware(
     CorrelationIdMiddleware, header_name=CORRELATION_ID_HEADER, generate_if_missing=True
 )
+app.add_middleware(SecurityAuditMiddleware)
 
 # 2. Performance Monitoring (после correlation ID)
 app.add_middleware(
@@ -225,6 +234,8 @@ app.include_router(economics.router, prefix="/api/v1/economics", tags=["Economic
 # Auth router (должен быть первым для документации)
 app.include_router(auth.router, tags=["Authentication"])
 
+app.include_router(api_keys.router)
+
 app.include_router(reviews.router, prefix="/api/v1/reviews", tags=["Reviews"])
 
 app.include_router(companies.router, prefix="/api/v1/companies", tags=["Companies"])
@@ -246,6 +257,10 @@ app.include_router(billing.router, prefix="/api/v1", tags=["Billing & Stripe"])
 
 # Подключаем stripe webhook router
 app.include_router(stripe_webhook.router, prefix="/api/v1", tags=["Stripe Webhooks"])
+
+# Подключаем external API router для B2B клиентов
+app.include_router(external_api.router, tags=["External API"])
+app.include_router(webhooks_config.router, tags=["Webhooks"])
 
 # Системные роутеры (только для разработки и тестирования)
 if __debug__:

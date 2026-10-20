@@ -9,7 +9,11 @@ ENV PIP_NO_CACHE_DIR=1 \
 
 # Компилятор нужен только для пакетов без готовых wheel; в финальный образ не попадёт.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libffi-dev \
+        libssl-dev \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python -m venv /opt/venv

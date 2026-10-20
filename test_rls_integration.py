@@ -15,20 +15,23 @@ def test_imports():
 
     try:
         # Test core auth imports
-        from app.core.auth import CurrentTenant, get_current_tenant
-        from app.core.tenant_session import build_rls_claims, get_tenant_session
-        from app.schemas.auth import JWTPayload
+        from app.core.auth import CurrentTenant, get_current_tenant  # noqa: F401
+        from app.core.tenant_session import (  # noqa: F401
+            build_rls_claims,
+            get_tenant_session,
+        )
+        from app.schemas.auth import JWTPayload  # noqa: F401
 
         print("✅ Core auth imports: OK")
 
         # Test dependencies imports
         from app.core.dependencies import (
-            get_company_repository,
-            get_economics_service,
-            get_llm_service,
-            get_platform_repository,
-            get_review_repository,
-            get_tenant_db,
+            get_company_repository,  # noqa: F401
+            get_economics_service,  # noqa: F401
+            get_llm_service,  # noqa: F401
+            get_platform_repository,  # noqa: F401
+            get_review_repository,  # noqa: F401
+            get_tenant_db,  # noqa: F401
         )
 
         print("✅ Dependencies imports: OK")

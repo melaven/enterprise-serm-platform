@@ -249,6 +249,48 @@ class NotificationError(Exception):
     pass
 
 
+async def send_html_email(
+    recipient_email: str,
+    subject: str,
+    html_content: str,
+) -> None:
+    if not all([SMTP_HOST, SMTP_USER, SMTP_PASSWORD]):
+        logger.error(
+            "smtp_configuration_missing",
+            host_configured=bool(SMTP_HOST),
+            user_configured=bool(SMTP_USER),
+            password_configured=bool(SMTP_PASSWORD),
+        )
+        raise NotificationError(
+            "SMTP configuration is incomplete. Set SMTP_HOST, SMTP_USER, "
+            "and SMTP_PASSWORD."
+        )
+
+    message = MIMEMultipart("alternative")
+    message["Subject"] = subject
+    message["From"] = SMTP_FROM
+    message["To"] = recipient_email
+    message.attach(MIMEText(html_content, "html"))
+
+    try:
+        await aiosmtplib.send(
+            message,
+            hostname=SMTP_HOST,
+            port=SMTP_PORT,
+            username=SMTP_USER,
+            password=SMTP_PASSWORD,
+            use_tls=SMTP_USE_TLS,
+            timeout=30,
+        )
+    except aiosmtplib.SMTPException as exc:
+        logger.error(
+            "html_email_sending_failed",
+            error_type=type(exc).__name__,
+            recipient=recipient_email,
+        )
+        raise NotificationError("Failed to send email") from exc
+
+
 async def send_critical_threat_alert(
     recipient_email: str,
     company_name: str,

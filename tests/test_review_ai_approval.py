@@ -15,7 +15,9 @@ from app.schemas.economics import ReviewStatus
 
 
 @pytest.mark.asyncio
-async def test_approve_ai_response_updates_review_and_is_tenant_scoped() -> None:
+async def test_approve_ai_response_updates_review_and_is_tenant_scoped(
+    rate_limit_pool,
+) -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as connection:
@@ -73,8 +75,10 @@ async def test_approve_ai_response_updates_review_and_is_tenant_scoped() -> None
 
     previous_tenant_override = app.dependency_overrides.get(get_current_tenant)
     previous_db_override = app.dependency_overrides.get(get_tenant_db)
+    previous_redis_pool = app.state.redis_pool
     app.dependency_overrides[get_current_tenant] = tenant_from_header
     app.dependency_overrides[get_tenant_db] = database_session
+    app.state.redis_pool = rate_limit_pool
 
     try:
         async with httpx.AsyncClient(
@@ -114,4 +118,5 @@ async def test_approve_ai_response_updates_review_and_is_tenant_scoped() -> None
             app.dependency_overrides.pop(get_tenant_db, None)
         else:
             app.dependency_overrides[get_tenant_db] = previous_db_override
+        app.state.redis_pool = previous_redis_pool
         await engine.dispose()

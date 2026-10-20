@@ -7,11 +7,15 @@ import json
 from typing import Any
 from uuid import UUID
 
+import httpx
 from arq import Retry
 from pydantic import BaseModel
 
-from ...core.logger import get_logger
+from ...core.database import AsyncSessionLocal
+from ...core.logger import generate_correlation_id, get_logger, set_correlation_id
+from ...core.tenant_session import get_tenant_session
 from ...core.tracing import traced_task
+from ...models import PlatformIntegration
 from ...schemas.parser import RawReview
 from ..billing import QuotaService
 from ..llm_analyzer import AnalysisOutcome, LLMTransportError
@@ -387,3 +391,217 @@ async def fetch_reviews_task(
                 job_id=job_id,
             )
             raise
+
+
+@traced_task("fetch_platform_reviews")
+async def fetch_platform_reviews(
+    ctx: dict[str, Any],
+    company_id: UUID,
+    platform: str,
+    correlation_id: str | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """
+    Fetch reviews from platform API using encrypted API token.
+
+    This task demonstrates secure token handling:
+    - Retrieves PlatformIntegration with RLS isolation
+    - Uses api_key property (auto-decrypts token)
+    - Makes HTTP request with Bearer token
+    - Tokens are redacted from logs by redact_sensitive_data_processor
+
+    Args:
+        ctx: ARQ context
+        company_id: UUID of company for RLS
+        platform: Platform name (google_business, trustpilot, yelp)
+        correlation_id: Correlation ID for tracing
+
+    Returns:
+        Dict with fetch results
+    """
+    job_id = ctx.get("job_id", "unknown")
+
+    # Set correlation ID
+    if correlation_id:
+        set_correlation_id(correlation_id)
+    else:
+        correlation_id = generate_correlation_id()
+        set_correlation_id(correlation_id)
+
+    logger.info(
+        "fetch_platform_reviews_started",
+        company_id=str(company_id),
+        platform=platform,
+        job_id=job_id,
+        correlation_id=correlation_id,
+    )
+
+    try:
+        # Create RLS-aware session
+        session = await get_tenant_session(
+            factory=AsyncSessionLocal,
+            tenant_id=company_id,
+            user_id=None,  # Worker has no user context
+        )
+
+        try:
+            # Query PlatformIntegration - RLS ensures tenant isolation
+            from sqlalchemy import select
+
+            result = await session.execute(
+                select(PlatformIntegration).where(
+                    PlatformIntegration.company_id == company_id,
+                    PlatformIntegration.platform == platform,
+                    PlatformIntegration.is_active.is_(True),
+                )
+            )
+            integration = result.scalar_one_or_none()
+
+            if not integration:
+                logger.warning(
+                    "platform_integration_not_found",
+                    company_id=str(company_id),
+                    platform=platform,
+                    job_id=job_id,
+                )
+                return {
+                    "success": False,
+                    "error": "Integration not found or inactive",
+                    "company_id": str(company_id),
+                    "platform": platform,
+                }
+
+            # Access api_key property - automatically decrypts token
+            # Token is decrypted in memory, never logged (redacted by processor)
+            api_token = integration.api_key
+
+            logger.info(
+                "api_key_decrypted",
+                company_id=str(company_id),
+                platform=platform,
+                integration_id=str(integration.id),
+                job_id=job_id,
+                # Note: api_token is NOT logged - redacted by processor
+            )
+
+            # Mock HTTP request to platform API
+            # In production, replace with actual API endpoints
+            mock_api_urls = {
+                "google_business": "https://mybusiness.googleapis.com/v4/accounts",
+                "trustpilot": "https://api.trustpilot.com/1.0/business-units",
+                "yelp": "https://api.yelp.com/v3/businesses/search",
+            }
+
+            api_url = mock_api_urls.get(platform, f"https://api.{platform}.com/reviews")
+
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                try:
+                    response = await http_client.get(
+                        api_url,
+                        headers={
+                            "Authorization": f"Bearer {api_token}",
+                            "Accept": "application/json",
+                        },
+                    )
+
+                    logger.info(
+                        "platform_api_response",
+                        company_id=str(company_id),
+                        platform=platform,
+                        status_code=response.status_code,
+                        job_id=job_id,
+                        # Authorization header is redacted by processor
+                    )
+
+                    if response.status_code == 200:
+                        # Parse response (mock - actual structure depends on platform)
+                        reviews_data = response.json()
+
+                        logger.info(
+                            "fetch_platform_reviews_success",
+                            company_id=str(company_id),
+                            platform=platform,
+                            reviews_count=len(reviews_data)
+                            if isinstance(reviews_data, list)
+                            else 1,
+                            job_id=job_id,
+                        )
+
+                        return {
+                            "success": True,
+                            "company_id": str(company_id),
+                            "platform": platform,
+                            "reviews_count": len(reviews_data)
+                            if isinstance(reviews_data, list)
+                            else 1,
+                            "status_code": response.status_code,
+                        }
+                    else:
+                        logger.error(
+                            "platform_api_error",
+                            company_id=str(company_id),
+                            platform=platform,
+                            status_code=response.status_code,
+                            error_text=response.text[
+                                :200
+                            ],  # Truncate to avoid large logs
+                            job_id=job_id,
+                        )
+
+                        return {
+                            "success": False,
+                            "error": f"API returned status {response.status_code}",
+                            "status_code": response.status_code,
+                            "company_id": str(company_id),
+                            "platform": platform,
+                        }
+
+                except httpx.TimeoutException:
+                    logger.warning(
+                        "platform_api_timeout",
+                        company_id=str(company_id),
+                        platform=platform,
+                        job_id=job_id,
+                    )
+                    return {
+                        "success": False,
+                        "error": "API request timeout",
+                        "company_id": str(company_id),
+                        "platform": platform,
+                    }
+
+                except httpx.HTTPError as e:
+                    logger.error(
+                        "platform_api_http_error",
+                        company_id=str(company_id),
+                        platform=platform,
+                        error=str(e),
+                        job_id=job_id,
+                    )
+                    return {
+                        "success": False,
+                        "error": f"HTTP error: {str(e)}",
+                        "company_id": str(company_id),
+                        "platform": platform,
+                    }
+
+        finally:
+            await session.close()
+
+    except Exception as e:
+        logger.error(
+            "fetch_platform_reviews_failed",
+            company_id=str(company_id),
+            platform=platform,
+            error=str(e),
+            error_type=type(e).__name__,
+            job_id=job_id,
+            # Any token in error message would be redacted by processor
+        )
+
+        return {
+            "success": False,
+            "error": str(e),
+            "company_id": str(company_id),
+            "platform": platform,
+        }

@@ -59,6 +59,33 @@ def add_correlation_id_processor(
     return event_dict
 
 
+def redact_sensitive_data_processor(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    Structlog processor для маскирования чувствительных данных в логах
+    Маскирует: api_key, encrypted_api_key, password, token, secret, authorization
+    """
+    sensitive_keys = {
+        "api_key",
+        "encrypted_api_key",
+        "password",
+        "token",
+        "secret",
+        "authorization",
+        "access_token",
+        "refresh_token",
+        "api_secret",
+        "private_key",
+    }
+
+    for key in list(event_dict.keys()):
+        if key.lower() in sensitive_keys:
+            event_dict[key] = "[REDACTED]"
+
+    return event_dict
+
+
 def add_service_info_processor(
     logger: Any, method_name: str, event_dict: dict[str, Any]
 ) -> dict[str, Any]:
@@ -137,6 +164,7 @@ def configure_logging(
     processors: list[Any] = [
         # Базовые процессоры
         structlog.contextvars.merge_contextvars,
+        redact_sensitive_data_processor,
         add_correlation_id_processor,
         add_service_info_processor,
         # Стандартные процессоры structlog

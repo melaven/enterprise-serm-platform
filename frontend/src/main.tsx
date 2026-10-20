@@ -17,6 +17,7 @@ import App from './App.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 import { RegisterPage } from './pages/RegisterPage.tsx'
 import { BillingPage } from './pages/BillingPage.tsx'
+import { LandingPage } from './pages/LandingPage.tsx'
 import { ReviewsPage } from './pages/ReviewsPage.tsx'
 import { SettingsPage } from './pages/SettingsPage.tsx'
 import { ProtectedRoute } from './features/auth/ProtectedRoute.tsx'
@@ -28,6 +29,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <Routes>
           {/* Public Routes */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/pricing" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           
@@ -57,20 +60,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             }
           />
           <Route
-            path="/settings"
+            path="/settings/*"
             element={
               <ProtectedRoute>
                 <SettingsPage />
               </ProtectedRoute>
             }
-          />
-          <Route 
-            path="/" 
-            element={
-              <ProtectedRoute>
-                <App />
-              </ProtectedRoute>
-            } 
           />
           
           {/* Catch all redirect */}

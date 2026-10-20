@@ -1,112 +1,57 @@
-name: tenable-serm-prod
+name: tenable-serm
+
+# Запуск:  docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+# Все секреты и адреса берутся ТОЛЬКО из .env (шаблон: .env.prod.example). Без обязательных переменных compose не стартует.
+
+x-app: &app
+  build:
+    context: .
+    target: runtime
+    args:
+      PYTHON_VERSION: "3.12"
+  image: tenable-serm:${APP_VERSION:-latest}
+  env_file:
+    - path: .env
+      required: true
+  environment: &app-env
+    # Перекрывает REDIS_URL из .env: из контейнера Redis виден по имени сервиса, пароль из того же .env.
+    REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD не задан в .env}@redis:6379/0
+    # API не публикуется наружу, достучаться до него может только nginx: доверяем его X-Forwarded-*.
+    FORWARDED_ALLOW_IPS: "*"
+  restart: always
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 512
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+  depends_on: &app-deps
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  networks:
+    - data   # postgres/redis: сеть без выхода наружу
+    - edge   # исходящий интернет (Gemini, Stripe, парсеры) и связь с nginx
 
 services:
-  # Nginx Reverse Proxy
-  nginx:
-    image: nginx:alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - nginx-logs:/var/log/nginx
-    depends_on:
-      backend:
-        condition: service_healthy
-      frontend:
-        condition: service_healthy
-    networks:
-      - backend
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-
-  # PostgreSQL Database
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
+  api:
+    <<: *app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-serm_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задай POSTGRES_PASSWORD в .env}
-      POSTGRES_DB: ${POSTGRES_DB:-serm}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-serm_user}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-    networks:
-      - backend
-
-  # Redis for ARQ and caching
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    command:
-      - sh
-      - -c
-      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?Задай REDIS_PASSWORD в .env}
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 5s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-    networks:
-      - backend
-
-  # FastAPI Backend
-  backend:
-    build:
-      context: .
-      dockerfile: backend.Dockerfile
-      args:
-        PYTHON_VERSION: "3.12"
-    image: tenable-serm-backend:latest
-    env_file: .env
-    environment:
-      # Перекрывает DATABASE_URL из .env для подключения к Docker-сервису
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
-      # Перекрывает REDIS_URL из .env для подключения к Docker-сервису
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
-      # Production settings
-      ENVIRONMENT: production
-      DEBUG: "false"
-    restart: unless-stopped
-    init: true
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      <<: *app-env
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    expose:
+      - "8000" # только внутри docker-сети; на хост порт не публикуется
+    mem_limit: ${API_MEM_LIMIT:-1g}
     healthcheck:
       test:
         - CMD
@@ -117,89 +62,128 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-    networks:
-      - backend
 
-  # ARQ Worker
   worker:
+    <<: *app
     build:
       context: .
-      dockerfile: worker.Dockerfile
+      dockerfile: worker.Dockerfile # воркер с Playwright/Chromium (API-образ без браузера)
+      target: runtime
       args:
         PYTHON_VERSION: "3.12"
-    image: tenable-serm-worker:latest
-    env_file: .env
-    environment:
-      # Перекрывает DATABASE_URL из .env для подключения к Docker-сервису
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
-      # Перекрывает REDIS_URL из .env для подключения к Docker-сервису
-      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
-      # Production settings
-      ENVIRONMENT: production
-      DEBUG: "false"
-    restart: unless-stopped
-    init: true
-    read_only: true
+    image: tenable-serm-worker:${APP_VERSION:-latest}
+    command: ["arq", "app.worker.worker.WorkerSettings"]
+    stop_grace_period: 40s # дать дозавершить задачи; прерванные ARQ вернёт в очередь
+    mem_limit: ${WORKER_MEM_LIMIT:-2g} # Chromium прожорлив: 1 ГБ мало при нескольких страницах
+    # /dev/shm по умолчанию 64 МБ: Chromium на нём падает («Aw, Snap»/crashed). Либо shm_size, либо --disable-dev-shm-usage.
+    shm_size: 1g
     tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    stop_grace_period: 30s
+      - /tmp:size=512m,mode=1777 # HOME и профиль Chromium; в read-only ФС писать больше некуда
     healthcheck:
-      test: ["CMD", "arq", "--check", "app.services.worker.worker.WorkerSettings"]
+      test: ["CMD", "arq", "--check", "app.worker.worker.WorkerSettings"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 45s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
-    networks:
-      - backend
 
-  # React Frontend with Nginx
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend.Dockerfile
-    image: tenable-serm-frontend:latest
-    restart: unless-stopped
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER не задан в .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD не задан в .env}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB не задан в .env}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    command: ["postgres", "-c", "password_encryption=scram-sha-256", "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-100}"]
+    # Порт НЕ публикуется: база видна только сервисам в сети data.
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    shm_size: 256m
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging: *logging
+    networks:
+      - data
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    # appendonly: очередь ARQ переживает рестарт; пароль берётся из окружения контейнера, не из командной строки образа.
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD не задан в .env}
+    volumes:
+      - redis-data:/data
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    logging: *logging
+    networks:
+      - data
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    environment:
+      SERVER_NAME: ${SERVER_NAME:?SERVER_NAME (домен) не задан в .env}
+      NGINX_ENVSUBST_FILTER: "^SERVER_NAME$$" # подставляем только нашу переменную, $host и прочие не трогаем
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # Каталог с fullchain.pem и privkey.pem (например /etc/letsencrypt/live/<домен>)
+      - ${TLS_CERT_DIR:?TLS_CERT_DIR (каталог с fullchain.pem и privkey.pem) не задан в .env}:/etc/nginx/certs:ro
+      - ${ACME_WEBROOT:-./nginx/acme}:/var/www/certbot:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+      - /etc/nginx/conf.d # сюда entrypoint генерирует default.conf из шаблона
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
     depends_on:
-      backend:
+      api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
-      interval: 30s
-      timeout: 3s
-      retries: 3
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
       start_period: 10s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "5"
+    logging: *logging
     networks:
-      - backend
+      - edge
 
 volumes:
   postgres-data:
   redis-data:
-  nginx-logs:
 
 networks:
-  backend:
-    driver: bridge
+  data:
+    internal: true # без маршрута наружу: postgres и redis недостижимы из интернета и сами не ходят в него
+  edge:

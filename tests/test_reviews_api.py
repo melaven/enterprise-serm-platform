@@ -162,6 +162,7 @@ async def review_tenants(db_connection: AsyncConnection) -> dict[str, UUID]:
 @pytest_asyncio.fixture
 async def client_factory(
     db_connection: AsyncConnection,
+    rate_limit_pool,
 ) -> AsyncIterator[ClientFactory]:
     from app.core.auth import get_current_tenant
     from app.core.dependencies import get_tenant_db
@@ -182,6 +183,8 @@ async def client_factory(
 
     app.dependency_overrides[get_current_tenant] = tenant_from_header
     app.dependency_overrides[get_tenant_db] = test_database_session
+    previous_redis_pool = app.state.redis_pool
+    app.state.redis_pool = rate_limit_pool
     clients: list[httpx.AsyncClient] = []
 
     def make(tenant_id: UUID) -> httpx.AsyncClient:
@@ -200,6 +203,7 @@ async def client_factory(
             await client.aclose()
         app.dependency_overrides.pop(get_current_tenant, None)
         app.dependency_overrides.pop(get_tenant_db, None)
+        app.state.redis_pool = previous_redis_pool
 
 
 @pytest.mark.integration

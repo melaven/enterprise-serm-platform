@@ -11,14 +11,18 @@ Rate Limiter для защиты критичных API эндпоинтов Ten
 - Интеграция с billing_deps для проверки квот
 """
 
+import math
 import time
 from uuid import UUID
 
+import jwt
 import redis.asyncio as redis
 from fastapi import Depends, HTTPException, Request, status
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_tenant
+from app.core.api_keys import resolve_api_key_tenant_id
+from app.core.auth import decode_token, get_auth_config, get_current_tenant
 from app.core.config import get_settings
 from app.core.dependencies import get_tenant_db
 
@@ -187,36 +191,77 @@ class RateLimiter:
 
 class RateLimitDependency:
     """
-    FastAPI Dependency для rate limiting.
-
-    Использование:
-        @app.post("/api/parser/parse", dependencies=[Depends(RateLimitDependency(limit=10, window=60))])
-        async def parse_reviews(...):
-            ...
+    FastAPI dependency applying a shared per-tenant or per-IP fixed-window limit.
     """
 
-    def __init__(self, limit: int, window: int = 60, endpoint: str | None = None):
-        self.limit = limit
+    def __init__(
+        self,
+        limit: int | None = None,
+        window: int = 60,
+        endpoint: str | None = None,
+    ):
+        self.authenticated_limit = 100 if limit is None else limit
+        self.anonymous_limit = 20 if limit is None else limit
         self.window = window
         self.endpoint = endpoint
 
-    async def __call__(
-        self,
-        request: Request,
-        tenant_id: UUID = Depends(get_current_tenant),
-    ):
-        """Проверяет rate limit для текущего tenant."""
-        endpoint = self.endpoint or request.url.path
+    @staticmethod
+    def _get_tenant_id(request: Request) -> UUID | None:
+        authorization = request.headers.get("authorization", "").split()
+        if len(authorization) != 2 or authorization[0].lower() != "bearer":
+            return None
 
-        limiter = RateLimiter(limit=self.limit, window=self.window)
-        current, remaining = await limiter.check_rate_limit(tenant_id, endpoint)
+        try:
+            payload = decode_token(authorization[1], get_auth_config())
+        except (jwt.PyJWTError, ValidationError):
+            return None
+        return payload.tenant_id or payload.sub
 
-        # Добавляем X-RateLimit-* заголовки (информационно)
+    async def __call__(self, request: Request) -> None:
+        if not request.url.path.startswith("/api/"):
+            return
+
+        if request.headers.get("x-api-key"):
+            tenant_id = await resolve_api_key_tenant_id(request)
+        else:
+            tenant_id = self._get_tenant_id(request)
+        authenticated = tenant_id is not None
+        limit = self.authenticated_limit if authenticated else self.anonymous_limit
+        client_ip = request.client.host if request.client else "unknown"
+        identity = f"tenant:{tenant_id}" if authenticated else f"ip:{client_ip}"
+        scope = f":{self.endpoint}" if self.endpoint else ""
+        now = time.time()
+        bucket = int(now // self.window)
+        window_end = (bucket + 1) * self.window
+        key = f"rate_limit:api:{identity}{scope}:{bucket}"
+
+        pool = getattr(request.app.state, "redis_pool", None)
+        if pool is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Rate limit storage is unavailable",
+            )
+
+        pipe = pool.pipeline(transaction=True)
+        pipe.incr(key)
+        pipe.expire(key, self.window + 1)
+        results = await pipe.execute()
+        current = int(results[0])
+        remaining = max(0, limit - current)
+        retry_after = max(1, math.ceil(window_end - now))
+
         request.state.rate_limit_headers = {
-            "X-RateLimit-Limit": str(self.limit),
+            "X-RateLimit-Limit": str(limit),
             "X-RateLimit-Remaining": str(remaining),
-            "X-RateLimit-Reset": str(int(time.time() + self.window)),
+            "X-RateLimit-Reset": str(int(window_end)),
         }
+
+        if current > limit:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Rate limit exceeded",
+                headers={"Retry-After": str(retry_after)},
+            )
 
 
 # ============================================================================

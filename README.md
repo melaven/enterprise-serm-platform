@@ -112,6 +112,16 @@ LLM за circuit breaker-ом, «ядовитый» отзыв изолируе�
 
 ---
 
+## Публикация ответов и еженедельный дайджест
+
+Для Google Business настройте tenant-интеграцию через `PUT /api/v1/platforms/integrations/google-business`, передав OAuth access token со scope `business.manage`, `external_account_id` и `external_location_id`. Токен сохраняется зашифрованным. Затем `POST /api/v1/reviews/{review_id}/reply` с телом `{"reply_text":"..."}` ставит ответ в ARQ; результат публикации сохраняется в отзыве. Публикация на Яндекс.Картах пока не поддерживается.
+
+ARQ worker запускает еженедельные дайджесты по понедельникам в 09:00 UTC для компаний с `notification_email`. Для функций настройки интеграции, аудита и списка получателей дайджеста примените миграции `021`–`023` через `scripts/migrate.py`. Аудит сейчас фиксирует успешное удаление вебхука с tenant ID, user ID и IP клиентского соединения.
+
+Адаптеры-скрейперы используют Playwright с Chromium: после установки Python-зависимостей установите браузер командой `playwright install chromium` (в production-образе также должны быть системные зависимости Chromium). Для включения email- и Telegram-алертов настройте SMTP-параметры и `TELEGRAM_BOT_TOKEN` соответственно; шаблон переменных production находится в [`.env.prod.example`](.env.prod.example).
+
+---
+
 ## Карта репозитория
 
 ```

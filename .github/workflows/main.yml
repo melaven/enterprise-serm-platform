@@ -185,7 +185,6 @@ jobs:
     name: Build Docker Images
     runs-on: ubuntu-latest
     needs: test
-    if: false  # Disabled until production deployment
 
     steps:
       - name: Checkout code
@@ -217,6 +216,9 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: test_key
           SUPABASE_JWT_SECRET: test_jwt_secret
         run: |
+          # Compose services declare .env as an env_file; CI supplies dummy build-only values.
+          touch .env
+          trap 'rm -f .env' EXIT
           docker compose build
 
       - name: Security Scan (Trivy)

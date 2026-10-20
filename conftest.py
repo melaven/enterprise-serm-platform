@@ -64,6 +64,46 @@ ClientFactory = Callable[..., httpx.AsyncClient]
 TenantDb = Callable[..., AbstractAsyncContextManager[AsyncSession]]
 
 
+class _FakeRateLimitPipeline:
+    def __init__(self, pool: "_FakeRateLimitPool") -> None:
+        self.pool = pool
+        self.commands: list[tuple[str, str, int | None]] = []
+
+    def incr(self, key: str) -> "_FakeRateLimitPipeline":
+        self.commands.append(("incr", key, None))
+        return self
+
+    def expire(self, key: str, seconds: int) -> "_FakeRateLimitPipeline":
+        self.commands.append(("expire", key, seconds))
+        return self
+
+    async def execute(self) -> list[int | bool]:
+        results: list[int | bool] = []
+        for operation, key, seconds in self.commands:
+            if operation == "incr":
+                self.pool.values[key] = self.pool.values.get(key, 0) + 1
+                results.append(self.pool.values[key])
+            else:
+                self.pool.expirations[key] = seconds or 0
+                results.append(True)
+        return results
+
+
+class _FakeRateLimitPool:
+    def __init__(self) -> None:
+        self.values: dict[str, int] = {}
+        self.expirations: dict[str, int] = {}
+
+    def pipeline(self, transaction: bool = True) -> _FakeRateLimitPipeline:
+        assert transaction
+        return _FakeRateLimitPipeline(self)
+
+
+@pytest.fixture
+def rate_limit_pool() -> _FakeRateLimitPool:
+    return _FakeRateLimitPool()
+
+
 # --------------------------------------------------------------------------- #
 # База данных
 # --------------------------------------------------------------------------- #
@@ -210,7 +250,9 @@ def user_id() -> UUID:
 # FastAPI + HTTP-клиент
 # --------------------------------------------------------------------------- #
 @pytest_asyncio.fixture
-async def app(db_connection: AsyncConnection) -> AsyncIterator[FastAPI]:
+async def app(
+    db_connection: AsyncConnection, rate_limit_pool: _FakeRateLimitPool
+) -> AsyncIterator[FastAPI]:
     """Приложение с подменёнными auth и tenant-сессией."""
     from app.core.security import AuthContext, get_auth_context
     from app.core.tenant_session import get_tenant_session
@@ -239,10 +281,13 @@ async def app(db_connection: AsyncConnection) -> AsyncIterator[FastAPI]:
 
     fastapi_app.dependency_overrides[get_auth_context] = fake_auth
     fastapi_app.dependency_overrides[get_tenant_session] = tenant_session
+    previous_redis_pool = fastapi_app.state.redis_pool
+    fastapi_app.state.redis_pool = rate_limit_pool
     try:
         yield fastapi_app
     finally:
         fastapi_app.dependency_overrides.clear()
+        fastapi_app.state.redis_pool = previous_redis_pool
 
 
 @pytest_asyncio.fixture

@@ -1,18 +1,14 @@
 import asyncio
 import datetime as dt
 import json
-from collections.abc import Sequence
 from typing import Any
 from uuid import UUID
 
 import httpx
 import pytest
-from arq.worker import Retry
 from pydantic import ValidationError
 
-from app.schemas.dlq import DLQRecord
 from app.schemas.parser import Platform, RawReview
-from app.services.llm_analyzer import AnalysisOutcome, fallback_result
 from app.services.parsers.base import (
     InvalidSourceUrlError,
     ParserDataError,
@@ -21,7 +17,7 @@ from app.services.parsers.base import (
 )
 from app.services.parsers.factory import ParserDeps, create_parser
 from app.services.parsers.twogis import TwoGisParser, parse_branch_id
-from app.services.worker.tasks import AnalyzedReview, fetch_reviews_task
+from app.services.worker.tasks import fetch_platform_reviews, fetch_reviews_task
 
 URL = "https://2gis.ru/moscow/firm/70000001012345678/tab/reviews"
 CID = UUID("11111111-1111-1111-1111-111111111111")
@@ -58,6 +54,8 @@ def test_raw_review_normalizes() -> None:
         platform=Platform.TWOGIS,
     )
     assert r.platform_id == "123" and r.author_name == "Аноним"
+    assert r.author_avatar_url is None
+    assert r.author_profile_url is None
     assert r.text == "a b\n\nc"
     assert r.date.utcoffset() == dt.timedelta(0) and r.date.hour == 5
 
@@ -192,103 +190,24 @@ def test_404_is_not_retryable() -> None:
 # ---------------------------------------------------------------- фабрика
 def test_factory() -> None:
     deps = ParserDeps(twogis_api_key="k")
-    assert isinstance(create_parser("2gis", deps), TwoGisParser)
+    with pytest.raises(
+        UnsupportedPlatformError,
+        match="Public-page review scraping is disabled",
+    ):
+        create_parser("2gis", deps)
     for bad in ("yandex", "google", "nope"):
         with pytest.raises(UnsupportedPlatformError):
             create_parser(bad, deps)
 
 
-# ---------------------------------------------------------------- задача
-class FakeLLM:
-    def __init__(self) -> None:
-        self.calls: list[tuple[str, int | None, str | None]] = []
-
-    async def analyze_safe(
-        self, text: str, *, rating: int | None = None, platform: str | None = None
-    ) -> AnalysisOutcome:
-        self.calls.append((text, rating, platform))
-        return AnalysisOutcome(fallback_result(rating), is_fallback=text == "Отзыв 2")
-
-
-class FakeSink:
-    def __init__(self) -> None:
-        self.saved: list[AnalyzedReview] = []
-
-    async def save(self, company_id: UUID, items: Sequence[AnalyzedReview]) -> int:
-        self.saved.extend(items)
-        return len(items)
-
-
-class Store:
-    def __init__(self) -> None:
-        self.records: list[DLQRecord] = []
-
-    async def insert(self, record: DLQRecord) -> None:
-        self.records.append(record)
-
-
-def make_ctx(
-    handler: Any, **extra: Any
-) -> tuple[dict[str, Any], FakeLLM, FakeSink, Store]:
-    llm, sink, store = FakeLLM(), FakeSink(), Store()
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    ctx = {
-        "job_id": "j1",
-        "job_try": 1,
-        "parser_deps": ParserDeps(http_client=client, twogis_api_key="k"),
-        "llm": llm,
-        "review_sink": sink,
-        "dlq_store": store,
-        **extra,
-    }
-    return ctx, llm, sink, store
-
-
-def test_task_happy_path() -> None:
-    ctx, llm, sink, store = make_ctx(
-        lambda r: httpx.Response(200, json={"reviews": [review(1), review(2)]})
-    )
-    result = run(fetch_reviews_task(ctx, CID, "2gis", URL, correlation_id="cid-1"))
-    assert result == {
-        "fetched": 2,
-        "analyzed": 1,
-        "fallbacks": 1,
-        "saved": 2,
-        "tokens_reserved": 0,
-        "tokens_used": 0,
-        "tokens_returned": 0,
-    }
-    assert {c[2] for c in llm.calls} == {"2gis"} and len(sink.saved) == 2
-    assert store.records == []
-
-
-def test_task_transport_error_retries_with_retry_after() -> None:
-    ctx, _, sink, store = make_ctx(
-        lambda r: httpx.Response(429, headers={"Retry-After": "60"})
-    )
-    with pytest.raises(Retry):
-        run(fetch_reviews_task(ctx, CID, "2gis", URL))
-    assert store.records == [] and sink.saved == []
-
-
-def test_task_last_try_goes_to_dlq_with_correlation_id() -> None:
-    ctx, _, _, store = make_ctx(lambda r: httpx.Response(403), job_try=3)
-    with pytest.raises(Retry):
-        run(fetch_reviews_task(ctx, CID, "2gis", URL, correlation_id="cid-9"))
-    (rec,) = store.records
-    assert rec.correlation_id == "cid-9" and rec.job_name == "fetch_reviews_task"
-    assert rec.args == [str(CID), "2gis", URL]
-
-
-def test_task_unsupported_platform_goes_straight_to_dlq() -> None:
-    ctx, _, _, store = make_ctx(lambda r: httpx.Response(200, json={"reviews": []}))
-    with pytest.raises(UnsupportedPlatformError):
-        run(fetch_reviews_task(ctx, CID, "yandex", "https://yandex.ru/x"))
-    assert len(store.records) == 1
-
-
-def test_task_data_error_goes_straight_to_dlq() -> None:
-    ctx, _, _, store = make_ctx(lambda r: httpx.Response(200, json={"oops": 1}))
-    with pytest.raises(ParserDataError):
-        run(fetch_reviews_task(ctx, CID, "2gis", URL))
-    assert len(store.records) == 1
+# ---------------------------------------------------------------- Disabled ingestion jobs
+@pytest.mark.parametrize(
+    "task,args",
+    [
+        (fetch_reviews_task, ({}, CID, "2gis", URL)),
+        (fetch_platform_reviews, ({}, CID, "google_business")),
+    ],
+)
+def test_legacy_review_ingestion_jobs_fail_closed(task: Any, args: tuple[Any, ...]) -> None:
+    with pytest.raises(RuntimeError, match="disabled"):
+        run(task(*args))

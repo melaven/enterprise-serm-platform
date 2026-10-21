@@ -194,9 +194,9 @@ app.add_middleware(
 if debug_mode:
     app.add_middleware(
         RequestLoggingMiddleware,
-        log_request_body=True,
+        log_request_body=False,
         log_response_body=False,  # Может быть большим для аналитики
-        log_headers=True,
+        log_headers=False,
     )
 
 # 3.5. Rate Limit Headers (автоматическое добавление X-RateLimit-* заголовков)

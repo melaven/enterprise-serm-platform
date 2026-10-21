@@ -5,72 +5,72 @@
 @layer base {
   /* CSS Переменные для новой палитры Royal Plum #5A189A, Electric Lime #C5FF4A */
   :root {
-    /* Ink Scale - оттенки черного */
-    --color-ink: 0 0 0;
-    --color-ink-50: 9 9 11;
-    --color-ink-100: 16 16 18;
-    --color-ink-200: 26 26 32;
-    --color-ink-300: 40 40 48;
-    --color-ink-400: 56 56 64;
-    --color-ink-500: 72 72 80;
-    --color-ink-600: 96 96 112;
-    --color-ink-700: 128 128 144;
-    --color-ink-800: 160 160 176;
-    --color-ink-900: 17 17 20;
-    --color-ink-950: 9 9 11;
+    /* Plum-tinted ink surfaces */
+    --color-ink: 12 10 16;
+    --color-ink-50: 20 16 26;
+    --color-ink-100: 27 22 35;
+    --color-ink-200: 38 31 48;
+    --color-ink-300: 52 44 64;
+    --color-ink-400: 70 61 83;
+    --color-ink-500: 91 81 104;
+    --color-ink-600: 117 107 130;
+    --color-ink-700: 147 138 158;
+    --color-ink-800: 179 172 190;
+    --color-ink-900: 18 14 24;
+    --color-ink-950: 12 10 16;
 
     /* Chrome Scale - оттенки серого (alias для zinc) */
-    --color-chrome: 22 22 28;
-    --color-chrome-50: 30 30 36;
-    --color-chrome-100: 40 40 48;
-    --color-chrome-200: 56 56 64;
-    --color-chrome-300: 72 72 80;
-    --color-chrome-400: 96 96 112;
-    --color-chrome-500: 120 120 128;
-    --color-chrome-600: 144 144 160;
-    --color-chrome-700: 176 176 192;
-    --color-chrome-800: 200 200 216;
-    --color-chrome-900: 224 224 240;
+    --color-chrome: 38 35 45;
+    --color-chrome-50: 18 17 22;
+    --color-chrome-100: 29 27 34;
+    --color-chrome-200: 43 40 49;
+    --color-chrome-300: 204 201 212;
+    --color-chrome-400: 166 162 176;
+    --color-chrome-500: 126 122 136;
+    --color-chrome-600: 64 61 73;
+    --color-chrome-700: 94 90 104;
+    --color-chrome-800: 158 154 169;
+    --color-chrome-900: 225 223 232;
 
     /* Royal Plum Scale - #5A189A */
     --color-plum: 90 24 154;
-    --color-plum-50: 112 56 174;
-    --color-plum-100: 134 76 194;
-    --color-plum-200: 156 98 214;
-    --color-plum-300: 178 120 234;
-    --color-plum-400: 200 142 254;
-    --color-plum-500: 156 98 214;
-    --color-plum-600: 236 186 294;
-    --color-plum-700: 254 208 314;
-    --color-plum-800: 64 25 101;
-    --color-plum-900: 37 14 61;
+    --color-plum-50: 247 242 252;
+    --color-plum-100: 231 216 244;
+    --color-plum-200: 207 178 229;
+    --color-plum-300: 179 144 207;
+    --color-plum-400: 147 106 184;
+    --color-plum-500: 112 64 160;
+    --color-plum-600: 90 24 154;
+    --color-plum-700: 73 19 126;
+    --color-plum-800: 55 14 94;
+    --color-plum-900: 37 9 64;
     --color-plum-deep: 67 18 122;
 
     /* Electric Lime Scale - #C5FF4A */
     --color-lime: 197 255 74;
-    --color-lime-50: 209 255 107;
-    --color-lime-100: 217 255 140;
-    --color-lime-200: 197 219 158;
-    --color-lime-300: 241 255 206;
-    --color-lime-400: 253 255 239;
-    --color-lime-500: 255 255 255;
-    --color-lime-600: 255 255 239;
-    --color-lime-700: 255 255 223;
-    --color-lime-800: 79 112 36;
-    --color-lime-900: 36 53 17;
+    --color-lime-50: 250 255 235;
+    --color-lime-100: 244 255 214;
+    --color-lime-200: 236 255 184;
+    --color-lime-300: 225 255 145;
+    --color-lime-400: 212 255 106;
+    --color-lime-500: 197 255 74;
+    --color-lime-600: 160 211 54;
+    --color-lime-700: 121 164 37;
+    --color-lime-800: 82 116 25;
+    --color-lime-900: 45 68 16;
 
     /* shadcn/ui токены (сохранены для совместимости) */
-    --background: 0 0 0;
+    --background: 12 10 16;
     --foreground: 250 250 250;
-    --card: 9 9 11;
+    --card: 20 16 26;
     --card-foreground: 250 250 250;
-    --popover: 9 9 11;
+    --popover: 20 16 26;
     --popover-foreground: 250 250 250;
     --primary: 90 24 154;
     --primary-foreground: 255 255 255;
-    --secondary: 24 24 27;
+    --secondary: 27 22 35;
     --secondary-foreground: 250 250 250;
-    --muted: 24 24 27;
+    --muted: 27 22 35;
     --muted-foreground: 168 168 184;
     --accent: 197 255 74;
     --accent-foreground: 0 0 0;
@@ -124,7 +124,7 @@
   /* Утилитарные классы для частых паттернов */
   
   .card {
-    @apply bg-ink-50 border border-chrome-600 rounded-none;
+    @apply bg-plum-900 border border-plum-800 rounded-sm;
   }
 
   .input-field {
@@ -143,7 +143,9 @@
   }
 
   .badge-success {
-    @apply badge bg-lime text-ink;
+    @apply badge text-lime-200;
+    border: 1px solid rgb(var(--color-lime) / 0.3);
+    background-color: rgb(var(--color-lime) / 0.1);
   }
 
   .badge-info {
@@ -179,36 +181,6 @@
 
   .animate-pulse-slow {
     animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-
-  /* ============================================ */
-  /* КАСТОМНЫЕ АНИМАЦИИ ДЛЯ AUTH SHELL           */
-  /* ============================================ */
-  
-  /* Резкий блик для кнопок (hard glare effect) */
-  @keyframes hard-glare {
-    0% {
-      left: -150%;
-      opacity: 0;
-    }
-    30% {
-      opacity: 0.8;
-    }
-    50% {
-      left: 50%;
-      opacity: 1;
-    }
-    70% {
-      opacity: 0.8;
-    }
-    100% {
-      left: 200%;
-      opacity: 0;
-    }
-  }
-
-  .animate-hard-glare {
-    animation: hard-glare 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   /* ============================================ */

@@ -118,7 +118,7 @@ export function SettingsPage() {
           <Button
             variant={activeTab === 'usage' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('usage')}
-            className={activeTab === 'usage' ? 'bg-[#5A189A] text-white hover:opacity-90' : 'text-gray-400 hover:text-white'}
+            className={activeTab === 'usage' ? 'bg-plum text-white hover:bg-plum-700' : 'text-chrome-400 hover:text-white'}
           >
             <Zap className="h-4 w-4 mr-2" />
             Использование
@@ -126,7 +126,7 @@ export function SettingsPage() {
           <Button
             variant={activeTab === 'subscription' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('subscription')}
-            className={activeTab === 'subscription' ? 'bg-[#5A189A] text-white hover:opacity-90' : 'text-gray-400 hover:text-white'}
+            className={activeTab === 'subscription' ? 'bg-plum text-white hover:bg-plum-700' : 'text-chrome-400 hover:text-white'}
           >
             <CreditCard className="h-4 w-4 mr-2" />
             Тарифы
@@ -134,7 +134,7 @@ export function SettingsPage() {
           <Button
             variant={activeTab === 'api-keys' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('api-keys')}
-            className={activeTab === 'api-keys' ? 'bg-[#5A189A] text-white hover:opacity-90' : 'text-gray-400 hover:text-white'}
+            className={activeTab === 'api-keys' ? 'bg-plum text-white hover:bg-plum-700' : 'text-chrome-400 hover:text-white'}
           >
             <Key className="h-4 w-4 mr-2" />
             API Ключи
@@ -142,7 +142,7 @@ export function SettingsPage() {
           <Button
             variant={activeTab === 'webhooks' ? 'default' : 'ghost'}
             onClick={() => setActiveTab('webhooks')}
-            className={activeTab === 'webhooks' ? 'bg-[#5A189A] text-white hover:opacity-90' : 'text-gray-400 hover:text-white'}
+            className={activeTab === 'webhooks' ? 'bg-plum text-white hover:bg-plum-700' : 'text-chrome-400 hover:text-white'}
           >
             <WebhookIcon className="h-4 w-4 mr-2" />
             Webhooks
@@ -177,11 +177,11 @@ export function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* AI Tokens Progress */}
+                {/* SI analysis quota */}
                 <div className="space-y-3">
                   <div className="flex items-baseline justify-between">
                     <div>
-                      <h4 className="text-sm font-semibold text-white">AI Токены</h4>
+                      <h4 className="text-sm font-semibold text-white">Токены SI-анализа</h4>
                       <p className="text-xs text-chrome-400">
                         Использовано для обработки отзывов
                       </p>

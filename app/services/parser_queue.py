@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.llm_cache import LLMCache, LLMCacheEntry
+from app.core.llm_cache import LLMCache
 from app.schemas.parser import RawReview
 from app.services.ai_processor import EnrichedReview
 
@@ -79,12 +79,11 @@ class ParserJobStatus(BaseModel):
 
 class ParserQueueManager:
     """
-    Менеджер асинхронной очереди парсинга с семантическим кэшем.
+    Менеджер асинхронной очереди парсинга.
 
     Responsibilities:
     - Постановка задач в ARQ queue
     - Проверка статуса задач
-    - Интеграция с LLM Semantic Cache
     - Мониторинг и метрики
     """
 
@@ -97,7 +96,7 @@ class ParserQueueManager:
         """
         Args:
             arq_pool: ARQ Redis connection pool
-            llm_cache: Семантический кэш для LLM
+            llm_cache: Disabled cache retained for interface compatibility
             db_session: Database session для кэша
         """
         self.arq_pool = arq_pool
@@ -127,6 +126,11 @@ class ParserQueueManager:
         Raises:
             HTTPException 503: Redis недоступен
         """
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Public-page scraping is disabled",
+        )
+
         started = time.perf_counter()
 
         try:
@@ -288,7 +292,7 @@ class ParserQueueManager:
         }
 
     # ========================================================================
-    # Semantic Cache Integration
+    # Analysis without retaining source text in a cache
     # ========================================================================
 
     async def enrich_with_cache(
@@ -297,13 +301,7 @@ class ParserQueueManager:
         tenant_id: UUID,
     ) -> tuple[list[EnrichedReview], dict[str, Any]]:
         """
-        Обогатить отзывы через семантический кэш (экономия LLM-квот).
-
-        Алгоритм:
-        1. Для каждого отзыва проверяем кэш (95% similarity)
-        2. Cache hit → берем тональность бесплатно
-        3. Cache miss → отправляем в LLM batch
-        4. Сохраняем новые результаты в кэш
+        Process reviews without memory or persistent content caching.
 
         Args:
             reviews: Список отзывов для обработки
@@ -316,17 +314,10 @@ class ParserQueueManager:
         """
         started = time.perf_counter()
 
-        cache_hits = 0
-        cache_misses = 0
-        tokens_saved = 0
-
         enriched: list[EnrichedReview] = []
         to_process: list[RawReview] = []
-
-        # === ШАГ 1: Проверка кэша ===
         for review in reviews:
             if not review.text or not review.text.strip():
-                # Пустой текст → пропускаем
                 enriched.append(
                     EnrichedReview(
                         review=review,
@@ -340,91 +331,22 @@ class ParserQueueManager:
                 )
                 continue
 
-            # Поиск в кэше
-            cached = await self.llm_cache.get(
-                session=self.db_session,
-                text=review.text,
-                generate_embedding=True,  # генерим эмбеддинг для поиска
-            )
+            to_process.append(review)
 
-            if (
-                cached
-                and cached.get("similarity", 0) >= self.llm_cache.SIMILARITY_THRESHOLD
-            ):
-                # Cache HIT → бесплатная тональность!
-                cache_hits += 1
-                tokens_saved += self._estimate_tokens(review.text)
-
-                # Конвертируем из кэша в EnrichedReview
-                from app.schemas.ai import Sentiment
-
-                sentiment_str = cached.get("sentiment", "NEUTRAL")
-                try:
-                    sentiment = Sentiment[sentiment_str.upper()]
-                except (KeyError, AttributeError):
-                    sentiment = Sentiment.NEUTRAL
-                metadata = cached.get("metadata")
-                is_critical = (
-                    metadata.get("is_critical", False)
-                    if isinstance(metadata, dict)
-                    else False
-                )
-
-                enriched.append(
-                    EnrichedReview(
-                        review=review,
-                        sentiment=sentiment,
-                        tags=tuple(cached.get("tags", [])),
-                        reply=cached.get("suggested_response"),
-                        is_critical=is_critical,
-                        ai_pending=False,
-                        ai_error=None,
-                    )
-                )
-
-                log.debug(
-                    "cache_hit",
-                    text_hash=cached.get("text_hash"),
-                    similarity=cached.get("similarity"),
-                    tokens_saved=self._estimate_tokens(review.text),
-                )
-            else:
-                # Cache MISS → нужен LLM
-                cache_misses += 1
-                to_process.append(review)
-
-        # === ШАГ 2: LLM обработка cache misses ===
         if to_process:
-            log.info(
-                "cache_partial",
-                total=len(reviews),
-                cache_hits=cache_hits,
-                cache_misses=cache_misses,
-                to_process=len(to_process),
-            )
-
-            # Здесь вызываем LLM для to_process
-            # (интеграция с ReviewAIProcessor или напрямую через LLM service)
-            # Placeholder для примера:
-            llm_enriched = await self._process_with_llm(to_process, tenant_id)
-            enriched.extend(llm_enriched)
-
-            # === ШАГ 3: Сохранение в кэш ===
-            await self._save_to_cache(llm_enriched, tenant_id)
+            enriched.extend(await self._process_with_llm(to_process, tenant_id))
 
         stats = {
             "total": len(reviews),
-            "cache_hits": cache_hits,
-            "cache_misses": cache_misses,
-            "cache_hit_rate": round(cache_hits / len(reviews) * 100, 2)
-            if reviews
-            else 0,
-            "tokens_saved": tokens_saved,
+            "cache_hits": 0,
+            "cache_misses": len(to_process),
+            "cache_hit_rate": 0,
+            "tokens_saved": 0,
             "processing_time_ms": int((time.perf_counter() - started) * 1000),
         }
 
         log.info(
-            "enrich_with_cache_completed",
+            "enrich_without_cache_completed",
             tenant_id=str(tenant_id),
             **stats,
         )
@@ -452,66 +374,6 @@ class ParserQueueManager:
         # Возвращаем пустой список (заглушка)
         return []
 
-    async def _save_to_cache(
-        self,
-        enriched: list[EnrichedReview],
-        tenant_id: UUID,
-    ) -> None:
-        """
-        Сохранить результаты LLM в семантический кэш.
-
-        Args:
-            enriched: Обогащенные отзывы с LLM-анализом
-            tenant_id: UUID организации
-        """
-        saved = 0
-        for item in enriched:
-            if item.ai_pending or item.ai_error:
-                # Не кэшируем ошибки
-                continue
-
-            text = item.review.text
-            if not text or not text.strip():
-                continue
-
-            # Генерируем эмбеддинг для кэша
-            embedding = await self.llm_cache._generate_embedding(text)
-            if not embedding:
-                continue
-
-            # Создаем cache entry
-            entry = LLMCacheEntry(
-                text_hash=self.llm_cache._generate_text_hash(text),
-                text=text,
-                embedding=embedding,
-                sentiment=item.sentiment.value if item.sentiment else "NEUTRAL",
-                sentiment_score=0.85,  # placeholder
-                tags=list(item.tags),
-                suggested_response=item.reply,
-                metadata={
-                    "tenant_id": str(tenant_id),
-                    "platform": item.review.platform,
-                    "rating": item.review.rating,
-                    "is_critical": item.is_critical,
-                },
-            )
-
-            # Сохраняем в кэш
-            success = await self.llm_cache._store_pgvector(
-                session=self.db_session,
-                entry=entry,
-            )
-
-            if success:
-                saved += 1
-
-        if saved > 0:
-            log.info(
-                "cache_save_completed",
-                saved=saved,
-                tenant_id=str(tenant_id),
-            )
-
     # ========================================================================
     # Helpers
     # ========================================================================
@@ -523,7 +385,7 @@ class ParserQueueManager:
         Формула:
         - Парсинг: ~0.5 сек/отзыв (зависит от платформы)
         - LLM: ~1 сек/отзыв (batch processing)
-        - Cache hit rate: ~50% → экономия 50% времени LLM
+        - Content caching is disabled; each non-empty review needs analysis.
 
         Args:
             limit: Количество отзывов
@@ -537,10 +399,9 @@ class ParserQueueManager:
         if platform in ("trustpilot", "google"):
             parse_time_per_review = 0.8  # медленнее
 
-        # Время LLM (с учетом cache hit rate)
+        # Время LLM without content-cache hit assumptions
         llm_time_per_review = 1.0
-        cache_hit_rate = 0.5  # предполагаем 50% cache hits
-        effective_llm_time = llm_time_per_review * (1 - cache_hit_rate)
+        effective_llm_time = llm_time_per_review
 
         total_time = limit * (parse_time_per_review + effective_llm_time)
 
@@ -587,8 +448,8 @@ async def create_parser_queue_manager(
     # LLM Cache
     llm_cache = LLMCache(
         openai_api_key=openai_api_key or settings.gemini_api_key,  # fallback
-        enable_memory_cache=True,
-        enable_pgvector_cache=True,
+        enable_memory_cache=False,
+        enable_pgvector_cache=False,
     )
 
     return ParserQueueManager(

@@ -477,7 +477,7 @@ class ProductionLLMService:
         fallback_model: str = FALLBACK_MODEL,
         timeout: float = DEFAULT_TIMEOUT,
         temperature: float = TEMPERATURE_DETERMINISTIC,
-        enable_caching: bool = True,
+        enable_caching: bool = False,
     ):
         settings = get_settings()
         self.api_key = api_key or settings.gemini_api_key
@@ -540,6 +540,10 @@ class ProductionLLMService:
         Raises:
             LLMServiceError: On unrecoverable failures
         """
+        raise RuntimeError(
+            "External review LLM analysis is disabled by the local-only policy"
+        )
+
         if not review_text.strip():
             raise LLMServiceError("Review text is empty")
 
@@ -598,6 +602,10 @@ class ProductionLLMService:
         company_name: str | None,
         context: dict[str, Any] | None,
     ) -> AnalysisOutcome:
+        raise RuntimeError(
+            "External review LLM analysis is disabled by the local-only policy"
+        )
+
         """
         Execute analysis with exponential backoff retry
 

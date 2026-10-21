@@ -1,4 +1,4 @@
-"""ARQ-воркер. Запуск: arq app.worker.worker.WorkerSettings"""
+"""ARQ-воркер. Запуск: python -m app.services.worker.main"""
 
 from typing import Any
 
@@ -9,9 +9,6 @@ from app.core.config import get_settings
 from app.core.logger import configure_logging_from_env
 from app.core.redis import get_redis_settings
 from app.db.tenant import build_engine
-from app.services.si_pipeline import build_insights_service
-from app.worker.analysis_tasks import process_reviews_batch
-from app.worker.tasks import fetch_reviews_task
 
 MAX_JOBS = 10
 
@@ -53,8 +50,6 @@ async def startup(ctx: dict[str, Any]) -> None:
         raise
     ctx["engine"] = engine
     ctx["session_factory"] = async_sessionmaker(engine, expire_on_commit=False)
-    # Любой объект с протоколом ReviewInsightsService. Есть GEMINI_API_KEY -> LLM-пайплайн, иначе эвристика.
-    ctx["insights_service"] = build_insights_service()
 
 
 async def shutdown(ctx: dict[str, Any]) -> None:
@@ -62,7 +57,7 @@ async def shutdown(ctx: dict[str, Any]) -> None:
 
 
 class WorkerSettings:
-    functions = [fetch_reviews_task, process_reviews_batch]
+    functions = []
     redis_settings = get_redis_settings()
     on_startup = startup
     on_shutdown = shutdown

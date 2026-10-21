@@ -15,7 +15,7 @@ from app.schemas.economics import ReviewStatus
 
 
 @pytest.mark.asyncio
-async def test_approve_ai_response_updates_review_and_is_tenant_scoped(
+async def test_approve_ai_response_is_disabled_without_changing_review(
     rate_limit_pool,
 ) -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -24,7 +24,6 @@ async def test_approve_ai_response_updates_review_and_is_tenant_scoped(
         await connection.run_sync(Company.metadata.create_all)
 
     tenant_id = uuid4()
-    other_tenant_id = uuid4()
     review_id = uuid4()
 
     async with session_factory.begin() as session:
@@ -33,14 +32,6 @@ async def test_approve_ai_response_updates_review_and_is_tenant_scoped(
                 Company(
                     id=tenant_id,
                     name="Tenant",
-                    average_check=0,
-                    margin_percent=0,
-                    cac=0,
-                    base_ltv=0,
-                ),
-                Company(
-                    id=other_tenant_id,
-                    name="Other tenant",
                     average_check=0,
                     margin_percent=0,
                     cac=0,
@@ -89,26 +80,15 @@ async def test_approve_ai_response_updates_review_and_is_tenant_scoped(
                 f"/api/v1/reviews/{review_id}/approve-ai-response",
                 headers={"x-test-tenant": str(tenant_id)},
             )
-            assert response.status_code == 200
-            assert response.json()["data"] == {
-                "review_id": str(review_id),
-                "status": ReviewStatus.RESOLVED.value,
-                "ai_pending": False,
-            }
+            assert response.status_code == 410
 
             async with session_factory() as session:
                 updated = await session.scalar(
                     select(Review).where(Review.id == review_id)
                 )
                 assert updated is not None
-                assert updated.status is ReviewStatus.RESOLVED
-                assert updated.ai_pending is False
-
-            cross_tenant_response = await client.post(
-                f"/api/v1/reviews/{review_id}/approve-ai-response",
-                headers={"x-test-tenant": str(other_tenant_id)},
-            )
-            assert cross_tenant_response.status_code == 404
+                assert updated.status is ReviewStatus.NEW
+                assert updated.ai_pending is True
     finally:
         if previous_tenant_override is None:
             app.dependency_overrides.pop(get_current_tenant, None)

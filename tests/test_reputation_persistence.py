@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import configure_mappers
 
+from app.core.llm_cache import LLMCache
 from app.models.economics import PlatformStatistic, Review
 from app.repositories.postgres_review_sink import PostgresReviewSink
 from app.repositories.review import ReviewRepository
@@ -64,6 +65,8 @@ def _analyzed_review() -> SimpleNamespace:
     raw = SimpleNamespace(
         platform_id="source-review-1",
         author_name="Reviewer",
+        author_avatar_url="https://example.com/avatar",
+        author_profile_url="https://example.com/profile",
         text="Good service",
         rating=4,
         date=datetime(2026, 10, 1, tzinfo=timezone.utc),
@@ -97,9 +100,13 @@ def test_reputation_models_bind_rows_to_tenant_and_configure_relationships() -> 
         constraint.name == "ck_reviews_rating_range"
         for constraint in Review.__table__.constraints
     )
+    assert any(
+        index.name == "uq_reviews_analytics_dedup" and index.unique
+        for index in Review.__table__.indexes
+    )
 
 
-def test_sink_inserts_reviews_with_explicit_tenant_and_idempotency() -> None:
+def test_sink_inserts_reviews_with_analytics_deduplication() -> None:
     tenant_id = UUID("11111111-1111-1111-1111-111111111111")
     session = _Session()
 
@@ -110,10 +117,49 @@ def test_sink_inserts_reviews_with_explicit_tenant_and_idempotency() -> None:
     assert inserted == 1
     # Advisory lock is statement[0], platform is statement[1], review insert is statement[2]
     compiled = session.statements[2].compile(dialect=postgresql.dialect())
-    assert "ON CONFLICT" in str(compiled)
+    assert "ON CONFLICT (company_id, platform_id, created_at, rating, text)" in str(
+        compiled
+    )
     assert compiled.params["company_id_m0"] == tenant_id
     assert compiled.params["status_m0"] == ReviewStatus.NEW.value
     assert compiled.params["sentiment_m0"] == "POSITIVE"
+    assert compiled.params["author_name_m0"] == "Автор отзыва"
+    assert compiled.params["text_m0"] == "Положительный отзыв; оценка 4/5."
+    assert compiled.params["auto_reply_m0"] is None
+    assert compiled.params["tags_m0"] == ["SERVICE"]
+    assert "external_review_id" not in compiled.params
+    assert "raw_metadata" not in compiled.params
+
+
+def test_review_repository_strips_source_content_and_identifiers() -> None:
+    values = ReviewRepository._sanitize_review_values(
+        {
+            "author_name": "Jane Doe",
+            "external_review_id": "source-review-123",
+            "text": "My phone is +7 999 123-45-67",
+            "rating": 1,
+            "sentiment": "NEGATIVE",
+            "si_response": "Jane, call me at +7 999 123-45-67",
+        }
+    )
+
+    assert values["author_name"] == "Автор отзыва"
+    assert "external_review_id" not in values
+    assert values["text"] == "Негативный отзыв; оценка 1/5."
+    assert values["si_response"] is None
+
+
+def test_llm_cache_is_disabled_by_default() -> None:
+    cache = LLMCache(openai_api_key="unused")
+
+    async def exercise_cache() -> None:
+        with pytest.raises(RuntimeError, match="disabled"):
+            await cache.get(None, "source text", generate_embedding=True)
+        with pytest.raises(RuntimeError, match="disabled"):
+            await cache.set(None, "source text", "NEGATIVE", 0.9, [])
+
+    asyncio.run(exercise_cache())
+    assert cache._memory_cache == {}
 
 
 def test_sink_worker_entry_point_uses_tenant_session() -> None:

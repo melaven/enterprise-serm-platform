@@ -192,7 +192,7 @@ export function PlanBadge({ className, compact = false }: PlanBadgeProps) {
           {/* Tokens Progress */}
           <div>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-chrome-500">LLM Tokens</span>
+              <span className="text-xs text-chrome-500">Токены SI-анализа</span>
               <span className="text-xs text-chrome-300 tabular-nums">
                 {((quota.usage.used_llm_tokens + quota.usage.reserved_llm_tokens) / 1000).toFixed(0)}k / {(quota.limits.max_llm_tokens / 1000).toFixed(0)}k
               </span>

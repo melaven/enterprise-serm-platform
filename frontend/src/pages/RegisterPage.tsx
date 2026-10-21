@@ -80,9 +80,9 @@ export function RegisterPage() {
         {/* Логотип / Название */}
         <div className="text-center">
           <h1 className="text-4xl font-bold text-white">
-            Tenable <span className="text-plum">SERM</span>
+            Tenable <span className="bg-plum px-2 text-white">SERM</span>
           </h1>
-          <p className="mt-3 text-chrome-400">Система управления электронной репутацией</p>
+          <p className="mt-3 text-chrome-400">Аналитика оценок и качества сервиса</p>
         </div>
 
         {/* Форма регистрации */}

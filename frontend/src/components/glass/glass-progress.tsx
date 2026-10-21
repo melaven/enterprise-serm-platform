@@ -1,6 +1,5 @@
 /**
- * Premium Glassmorphism Progress Indicator
- * Pulsating Electric Lime with glass effect
+ * Flat progress indicators with restrained lime accents
  */
 
 import { cn } from '@/lib/utils';
@@ -52,8 +51,8 @@ export function GlassProgress({
       <div
         className={cn(
           'relative w-full overflow-hidden rounded-sm', // rounded-sm = 2px
-          'bg-white/5 backdrop-blur-sm',
-          'border border-white/10',
+          'bg-ink-900',
+          'border border-chrome-700',
           SIZE_CLASSES[size]
         )}
       >
@@ -73,7 +72,6 @@ export function GlassProgress({
             className={cn(
               'h-full transition-all duration-500 ease-out',
               fillColor,
-              'shadow-[0_0_12px_rgba(197,255,74,0.4)]', // Матовое свечение lime
             )}
             style={{ width: `${percent}%` }}
           />
@@ -143,7 +141,6 @@ export function GlassCircularProgress({
           fill="none"
           stroke="rgba(255, 255, 255, 0.1)"
           strokeWidth={strokeWidth}
-          className="backdrop-blur-sm"
         />
 
         {/* Progress ring - Electric Lime RGB(197, 255, 74) */}
@@ -158,9 +155,6 @@ export function GlassCircularProgress({
           strokeDasharray={circumference}
           strokeDashoffset={indeterminate ? circumference * 0.75 : offset}
           className="transition-all duration-500 ease-out"
-          style={{
-            filter: 'drop-shadow(0 0 8px rgba(197, 255, 74, 0.6))',
-          }}
         />
       </svg>
 
@@ -203,7 +197,7 @@ export function GlassProgressInline({
   return (
     <div
       className={cn(
-        'flex items-center gap-3 rounded-sm border border-white/10 bg-white/5 px-4 py-2 backdrop-blur-2xl',
+        'flex items-center gap-3 rounded-sm border border-chrome-700 bg-ink-900 px-4 py-2',
         className
       )}
     >

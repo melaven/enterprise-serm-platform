@@ -11,6 +11,8 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.anonymizer import anonymize_author_name
+from app.core.review_privacy import safe_category, safe_review_summary
 from app.core.tenant import TenantSessionFactory
 from app.models.economics import Platform, Review
 from app.schemas.economics import ReviewStatus
@@ -67,7 +69,7 @@ class PostgresReviewSink:
         reviews: Sequence[_AnalyzedReview],
         platform_id: UUID | None = None,
     ) -> int:
-        """Insert a batch idempotently and return only rows inserted by this call.
+        """Insert a batch and deduplicate using stored analytics fields.
 
         SECURITY FIX: Advisory lock prevents race conditions when multiple workers
         process reviews for the same tenant simultaneously.
@@ -110,21 +112,39 @@ class PostgresReviewSink:
             {
                 "company_id": tenant_id,
                 "platform_id": platform_id,
-                "external_review_id": review.raw.platform_id,
                 "platform": platform_name,
-                "author_name": review.raw.author_name,
+                "author_name": anonymize_author_name(review.raw.author_name),
                 "rating": int(review.raw.rating),
-                "text": review.raw.text,
+                "text": safe_review_summary(
+                    review.raw.rating,
+                    review.analysis.result.sentiment.value,
+                ),
                 "status": ReviewStatus.NEW.value,
                 "financial_impact": 0.0,
                 "created_at": review.raw.date,
                 "sentiment": review.analysis.result.sentiment.value,
-                "tags": [
-                    review.analysis.result.issue_category.value,
-                    *review.analysis.result.extracted_entities,
-                ],
+                "tags": (
+                    [category]
+                    if (
+                        category := safe_category(
+                            review.analysis.result.issue_category.value
+                        )
+                    )
+                    is not None
+                    else []
+                ),
+                "analysis_tags": (
+                    [category]
+                    if (
+                        category := safe_category(
+                            review.analysis.result.issue_category.value
+                        )
+                    )
+                    is not None
+                    else []
+                ),
                 "is_critical": review.analysis.result.is_critical,
-                "auto_reply": review.analysis.result.suggested_reply,
+                "auto_reply": None,
                 "ai_pending": review.analysis.is_fallback,
             }
             for review in reviews
@@ -136,8 +156,10 @@ class PostgresReviewSink:
             .on_conflict_do_nothing(
                 index_elements=[
                     Review.company_id,
-                    Review.platform,
-                    Review.external_review_id,
+                    Review.platform_id,
+                    Review.created_at,
+                    Review.rating,
+                    Review.text,
                 ]
             )
             .returning(Review.id)
@@ -176,26 +198,3 @@ class PostgresReviewSink:
         if platform_id is None:
             raise RuntimeError("Tenant platform could not be created or retrieved")
         return platform_id
-
-    async def existing_external_ids(
-        self,
-        db: AsyncSession,
-        tenant_id: UUID,
-        platform: str,
-        ids: list[str],
-    ) -> set[str]:
-        """Return known source IDs only within the requested tenant and platform."""
-        if not ids:
-            return set()
-
-        stmt = select(Review.external_review_id).where(
-            Review.company_id == tenant_id,
-            Review.platform == platform,
-            Review.external_review_id.in_(ids),
-        )
-        result = await db.execute(stmt)
-        return {
-            external_id
-            for external_id in result.scalars().all()
-            if external_id is not None
-        }

@@ -4,9 +4,16 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import * as demoApi from '../demoService';
 import * as realApi from '../services';
 import * as mockData from '../mockData';
+
+let demoApi: typeof import('../demoService');
+
+async function loadDemoApi(mode: string) {
+  vi.stubEnv('VITE_DEMO_MODE', mode);
+  vi.resetModules();
+  demoApi = await import('../demoService');
+}
 
 // Mock real API
 vi.mock('../services', () => ({
@@ -22,17 +29,19 @@ vi.mock('../services', () => ({
 }));
 
 describe('DemoService - API Fallback', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
+    await loadDemoApi('true');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   describe('Demo Mode Active', () => {
-    beforeEach(() => {
-      // Mock VITE_DEMO_MODE as true
-      Object.defineProperty(import.meta.env, 'VITE_DEMO_MODE', {
-        writable: true,
-        value: 'true',
-      });
+    beforeEach(async () => {
+      await loadDemoApi('true');
     });
 
     it('should use mock data for login when demo mode is active', async () => {
@@ -69,12 +78,8 @@ describe('DemoService - API Fallback', () => {
   });
 
   describe('API Fallback on Error', () => {
-    beforeEach(() => {
-      // Mock VITE_DEMO_MODE as false (production)
-      Object.defineProperty(import.meta.env, 'VITE_DEMO_MODE', {
-        writable: true,
-        value: 'false',
-      });
+    beforeEach(async () => {
+      await loadDemoApi('false');
     });
 
     it('should fallback to mock when API login fails', async () => {
@@ -210,21 +215,14 @@ describe('DemoService - API Fallback', () => {
 
   describe('isDemoModeActive', () => {
     it('should return true when VITE_DEMO_MODE is true', () => {
-      Object.defineProperty(import.meta.env, 'VITE_DEMO_MODE', {
-        writable: true,
-        value: 'true',
-      });
+      vi.stubEnv('VITE_DEMO_MODE', 'true');
 
-      // Re-import to get new value
       const result = import.meta.env.VITE_DEMO_MODE === 'true';
       expect(result).toBe(true);
     });
 
     it('should return false when VITE_DEMO_MODE is false', () => {
-      Object.defineProperty(import.meta.env, 'VITE_DEMO_MODE', {
-        writable: true,
-        value: 'false',
-      });
+      vi.stubEnv('VITE_DEMO_MODE', 'false');
 
       const result = import.meta.env.VITE_DEMO_MODE === 'true';
       expect(result).toBe(false);

@@ -8,7 +8,7 @@ from ..core.exceptions import BusinessLogicError, NotFoundError
 from ..repositories import CompanyRepository, PlatformRepository, ReviewRepository
 from ..schemas.economics import ReviewBase, ReviewStatus
 from .economics import EconomicsService
-from .llm import LLMService
+from .local_review_si import analyze_review_locally
 from .sentiment import SentimentService
 
 
@@ -21,7 +21,6 @@ class ReviewProcessorService:
         platform_repo: PlatformRepository,
         company_repo: CompanyRepository,
         economics_service: EconomicsService,
-        llm_service: LLMService,
         sentiment_service: SentimentService,
         auth_context: Any = None,
     ):
@@ -29,35 +28,17 @@ class ReviewProcessorService:
         self.platform_repo = platform_repo
         self.company_repo = company_repo
         self.economics_service = economics_service
-        self.llm_service = llm_service
         self.sentiment_service = sentiment_service
         self.auth_context = auth_context
 
     async def process_new_review(self, review_data: ReviewBase) -> dict[str, Any]:
         """
         Полная обработка нового отзыва:
-        1. Проверка на дубликаты (по external_review_id)
-        2. Анализ тональности
-        3. Расчет финансового влияния
-        4. Генерация ответа (для негативных)
-        5. Сохранение в БД
+        Проверка платформы, анализ тональности, расчет финансового влияния,
+        генерация ответа и сохранение обезличенной выжимки.
         """
         try:
-            # 1. Проверяем на дубликаты по внешнему ID (если указан)
-            if review_data.external_review_id:
-                existing_review = await self.review_repo.get_by_external_id(
-                    review_data.external_review_id
-                )
-                if existing_review:
-                    return {
-                        "status": "duplicate",
-                        "message": "Отзыв уже существует в системе",
-                        "review_id": str(existing_review.id),
-                        "external_review_id": review_data.external_review_id,
-                        "duplicate": True,
-                    }
-
-            # 2. Проверяем существование платформы
+            # 1. Проверяем существование платформы
             platform = await self.platform_repo.get_with_reviews(
                 review_data.platform_id
             )
@@ -66,12 +47,12 @@ class ReviewProcessorService:
 
             company = platform.company
 
-            # 3. Анализ тональности
+            # 2. Local SI; source text remains in request memory only.
             sentiment_analysis = self.sentiment_service.analyze_sentiment(
                 rating=review_data.rating, review_text=review_data.text
             )
 
-            # 4. Расчет финансового влияния
+            # 3. Расчет финансового влияния
             financial_impact_data = (
                 await self.economics_service.calculate_review_financial_impact(
                     platform_id=review_data.platform_id,
@@ -80,66 +61,41 @@ class ReviewProcessorService:
                 )
             )
 
-            # 5. Определяем нужно ли генерировать ответ
-            should_generate_response = review_data.rating <= 3 and sentiment_analysis[
-                "priority"
-            ] in ["critical", "high"]
-
-            generated_response = None
+            analysis = analyze_review_locally(review_data.text, review_data.rating)
             updated_status = review_data.status
 
-            if should_generate_response:
-                try:
-                    # Генерируем ответ через LLM
-                    generated_response = (
-                        await self.llm_service.generate_review_response(
-                            review_text=review_data.text,
-                            rating=review_data.rating,
-                            author_name=review_data.author_name,
-                            company_name=company.name,
-                        )
-                    )
-                    updated_status = ReviewStatus.SI_PROCESSING
-
-                    # Пересчитываем финансовое влияние с учетом генерации ответа
-                    if generated_response:
-                        updated_status = ReviewStatus.RESOLVED
-                        financial_impact_data = await self.economics_service.calculate_review_financial_impact(
-                            platform_id=review_data.platform_id,
-                            rating=review_data.rating,
-                            status=ReviewStatus.RESOLVED,
-                        )
-
-                except Exception:
-                    # Если генерация не удалась, продолжаем без ответа
-                    generated_response = None
-                    updated_status = ReviewStatus.NEW
-
-            # 6. Создаем отзыв в БД
+            # 5. Создаем отзыв в БД
             created_review = await self.review_repo.create(
                 platform_id=review_data.platform_id,
-                author_name=review_data.author_name,
+                author_name="Автор отзыва",
                 rating=review_data.rating,
-                text=review_data.text,
-                external_review_id=review_data.external_review_id,  # Добавляем внешний ID
+                text=analysis.summary,
                 company_id=self.auth_context.company_id
                 if self.auth_context
                 else review_data.platform_id,  # Автозаполнение tenant
                 status=updated_status,
                 financial_impact=financial_impact_data["financial_impact"],
-                si_response=generated_response,
+                sentiment=analysis.sentiment,
+                threat_level=analysis.threat_level,
+                is_critical=analysis.is_critical,
+                is_analyzed=True,
+                tags=[],
+                analysis_tags=[],
+                si_response=None,
+                suggested_reply=None,
+                auto_reply=None,
             )
 
-            # 7. Обновляем средний рейтинг платформы
+            # 6. Обновляем средний рейтинг платформы
             await self.platform_repo.update_rating(review_data.platform_id)
 
-            # 8. Формируем результат
+            # 7. Формируем результат
             result = {
                 "review_id": str(created_review.id),
                 "status": updated_status.value,
                 "sentiment_analysis": sentiment_analysis,
                 "financial_impact": financial_impact_data,
-                "generated_response": generated_response,
+                "reply_draft": analysis.reply_draft,
                 "processing_recommendations": sentiment_analysis.get(
                     "recommendations", []
                 ),
@@ -203,25 +159,18 @@ class ReviewProcessorService:
                     - scenarios["without_response"]["financial_impact"]
                 )
 
-            # Генерируем пример ответа
-            sample_response = None
-            if review_data.rating <= 3:
-                try:
-                    sample_response = await self.llm_service.generate_review_response(
-                        review_text=review_data.text,
-                        rating=review_data.rating,
-                        author_name=review_data.author_name,
-                        company_name=company.name,
-                    )
-                except Exception:
-                    sample_response = "Не удалось сгенерировать ответ"
+            analysis = analyze_review_locally(review_data.text, review_data.rating)
 
             return {
                 "simulation": True,
-                "review_data": review_data.model_dump(),
+                "review_data": {
+                    "platform_id": str(review_data.platform_id),
+                    "rating": review_data.rating,
+                    "status": review_data.status.value,
+                },
                 "sentiment_analysis": sentiment_analysis,
                 "financial_scenarios": scenarios,
-                "sample_si_response": sample_response,
+                "reply_draft": analysis.reply_draft,
                 "platform_info": {
                     "name": platform.name,
                     "current_rating": platform.average_rating,
@@ -267,7 +216,10 @@ class ReviewProcessorService:
 
             except Exception as e:
                 results["failed"].append(
-                    {"review_data": review_data.model_dump(), "error": str(e)}
+                    {
+                        "index": len(results["processed"]) + len(results["failed"]),
+                        "error_type": type(e).__name__,
+                    }
                 )
                 results["summary"]["failed"] += 1
 

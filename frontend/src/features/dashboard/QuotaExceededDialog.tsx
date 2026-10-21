@@ -22,8 +22,7 @@ function formatReset(iso: string): string | null {
 
 /**
  * Модалка для HTTP 402. Единственный Electric Lime на экране — CTA «Сменить тариф».
- * Оверлей: матовое стекло (bg-black/60 + backdrop-blur-2xl), дашборд просвечивает.
- * Сама панель плоская: рамка Chrome, без теней.
+ * Плоская панель с непрозрачным Plum-tinted overlay и без теней.
  */
 export function QuotaExceededDialog({ open, onOpenChange, info, onUpgrade }: QuotaExceededDialogProps) {
   const inactive = info.code === 'subscription_inactive';
@@ -33,9 +32,9 @@ export function QuotaExceededDialog({ open, onOpenChange, info, onUpgrade }: Quo
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-2xl" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/90" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-sm border border-zinc-700 bg-black p-6 focus-visible:outline-none sm:p-8"
+          className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-sm border border-plum-700 bg-plum-900 p-6 focus-visible:outline-none sm:p-8"
         >
           <div className="flex items-start justify-between gap-6">
             <Dialog.Title className="text-xs font-medium uppercase tracking-wider text-zinc-400">

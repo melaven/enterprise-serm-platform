@@ -40,7 +40,7 @@ _GIVE_UP_EXHAUSTED: Final = text(
         ai_claim_token = NULL, ai_claimed_until = NULL
     WHERE company_id = CAST(:tenant AS uuid)
       AND ai_pending
-      AND ai_attempts >= :max_attempts
+      AND retry_count >= :max_attempts
       AND (ai_claimed_until IS NULL OR ai_claimed_until < now())
     """
 )
@@ -52,7 +52,7 @@ _CLAIM: Final = text(
       FROM public.reviews
       WHERE company_id = CAST(:tenant AS uuid)
         AND ai_pending
-        AND ai_attempts < :max_attempts
+        AND retry_count < :max_attempts
         AND (ai_next_attempt_at IS NULL OR ai_next_attempt_at <= now())
         AND (ai_claimed_until IS NULL OR ai_claimed_until < now())
       ORDER BY ai_next_attempt_at NULLS FIRST, id
@@ -62,11 +62,11 @@ _CLAIM: Final = text(
     UPDATE public.reviews r
     SET ai_claim_token   = CAST(:token AS uuid),
         ai_claimed_until = now() + CAST(:lease_s AS double precision) * interval '1 second',
-        ai_attempts      = r.ai_attempts + 1
+        retry_count      = r.retry_count + 1
     FROM picked
     WHERE r.id = picked.id
     RETURNING r.id, r.platform, r.external_id, r.author_name, r.rating, r.body,
-              r.published_at, r.ai_attempts
+              r.published_at, r.retry_count
     """
 )
 
@@ -95,7 +95,7 @@ _SAVE_FAILURE: Final = text(
     """
     UPDATE public.reviews r
     SET ai_pending         = NOT v.give_up,
-        ai_attempts        = GREATEST(r.ai_attempts - v.refund, 0),
+        retry_count        = GREATEST(r.retry_count - v.refund, 0),
         ai_next_attempt_at = v.next_at,
         ai_last_error      = left(v.error, 200),
         ai_claim_token     = NULL,
@@ -171,7 +171,7 @@ class SqlPendingReviewStore:
             return [
                 ClaimedReview(
                     id=row._mapping["id"],
-                    attempts=row._mapping["ai_attempts"],
+                    attempts=row._mapping["retry_count"],
                     review=_to_raw_review(row),
                 )
                 for row in result

@@ -221,19 +221,22 @@ class RateLimitDependency:
         if not request.url.path.startswith("/api/"):
             return
 
+        tenant_id: UUID | None
         if request.headers.get("x-api-key"):
             tenant_id = await resolve_api_key_tenant_id(request)
+            scope = "api"
         else:
             tenant_id = self._get_tenant_id(request)
+            scope = "dashboard" if tenant_id is not None else "anon"
         authenticated = tenant_id is not None
         limit = self.authenticated_limit if authenticated else self.anonymous_limit
         client_ip = request.client.host if request.client else "unknown"
-        identity = f"tenant:{tenant_id}" if authenticated else f"ip:{client_ip}"
-        scope = f":{self.endpoint}" if self.endpoint else ""
+        identity = str(tenant_id) if authenticated else client_ip
+        endpoint_scope = f":{self.endpoint}" if self.endpoint else ""
         now = time.time()
         bucket = int(now // self.window)
         window_end = (bucket + 1) * self.window
-        key = f"rate_limit:api:{identity}{scope}:{bucket}"
+        key = f"rate_limit:{identity}:{scope}{endpoint_scope}:{bucket}"
 
         pool = getattr(request.app.state, "redis_pool", None)
         if pool is None:

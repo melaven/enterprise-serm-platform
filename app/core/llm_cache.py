@@ -1,9 +1,7 @@
 """
-LLM Semantic Cache with pgvector
-FAANG-level architecture for cost optimization
+Legacy LLM Semantic Cache with pgvector.
 
-Designed to minimize OpenAI API costs by caching LLM responses
-based on semantic similarity using vector embeddings.
+Caching is disabled by default because review text may contain personal data.
 
 Key Features:
 - pgvector integration for cosine similarity search
@@ -83,8 +81,8 @@ class LLMCache:
     def __init__(
         self,
         openai_api_key: str | None = None,
-        enable_memory_cache: bool = True,
-        enable_pgvector_cache: bool = True,
+        enable_memory_cache: bool = False,
+        enable_pgvector_cache: bool = False,
     ):
         """
         Initialize LLM Cache
@@ -102,14 +100,7 @@ class LLMCache:
         self._memory_cache: dict[str, LLMCacheEntry] = {}
         self._memory_cache_order: list[str] = []
 
-        # OpenAI client
-        if OPENAI_AVAILABLE and openai_api_key:
-            self.openai_client = AsyncOpenAI(api_key=openai_api_key)
-        else:
-            self.openai_client = None
-            logger.warning(
-                "OpenAI client not available, cache will use stored embeddings only"
-            )
+        self.openai_client = None
 
         logger.info(
             "LLM Cache initialized",
@@ -136,6 +127,10 @@ class LLMCache:
         Returns:
             List of floats representing the embedding vector
         """
+        raise RuntimeError(
+            "External review-text embeddings are disabled by the local-only policy"
+        )
+
         if not self.openai_client:
             logger.warning("OpenAI client not available, cannot generate embedding")
             return None
@@ -280,6 +275,10 @@ class LLMCache:
         Returns:
             True if successful, False otherwise
         """
+        raise RuntimeError(
+            "Review-text cache storage is disabled by the local-only policy"
+        )
+
         if not self.enable_pgvector_cache:
             return False
 
@@ -361,6 +360,10 @@ class LLMCache:
         Returns:
             Cached response data or None if not found
         """
+        raise RuntimeError(
+            "Review-text cache lookup is disabled by the local-only policy"
+        )
+
         text_hash = self._generate_text_hash(text)
 
         # Level 1: Memory cache (exact hash match)
@@ -444,6 +447,10 @@ class LLMCache:
         Returns:
             True if successful, False otherwise
         """
+        raise RuntimeError(
+            "Review-text cache storage is disabled by the local-only policy"
+        )
+
         text_hash = self._generate_text_hash(text)
         ttl_seconds = ttl_seconds or self.CACHE_TTL_SECONDS
 

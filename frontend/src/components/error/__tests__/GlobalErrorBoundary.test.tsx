@@ -3,7 +3,7 @@
  * Covers: error catching, error screen rendering, recovery actions
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { GlobalErrorBoundary } from '../GlobalErrorBoundary';
 
@@ -25,6 +25,7 @@ describe('GlobalErrorBoundary', () => {
 
   afterEach(() => {
     console.error = originalConsoleError;
+    vi.unstubAllEnvs();
   });
 
   it('should render children when no error occurs', () => {
@@ -129,12 +130,7 @@ describe('GlobalErrorBoundary', () => {
   });
 
   it('should show DEV mode error details in development', () => {
-    // Mock development environment
-    const originalEnv = import.meta.env.DEV;
-    Object.defineProperty(import.meta.env, 'DEV', {
-      writable: true,
-      value: true,
-    });
+    vi.stubEnv('DEV', true);
 
     render(
       <GlobalErrorBoundary>
@@ -146,20 +142,10 @@ describe('GlobalErrorBoundary', () => {
     expect(screen.getByText('DEV MODE')).toBeInTheDocument();
     expect(screen.getByText(/Test error: Component crashed/i)).toBeInTheDocument();
 
-    // Restore original environment
-    Object.defineProperty(import.meta.env, 'DEV', {
-      writable: true,
-      value: originalEnv,
-    });
   });
 
   it('should hide error details in production', () => {
-    // Mock production environment
-    const originalEnv = import.meta.env.DEV;
-    Object.defineProperty(import.meta.env, 'DEV', {
-      writable: true,
-      value: false,
-    });
+    vi.stubEnv('DEV', false);
 
     render(
       <GlobalErrorBoundary>
@@ -174,11 +160,6 @@ describe('GlobalErrorBoundary', () => {
     // But error screen is still shown
     expect(screen.getByText('Произошла системная ошибка рендеринга')).toBeInTheDocument();
 
-    // Restore original environment
-    Object.defineProperty(import.meta.env, 'DEV', {
-      writable: true,
-      value: originalEnv,
-    });
   });
 
   it('should log error to console', () => {
@@ -198,15 +179,19 @@ describe('GlobalErrorBoundary', () => {
   });
 
   it('should recover after error reset in DEV mode', () => {
-    const originalEnv = import.meta.env.DEV;
-    Object.defineProperty(import.meta.env, 'DEV', {
-      writable: true,
-      value: true,
-    });
+    vi.stubEnv('DEV', true);
 
-    const { rerender } = render(
+    let shouldThrow = true;
+    function RecoverableError() {
+      if (shouldThrow) {
+        throw new Error('Test error: Component crashed');
+      }
+      return <div>Component rendered successfully</div>;
+    }
+
+    render(
       <GlobalErrorBoundary>
-        <ThrowError shouldThrow={true} />
+        <RecoverableError />
       </GlobalErrorBoundary>
     );
 
@@ -217,22 +202,11 @@ describe('GlobalErrorBoundary', () => {
     const resetButton = screen.getByRole('button', {
       name: /попробовать восстановить/i,
     });
+    shouldThrow = false;
     fireEvent.click(resetButton);
 
-    // Now render without error
-    rerender(
-      <GlobalErrorBoundary>
-        <ThrowError shouldThrow={false} />
-      </GlobalErrorBoundary>
-    );
-
-    // Component should render successfully
     expect(screen.getByText('Component rendered successfully')).toBeInTheDocument();
 
-    Object.defineProperty(import.meta.env, 'DEV', {
-      writable: true,
-      value: originalEnv,
-    });
   });
 
   it('should prevent white screen of death', () => {

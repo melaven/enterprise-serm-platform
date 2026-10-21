@@ -98,7 +98,7 @@ export function DashboardLayout({
         {mobileMenuOpen && (
           <>
             <div
-              className="fixed inset-0 z-40 bg-ink/60 backdrop-blur-sm md:hidden"
+              className="fixed inset-0 z-40 bg-ink/90 md:hidden"
               onClick={() => setMobileMenuOpen(false)}
             />
             <aside className="fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-chrome-600 bg-ink-900 md:hidden">

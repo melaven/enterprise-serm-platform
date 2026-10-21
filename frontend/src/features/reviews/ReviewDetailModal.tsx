@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
-import { CheckCircle2, Edit3, Calendar, Star, User, MessageSquare, Copy, Send, ShieldAlert } from 'lucide-react';
-import { ApiError } from '@/api/client';
-import { publishReviewReply, type Review } from '@/api/services';
+import { Calendar, Copy, MessageSquare, ShieldAlert, Star } from 'lucide-react';
+import type { Review } from '@/api/services';
 import {
   Dialog,
   DialogContent,
@@ -19,29 +17,16 @@ export interface ReviewDetailModalProps {
   review: Review | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onApprove?: (reviewId: string) => void;
-  isApproving?: boolean;
-  onEdit?: (reviewId: string) => void;
 }
 
 /**
- * Детальный просмотр отзыва и AI-ответа.
+ * Детальная аналитика отзыва и черновик SI-Ассистента.
  */
 export function ReviewDetailModal({
   review,
   open,
   onOpenChange,
-  onApprove,
-  isApproving = false,
-  onEdit,
 }: ReviewDetailModalProps) {
-  const [replyDraft, setReplyDraft] = useState('');
-  const [isPublishingReply, setIsPublishingReply] = useState(false);
-
-  useEffect(() => {
-    setReplyDraft(review?.suggested_reply || review?.auto_reply || '');
-  }, [review?.id, review?.suggested_reply, review?.auto_reply]);
-
   if (!review) return null;
 
   const formatDate = (dateString: string) => {
@@ -110,46 +95,24 @@ export function ReviewDetailModal({
     toast.success('Ответ скопирован в буфер');
   };
 
-  const handlePublishReply = async () => {
-    if (!review || isPublishingReply) return;
-    setIsPublishingReply(true);
-    try {
-      const result = await publishReviewReply(review.id, replyDraft);
-      toast.success('Ответ поставлен в очередь на публикацию', {
-        description: `Задача ${result.job_id}`,
-      });
-    } catch (error) {
-      toast.error('Не удалось отправить ответ', {
-        description: error instanceof ApiError ? error.message : 'Попробуйте позже.',
-      });
-    } finally {
-      setIsPublishingReply(false);
-    }
-  };
-
-  const canPublishReply =
-    ['google', 'google_business'].includes((review.platform || '').toLowerCase()) &&
-    Boolean(review.external_review_id);
+  const replyDraft =
+    review.sentiment === 'NEGATIVE'
+      ? 'Спасибо за обратную связь. Мы разберём ситуацию и учтём ваши замечания. Пожалуйста, свяжитесь с нашей службой поддержки для уточнения деталей.'
+      : review.sentiment === 'NEUTRAL'
+        ? 'Спасибо за оценку и обратную связь. Мы учтём ваши замечания в работе.'
+        : 'Спасибо за высокую оценку. Будем рады видеть вас снова.';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Детали отзыва</DialogTitle>
+          <DialogTitle>Аналитика отзыва</DialogTitle>
           <DialogClose onClose={() => onOpenChange(false)} />
         </DialogHeader>
 
         <DialogBody>
           {/* Метаданные */}
           <div className="grid grid-cols-2 gap-4 rounded-sm border-2 border-chrome-600 bg-ink-900 p-4">
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-plum" />
-              <div>
-                <p className="text-xs text-chrome-400">Автор</p>
-                <p className="text-sm font-medium text-white">{review.author_name || 'Аноним'}</p>
-              </div>
-            </div>
-
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-plum" />
               <div>
@@ -182,9 +145,9 @@ export function ReviewDetailModal({
             )}
           </div>
 
-          {/* Текст отзыва */}
+          {/* Только фиксированная сводка, исходный текст не хранится */}
           <div className="space-y-2">
-            <h4 className="text-sm font-semibold text-white">Текст отзыва</h4>
+            <h4 className="text-sm font-semibold text-white">Обезличенная сводка SI</h4>
             <div className="rounded-sm border-2 border-chrome-600 bg-ink-900 p-4">
               <p className="text-sm leading-relaxed text-chrome-200 break-words whitespace-pre-wrap">
                 {review.text}
@@ -192,71 +155,26 @@ export function ReviewDetailModal({
             </div>
           </div>
 
-          {/* AI-генерированный ответ */}
           <div className="space-y-2">
             <h4 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <span 
-                className="flex h-6 w-6 items-center justify-center rounded-sm bg-plum text-xs font-bold text-white"
-                aria-label="AI"
-              >
-                AI
-              </span>
-              Предложенный ответ
+              <ShieldAlert className="h-4 w-4 text-plum" />
+              Черновик для ручного ответа
             </h4>
             <div className="rounded-sm border-2 border-plum bg-ink-900 p-4">
               <p className="text-sm leading-relaxed text-chrome-200 break-words whitespace-pre-wrap">
-                {review.auto_reply || 'AI-ответ для этого отзыва не подготовлен.'}
+                {replyDraft}
               </p>
-            </div>
-          </div>
-
-          {/* SI-аналитика: suggested_reply */}
-          {review.suggested_reply && (
-            <div className="space-y-2">
-              <h4 className="flex items-center gap-2 text-sm font-semibold text-white">
-                <ShieldAlert className="h-4 w-4 text-plum" />
-                Рекомендуемый ответ (SI)
-              </h4>
-              <div className="rounded-sm border-2 border-chrome-600 bg-ink-900 p-4">
-                <p className="mb-3 text-sm leading-relaxed text-chrome-200 break-words whitespace-pre-wrap">
-                  {review.suggested_reply}
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleCopyReply(review.suggested_reply!)}
-                  className="w-full"
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Скопировать в буфер
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {canPublishReply && (
-            <div className="space-y-2">
-              <h4 className="text-sm font-semibold text-white">
-                Ответить на площадке
-              </h4>
-              <textarea
-                aria-label="Текст ответа для публикации"
-                className="min-h-28 w-full rounded-sm border-2 border-chrome-600 bg-ink-900 p-3 text-sm text-chrome-200"
-                maxLength={4096}
-                value={replyDraft}
-                onChange={(event) => setReplyDraft(event.target.value)}
-              />
               <Button
-                variant="accent"
-                className="w-full"
-                disabled={!replyDraft.trim() || isPublishingReply}
-                onClick={handlePublishReply}
+                variant="outline"
+                size="sm"
+                onClick={() => handleCopyReply(replyDraft)}
+                className="mt-3 w-full"
               >
-                <Send className="mr-2 h-4 w-4" />
-                {isPublishingReply ? 'Отправляем…' : 'Опубликовать ответ'}
+                <Copy className="mr-2 h-4 w-4" />
+                Скопировать черновик
               </Button>
             </div>
-          )}
+          </div>
 
           {/* Статус */}
           {review.is_critical && (
@@ -272,22 +190,6 @@ export function ReviewDetailModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Закрыть
           </Button>
-          {onEdit && (
-            <Button variant="default" onClick={() => onEdit(review.id)}>
-              <Edit3 className="mr-2 h-4 w-4" />
-              Редактировать
-            </Button>
-          )}
-          {onApprove && review.ai_pending && review.auto_reply && (
-            <Button
-              variant="accent"
-              disabled={isApproving}
-              onClick={() => onApprove(review.id)}
-            >
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              {isApproving ? 'Подтверждаем…' : 'Одобрить AI-ответ'}
-            </Button>
-          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

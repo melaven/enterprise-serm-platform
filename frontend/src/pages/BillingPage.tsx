@@ -50,9 +50,9 @@ const PRICING_TIERS: PricingTier[] = [
     currency: 'USD',
     interval: 'month',
     features: [
-      'До 5 запусков парсера',
+      'До 5 импортов из разрешённых источников',
       '100 отзывов в месяц',
-      '50,000 LLM токенов',
+      '50 000 токенов для SI-анализа',
       'Базовая аналитика',
       'Email поддержка',
     ],
@@ -70,9 +70,9 @@ const PRICING_TIERS: PricingTier[] = [
     currency: 'USD',
     interval: 'month',
     features: [
-      'Неограниченные запуски',
+      'Расширенная квота импорта',
       '10,000 отзывов в месяц',
-      '1,000,000 LLM токенов',
+      '1 000 000 токенов для SI-анализа',
       'Расширенная аналитика',
       'Priority поддержка 24/7',
       'Экспорт в CSV/Excel',
@@ -253,10 +253,10 @@ function UsageStats({ stats }: UsageStatsProps) {
         )}
       </div>
       
-      {/* LLM Tokens Usage */}
+      {/* SI analysis usage */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <span className="text-sm text-chrome-400">LLM Tokens Used</span>
+          <span className="text-sm text-chrome-400">Токены SI-анализа</span>
           <span className="text-sm font-semibold text-white tabular-nums">
             {stats.tokens_used.toLocaleString()} / {stats.tokens_limit.toLocaleString()}
           </span>

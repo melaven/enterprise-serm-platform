@@ -11,7 +11,9 @@ from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..core.anonymizer import anonymize_author_name
 from ..core.exceptions import DatabaseError
+from ..core.review_privacy import safe_category, safe_review_summary, safe_sentiment
 from ..models.economics import Platform, Review
 from ..schemas.economics import ReviewStatus
 from .base import BaseRepository
@@ -25,8 +27,15 @@ class ReviewRepository(BaseRepository[Review]):
     def __init__(self, db: AsyncSession):
         super().__init__(db, Review)
 
+    async def create(self, **values: Any) -> Review:
+        return await super().create(**self._sanitize_review_values(values))
+
+    async def update(self, id: UUID, **values: Any) -> Review:
+        return await super().update(id, **self._sanitize_review_values(values))
+
     async def create_for_tenant(self, tenant_id: UUID, **values: Any) -> Review:
         """Create a review with an immutable tenant key; transaction stays caller-owned."""
+        values = self._sanitize_review_values(values)
         supplied_tenant = values.pop("tenant_id", tenant_id)
         supplied_company = values.pop("company_id", tenant_id)
         if supplied_tenant != tenant_id or supplied_company != tenant_id:
@@ -85,6 +94,7 @@ class ReviewRepository(BaseRepository[Review]):
     async def update_for_tenant(
         self, tenant_id: UUID, review_id: UUID, **values: Any
     ) -> Review | None:
+        values = self._sanitize_review_values(values)
         if not values:
             return await self.get_for_tenant(tenant_id, review_id)
         immutable_fields = {"id", "tenant_id", "company_id", "platform_id"}
@@ -113,6 +123,48 @@ class ReviewRepository(BaseRepository[Review]):
         await self.db.flush()
         return await self.get_for_tenant(tenant_id, review_id)
 
+    @staticmethod
+    def _sanitize_review_values(values: dict[str, Any]) -> dict[str, Any]:
+        sanitized = values.copy()
+        sanitized["author_name"] = anonymize_author_name()
+        if "text" in sanitized:
+            sanitized["text"] = safe_review_summary(
+                sanitized.get("rating", 0),
+                safe_sentiment(sanitized.get("sentiment")),
+            )
+        if "sentiment" in sanitized:
+            sanitized["sentiment"] = safe_sentiment(sanitized["sentiment"])
+        for field in ("tags", "analysis_tags"):
+            if field in sanitized:
+                values = sanitized[field]
+                sanitized[field] = (
+                    [
+                        category
+                        for tag in values
+                        if (category := safe_category(tag)) is not None
+                    ]
+                    if isinstance(values, list)
+                    else []
+                )
+        for field in (
+            "si_response",
+            "auto_reply",
+            "suggested_reply",
+            "ai_error",
+            "dlq_reason",
+        ):
+            if field in sanitized:
+                sanitized[field] = None
+        for field in (
+            "external_review_id",
+            "author_avatar_url",
+            "author_profile_url",
+            "raw_metadata",
+            "reply_text",
+        ):
+            sanitized.pop(field, None)
+        return sanitized
+
     async def delete_for_tenant(self, tenant_id: UUID, review_id: UUID) -> bool:
         result = await self.db.execute(
             delete(Review)
@@ -123,28 +175,6 @@ class ReviewRepository(BaseRepository[Review]):
         if deleted:
             await self.db.flush()
         return deleted
-
-    async def get_by_external_id(self, external_review_id: str) -> Review | None:
-        """Найти отзыв по внешнему ID (для интеграций)"""
-        try:
-            query = select(Review).where(
-                Review.external_review_id == external_review_id
-            )
-            result = await self.db.execute(query)
-            return result.scalar_one_or_none()
-        except Exception as e:
-            raise DatabaseError("Ошибка поиска отзыва по внешнему ID", e)
-
-    async def exists_by_external_id(self, external_review_id: str) -> bool:
-        """Проверить существование отзыва по внешнему ID"""
-        try:
-            query = select(Review.id).where(
-                Review.external_review_id == external_review_id
-            )
-            result = await self.db.execute(query)
-            return result.scalar_one_or_none() is not None
-        except Exception as e:
-            raise DatabaseError("Ошибка проверки существования отзыва", e)
 
     async def get_by_platform_id(
         self,

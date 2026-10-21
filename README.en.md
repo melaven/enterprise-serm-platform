@@ -1,6 +1,6 @@
 # Tenable SERM
 
-**B2B SaaS for reputation management (SERM): collects reviews from platforms, classifies them using Sentiment Intelligence, and responds to negative feedback.**
+**B2B SaaS dashboard for analytics on public business ratings and service-quality alerts.**
 
 `FastAPI` · `PostgreSQL + RLS` · `Redis / ARQ` · `React + TypeScript` · `Stripe` · `Terraform + GitHub Actions + k6`
 
@@ -16,7 +16,13 @@
 
 | For Whom | What They Get |
 |---|---|
-| **Business Owner** (restaurants, e-commerce, HoReCa) | Review collection (Google, Yandex, 2GIS, Otzovik), sentiment and tags, draft responses to negative feedback, reputation dashboard |
+| **Business Owner** (restaurants, e-commerce, HoReCa) | Sentiment, risk level, and a dashboard tracking public review trends |
+
+**Data minimization.** Source text is analyzed in memory and is not stored in the database; `reviews` stores only a short summary derived from fixed analytics categories and rating. Author names are replaced with a generic label; external IDs, links, and free-form replies are not stored. Reply publishing is disabled.
+
+Automatic public-page scraping is disabled. Reviews are retrieved through the authorized Google Business Profile integration; other sources may only be customer-provided or handled through a separately approved official integration. Replies are drafts and require human publication.
+
+These are technical data-minimization measures, not legal advice or a guarantee that Russian Federal Law 152-FZ does not apply. The customer must establish a lawful basis and ensure submitted data may be provided; party roles depend on actual processing, and a contract does not remove the provider's own obligations. Counsel should review processing terms and notices.
 
 **Monetization.** Free (hard quota) → Pro (Stripe subscription). Quota is not marketing — it's a database invariant: when limit is exhausted, client receives `402 Payment Required` with data for paywall.
 
@@ -70,13 +76,13 @@ Each request-transaction starts with `set_config('app.current_tenant_id', …, t
 Race conditions are closed by atomic instructions and constraints, not session locks:
 - quota: `UPDATE … WHERE used + :n <= limit RETURNING` in single statement (reserve **before** parsing, return excess after);
 - duplicate job: deterministic `job_id` (company + platform + URL hash) → second click gets `409`;
-- duplicate review: `ON CONFLICT DO NOTHING` on unique key;
+- source-ID deduplication is disabled; exact duplicate records are compared only by tenant, platform, publication date, rating, and safe summary;
 - duplicate webhook: `event_id` as PRIMARY KEY, event recording and application in single transaction.
 
 Why not advisory locks: through Supavisor pooler in transaction mode, session-level locks are unsafe (connection can change between requests), and xact-level locks hold connections and complicate pool. Atomic SQL is simpler, faster, and testable.
 
 **3. Zero Trust.**
-HttpOnly + `__Host-` cookie with signed double-submit CSRF (tokens inaccessible to JS), strict headers (CSP, HSTS, nosniff, frame-ancestors), HMAC pseudonymization of PII with versioned pepper and TTL, SSRF protection (platform host allowlist, **every** redirect checked, private/service addresses blocked; DNS rebinding closed by resolver and egress policy), worker isolation by networks and database roles.
+HttpOnly + `__Host-` cookie with signed double-submit CSRF (tokens inaccessible to JS), strict headers (CSP, HSTS, nosniff, frame-ancestors), HMAC pseudonymization for other PII identifiers (not review authors), SSRF protection (platform host allowlist, **every** redirect checked, private/service addresses blocked; DNS rebinding closed by resolver and egress policy), worker isolation by networks and database roles.
 
 **4. Stripe billing as state machine.**
 Webhook signature verified by `stripe.Webhook.construct_event` on raw bytes (5-min window against replay) **before** any parsing or database access. Plan changes only by signed event; Pro without Stripe subscription forbidden by CHECK constraint. Late or out-of-order events are safe.

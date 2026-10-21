@@ -5,7 +5,7 @@ import { rateLimitStore } from '@/api/rateLimit';
 /**
  * Таймер для HTTP 429. Монтируется ОДИН раз в корне (не зависит от роутера).
  * Не модалка: интерфейс остаётся живым, а запросы сами подождут конец паузы.
- * Glassmorphism: bg-white/5 + backdrop-blur-2xl + border-white/10 + многослойные глубокие тени.
+ * Точная лимитная индикация на непрозрачной брендовой поверхности.
  */
 export function RateLimitHost() {
   const info = useSyncExternalStore(
@@ -36,7 +36,7 @@ export function RateLimitHost() {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-4 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-sm border border-white/10 bg-white/5 p-4 text-white backdrop-blur-2xl shadow-[0_4px_12px_rgba(0,0,0,0.4),0_8px_32px_rgba(0,0,0,0.3),0_16px_48px_rgba(0,0,0,0.2)] sm:bottom-6 sm:right-6 sm:w-[calc(100%-3rem)] sm:p-6"
+      className="fixed bottom-4 right-4 z-[60] w-[calc(100%-2rem)] max-w-sm rounded-sm border border-plum-700 bg-plum-900 p-4 text-white sm:bottom-6 sm:right-6 sm:w-[calc(100%-3rem)] sm:p-6"
     >
       <p className="sr-only">Слишком много запросов. Повторим автоматически.</p>
       <div aria-hidden="true">

@@ -3,8 +3,6 @@ Unit tests для Production LLM Service
 Comprehensive test coverage для enterprise AI pipeline
 """
 
-from unittest import mock
-
 import pytest
 from pydantic import ValidationError
 
@@ -32,7 +30,6 @@ def llm_service():
         api_key="test_api_key_for_unit_tests",
         model="gemini-2.5-flash",
         timeout=5.0,
-        enable_caching=False,  # Disable cache for unit tests
     )
 
 
@@ -66,6 +63,10 @@ def sample_neutral_review():
 # ============================================================================
 # Test: Pydantic Schema Validation
 # ============================================================================
+
+
+def test_review_text_cache_is_disabled_by_default(llm_service):
+    assert llm_service.enable_caching is False
 
 
 def test_review_analysis_result_valid_schema():
@@ -321,83 +322,19 @@ async def test_fallback_analysis_language_detection(llm_service):
 
 
 @pytest.mark.asyncio
-async def test_cache_hit(llm_service):
-    """Test cache hit for identical reviews"""
+async def test_review_llm_fails_closed_even_when_cache_enabled(llm_service):
     llm_service.enable_caching = True
 
-    # Mock analyze_with_retry to return fixed outcome
-    mock_outcome = AnalysisOutcome(
-        result=ReviewAnalysisResult(
-            sentiment=Sentiment.POSITIVE,
-            sentiment_confidence=0.9,
-            issue_category=IssueCategory.POSITIVE_FEEDBACK,
-            criticality_level=CriticalityLevel.LOW,
-            extracted_entities=[],
-            key_phrases=[],
-            financial_impact=FinancialImpact(
-                estimated_lost_revenue=0, confidence_score=0.9, reasoning="Test"
-            ),
-            suggested_reply="Thank you for your positive feedback! We appreciate your business.",
-            requires_escalation=False,
-            recommended_actions=[],
-        ),
-        tokens_used=TokenUsage(input_tokens=100, output_tokens=50, total_tokens=150),
-        is_fallback=False,
-        model_used="gemini-2.5-flash",
-        attempt_count=1,
-    )
-
-    with mock.patch.object(
-        llm_service, "_analyze_with_retry", return_value=mock_outcome
-    ):
-        # First call: cache miss
-        outcome1 = await llm_service.analyze_review(
-            "Great product!", rating=5, use_cache=True
-        )
-
-        # Second call: cache hit (should not call _analyze_with_retry again)
-        outcome2 = await llm_service.analyze_review(
-            "Great product!", rating=5, use_cache=True
-        )
-
-        # Both outcomes should be identical
-        assert outcome1.result.sentiment == outcome2.result.sentiment
-        assert llm_service._analyze_with_retry.call_count == 1  # Only called once
+    with pytest.raises(RuntimeError, match="disabled"):
+        await llm_service.analyze_review("private review text", rating=5)
 
 
 @pytest.mark.asyncio
-async def test_cache_disabled(llm_service):
-    """Test cache can be disabled"""
+async def test_review_llm_fails_closed_when_cache_disabled(llm_service):
     llm_service.enable_caching = False
 
-    mock_outcome = AnalysisOutcome(
-        result=ReviewAnalysisResult(
-            sentiment=Sentiment.POSITIVE,
-            sentiment_confidence=0.9,
-            issue_category=IssueCategory.POSITIVE_FEEDBACK,
-            criticality_level=CriticalityLevel.LOW,
-            extracted_entities=[],
-            key_phrases=[],
-            financial_impact=FinancialImpact(
-                estimated_lost_revenue=0, confidence_score=0.9, reasoning="Test"
-            ),
-            suggested_reply="Thank you so much for your wonderful positive feedback! We truly appreciate your support and are delighted to hear about your experience.",
-            requires_escalation=False,
-            recommended_actions=[],
-        ),
-        tokens_used=TokenUsage(),
-        is_fallback=False,
-        model_used="test",
-    )
-
-    with mock.patch.object(
-        llm_service, "_analyze_with_retry", return_value=mock_outcome
-    ):
-        # Both calls should hit the mock
-        await llm_service.analyze_review("Test", rating=5)
-        await llm_service.analyze_review("Test", rating=5)
-
-        assert llm_service._analyze_with_retry.call_count == 2
+    with pytest.raises(RuntimeError, match="disabled"):
+        await llm_service.analyze_review("private review text", rating=5)
 
 
 # ============================================================================
@@ -406,14 +343,9 @@ async def test_cache_disabled(llm_service):
 
 
 @pytest.mark.asyncio
-async def test_empty_review_error(llm_service):
-    """Test error handling for empty review"""
-    from app.core.exceptions import LLMServiceError
-
-    with pytest.raises(LLMServiceError) as exc_info:
+async def test_review_llm_rejects_all_external_analysis(llm_service):
+    with pytest.raises(RuntimeError, match="disabled"):
         await llm_service.analyze_review("", rating=3)
-
-    assert "empty" in str(exc_info.value).lower()
 
 
 @pytest.mark.asyncio
@@ -462,44 +394,13 @@ async def test_analyze_outcome_to_dict():
 
 
 @pytest.mark.asyncio
-async def test_backward_compatible_llm_service():
-    """Test backward compatibility wrapper"""
+async def test_backward_compatible_llm_service_fails_closed():
     from app.services.llm_production import LLMService
 
     llm = LLMService()
 
-    # Mock the underlying ProductionLLMService
-    mock_outcome = AnalysisOutcome(
-        result=ReviewAnalysisResult(
-            sentiment=Sentiment.POSITIVE,
-            sentiment_confidence=0.95,
-            issue_category=IssueCategory.POSITIVE_FEEDBACK,
-            criticality_level=CriticalityLevel.LOW,
-            extracted_entities=["Product X"],
-            key_phrases=["great", "excellent"],
-            financial_impact=FinancialImpact(
-                estimated_lost_revenue=0,
-                confidence_score=0.9,
-                reasoning="Positive feedback",
-            ),
-            suggested_reply="Thank you so much for your wonderful positive feedback! We truly appreciate your support and are delighted to hear about your experience.",
-            requires_escalation=False,
-            recommended_actions=[],
-        ),
-        tokens_used=TokenUsage(input_tokens=100, output_tokens=50, total_tokens=150),
-        is_fallback=False,
-        model_used="gemini-2.5-flash",
-    )
-
-    with mock.patch.object(llm._service, "analyze_review", return_value=mock_outcome):
-        result = await llm.analyze_review("Great product!", rating=5, platform="google")
-
-        # Legacy format
-        assert result["sentiment"] == "POSITIVE"
-        assert result["issue_category"] == "POSITIVE_FEEDBACK"
-        assert result["is_critical"] is False
-        assert "suggested_reply" in result
-        assert "financial_impact" in result
+    with pytest.raises(RuntimeError, match="disabled"):
+        await llm.analyze_review("Great product!", rating=5, platform="google")
 
 
 # ============================================================================
@@ -507,30 +408,11 @@ async def test_backward_compatible_llm_service():
 # ============================================================================
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
-async def test_real_api_integration():
-    """
-    Integration test with real Gemini API
-    Requires GEMINI_API_KEY environment variable
-    Run with: pytest tests/test_llm_production.py --run-integration
-    """
-    import os
-
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or api_key == "test_key":
-        pytest.skip("GEMINI_API_KEY not set or using test key")
-
-    llm = ProductionLLMService(api_key=api_key)
-
-    outcome = await llm.analyze_review(
-        "The product quality is excellent and delivery was fast!",
-        rating=5,
-        platform="google",
-    )
-
-    # Basic assertions
-    assert outcome.result.sentiment == Sentiment.POSITIVE
-    assert not outcome.is_fallback
-    assert outcome.tokens_used.total_tokens > 0
-    assert len(outcome.result.suggested_reply) >= 50
+async def test_real_api_integration_is_disabled(llm_service):
+    with pytest.raises(RuntimeError, match="disabled"):
+        await llm_service.analyze_review(
+            "private review text",
+            rating=5,
+            platform="google",
+        )

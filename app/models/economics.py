@@ -111,8 +111,6 @@ class Review(Base):
         nullable=False,
     )
     tenant_id = synonym("company_id")
-    # Добавляем поле для внешнего ID (интеграция с Google Maps, 2GIS и др.)
-    external_review_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # Добавляем поле для названия платформы как строки (для упрощения парсинга)
     platform: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     author_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -155,6 +153,10 @@ class Review(Base):
         Boolean, nullable=False, default=False, server_default=sql_text("false")
     )
     ai_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retry_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=sql_text("0")
+    )
+    dlq_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -171,10 +173,12 @@ class Review(Base):
         Index("ix_reviews_platform_company", "platform_id", "company_id"),
         Index("ix_reviews_status_company", "status", "company_id"),
         Index(
-            "uq_reviews_tenant_platform_external_id",
+            "uq_reviews_analytics_dedup",
             "company_id",
-            "platform",
-            "external_review_id",
+            "platform_id",
+            "created_at",
+            "rating",
+            "text",
             unique=True,
         ),
         ForeignKeyConstraint(
@@ -314,6 +318,10 @@ class PlatformIntegration(Base):
     encrypted_api_key: Mapped[str] = mapped_column(
         Text, nullable=False
     )  # Encrypted API token
+    encrypted_refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     meta_config: Mapped[dict[str, object]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"),
         nullable=False,
@@ -369,6 +377,45 @@ class PlatformIntegration(Base):
             logger = get_logger("platform_integration")
             logger.error(
                 "Failed to encrypt API key",
+                integration_id=str(self.id),
+                platform=self.platform,
+                error=str(e),
+            )
+            raise
+
+    @property
+    def refresh_token(self) -> str | None:
+        """Decrypt and return the OAuth refresh token."""
+        if self.encrypted_refresh_token is None:
+            return None
+        try:
+            return decrypt_token(self.encrypted_refresh_token)
+        except EncryptionError as e:
+            from app.core.logger import get_logger
+
+            logger = get_logger("platform_integration")
+            logger.error(
+                "Failed to decrypt refresh token",
+                integration_id=str(self.id),
+                platform=self.platform,
+                error=str(e),
+            )
+            raise
+
+    @refresh_token.setter
+    def refresh_token(self, plain_token: str | None) -> None:
+        """Encrypt and store the OAuth refresh token."""
+        if plain_token is None:
+            self.encrypted_refresh_token = None
+            return
+        try:
+            self.encrypted_refresh_token = encrypt_token(plain_token)
+        except EncryptionError as e:
+            from app.core.logger import get_logger
+
+            logger = get_logger("platform_integration")
+            logger.error(
+                "Failed to encrypt refresh token",
                 integration_id=str(self.id),
                 platform=self.platform,
                 error=str(e),

@@ -54,7 +54,7 @@ export function useParserPolling({ onSuccess, pollInterval = 2500 }: UseParserPo
         if (parserResult) {
           const duration = (parserResult.duration_ms / 1000).toFixed(1);
           toast.success('Парсинг завершен', {
-            description: `Сохранено: ${parserResult.reviews_saved} отзывов, AI-анализ: ${parserResult.ai_enriched}, Время: ${duration}с`,
+            description: `Сохранено: ${parserResult.reviews_saved} отзывов, SI-анализ: ${parserResult.ai_enriched}, Время: ${duration}с`,
             duration: 5000,
           });
         } else {

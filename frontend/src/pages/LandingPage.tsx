@@ -1,7 +1,5 @@
 /**
- * LandingPage Component
- * Conversion landing page for SERM platform
- * Dark B2B theme with Royal Plum (#5A189A) and Electric Lime (#C5FF4A)
+ * Landing page for review metrics and Sentiment Intelligence.
  */
 
 import { ArrowRight, Shield, Zap, BarChart3, Check, Crown } from 'lucide-react';
@@ -36,9 +34,9 @@ const PRICING_TIERS: PricingTier[] = [
     currency: 'USD',
     interval: 'month',
     features: [
-      'До 5 запусков парсера',
+      'До 5 импортов из разрешённых источников',
       '100 отзывов в месяц',
-      '50,000 LLM токенов',
+      '50 000 токенов для SI-анализа',
       'Базовая аналитика',
       'Email поддержка',
     ],
@@ -51,9 +49,9 @@ const PRICING_TIERS: PricingTier[] = [
     currency: 'USD',
     interval: 'month',
     features: [
-      'Неограниченные запуски',
+      'Расширенные возможности импорта',
       '10,000 отзывов в месяц',
-      '1,000,000 LLM токенов',
+      '1 000 000 токенов для SI-анализа',
       'Расширенная аналитика',
       'Priority поддержка 24/7',
       'Экспорт в CSV/Excel',
@@ -80,20 +78,16 @@ function PricingCard({ tier }: PricingCardProps) {
   return (
     <div
       className={cn(
-        'relative flex flex-col border-2 rounded-sm p-6 transition-all duration-200',
+        'relative flex flex-col rounded-sm border p-6 transition-colors duration-200',
         tier.recommended
-          ? 'border-[#5A189A] bg-[#5A189A]/10 hover:border-[#5A189A]/80'
-          : 'border-gray-700 bg-gray-900/50 hover:border-gray-600'
+          ? 'border-plum bg-plum text-white'
+          : 'border-chrome-600 bg-ink-900 hover:border-chrome-400'
       )}
-      style={{
-        backgroundColor: tier.recommended ? 'rgba(90, 24, 154, 0.1)' : 'rgba(17, 24, 39, 0.5)',
-      }}
     >
       {/* Recommended Badge */}
       {tier.recommended && (
         <div
-          className="absolute -top-3 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 text-white text-xs font-semibold uppercase tracking-wider rounded-sm"
-          style={{ backgroundColor: '#5A189A' }}
+          className="absolute -top-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-sm bg-lime px-3 py-1 text-xs font-semibold uppercase tracking-wider text-ink-950"
         >
           <Crown className="h-3 w-3" />
           Recommended
@@ -102,22 +96,21 @@ function PricingCard({ tier }: PricingCardProps) {
 
       {/* Header */}
       <div className="mb-6">
-        <h3 className="text-lg font-semibold text-white mb-2">{tier.name}</h3>
+        <h3 className="mb-2 text-lg font-semibold text-white">{tier.name}</h3>
         <div className="flex items-baseline gap-1">
           <span className="text-4xl font-bold text-white">${tier.price}</span>
-          <span className="text-gray-400">/{tier.interval}</span>
+          <span className="text-chrome-300">/{tier.interval}</span>
         </div>
       </div>
 
       {/* Features */}
-      <ul className="space-y-3 mb-8 flex-1">
+      <ul className="mb-8 flex-1 space-y-3">
         {tier.features.map((feature, index) => (
           <li key={index} className="flex items-start gap-2 text-sm">
             <Check
-              className="h-4 w-4 shrink-0 mt-0.5"
-              style={{ color: '#C5FF4A' }}
+              className="mt-0.5 h-4 w-4 shrink-0 text-plum-200"
             />
-            <span className="text-gray-300">{feature}</span>
+            <span className={tier.recommended ? 'text-white/90' : 'text-chrome-300'}>{feature}</span>
           </li>
         ))}
       </ul>
@@ -125,18 +118,8 @@ function PricingCard({ tier }: PricingCardProps) {
       {/* CTA Button */}
       <Link to="/register">
         <Button
-          className={cn(
-            'w-full',
-            tier.recommended
-              ? 'text-black font-semibold hover:opacity-90'
-              : 'border-gray-600 text-white hover:bg-gray-800'
-          )}
-          style={
-            tier.recommended
-              ? { backgroundColor: '#C5FF4A' }
-              : { backgroundColor: 'transparent', borderColor: '#4B5563' }
-          }
-          variant={tier.recommended ? 'default' : 'outline'}
+          className="w-full"
+          variant={tier.recommended ? 'accent' : 'outline'}
         >
           {tier.cta}
           <ArrowRight className="h-4 w-4 ml-1" />
@@ -157,8 +140,8 @@ interface FeatureCardProps {
 
 function FeatureCard({ icon, title, description }: FeatureCardProps) {
   return (
-    <div className="border border-gray-700 rounded-sm p-6 bg-gray-900/30 hover:border-[#5A189A]/50 transition-colors">
-      <div className="mb-4" style={{ color: '#5A189A' }}>
+    <div className="rounded-sm border border-plum-800 bg-ink-900 p-6 transition-colors hover:border-plum-500">
+      <div className="mb-4 text-plum-200">
         {icon}
       </div>
       <h3 className="text-lg font-semibold text-white mb-2">{title}</h3>
@@ -173,9 +156,9 @@ function FeatureCard({ icon, title, description }: FeatureCardProps) {
 
 export function LandingPage() {
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-ink text-chrome-300">
       {/* Navigation */}
-      <nav className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
+      <nav className="sticky top-0 z-50 border-b border-chrome-600 bg-ink-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
@@ -183,15 +166,12 @@ export function LandingPage() {
             </div>
             <div className="flex items-center gap-4">
               <Link to="/login">
-                <Button variant="ghost" className="text-gray-300 hover:text-white">
+                <Button variant="ghost" className="text-chrome-300 hover:text-white">
                   Login
                 </Button>
               </Link>
               <Link to="/register">
-                <Button
-                  className="text-black font-semibold hover:opacity-90"
-                  style={{ backgroundColor: '#C5FF4A' }}
-                >
+                <Button variant="accent">
                   Get Started
                 </Button>
               </Link>
@@ -201,26 +181,22 @@ export function LandingPage() {
       </nav>
 
       {/* Hero Section */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8">
+      <section className="px-4 py-24 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
           <h1
-            className="text-5xl sm:text-6xl font-bold text-white mb-6"
+            className="mb-6 text-4xl font-bold text-white"
             style={{ lineHeight: 1.2 }}
           >
-            Enterprise SERM &{' '}
-            <span style={{ color: '#5A189A' }}>Sentiment Intelligence</span>
+            Review Metrics &{' '}
+            <span className="bg-plum px-2 text-white">Sentiment Intelligence</span>
           </h1>
-          <p className="text-xl text-gray-400 mb-8 max-w-3xl mx-auto">
-            Автоматический контроль репутации вашего бизнеса с AI-анализом тональности,
-            защитой от спама и B2B API для интеграции с CRM
+          <p className="mx-auto mb-8 max-w-3xl text-xl text-chrome-300">
+            Аналитика динамики оценок, тональности и категорий проблем. SI-Ассистент
+            готовит черновики ответов для ручной публикации; исходные тексты не сохраняются.
           </p>
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <Link to="/register">
-              <Button
-                size="lg"
-                className="text-black font-semibold hover:opacity-90 text-lg px-8"
-                style={{ backgroundColor: '#C5FF4A' }}
-              >
+              <Button size="lg" variant="accent" className="px-6 text-base">
                 Start Free Trial
                 <ArrowRight className="h-5 w-5 ml-2" />
               </Button>
@@ -229,7 +205,7 @@ export function LandingPage() {
               <Button
                 size="lg"
                 variant="outline"
-                className="border-gray-600 text-white hover:bg-gray-800 text-lg px-8"
+                className="border-chrome-600 px-6 text-base text-white hover:bg-ink-50"
               >
                 View Pricing
               </Button>
@@ -239,14 +215,14 @@ export function LandingPage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8 bg-gray-900/30">
+      <section className="bg-plum px-4 py-24 text-white sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-white mb-4">
-              Everything you need to manage reputation
+              A clearer view of service quality
             </h2>
-            <p className="text-gray-400 max-w-2xl mx-auto">
-              Powerful features for enterprise-grade reputation management
+            <p className="mx-auto max-w-2xl text-white/75">
+              Review trends, sentiment and service issues in one analytical workspace.
             </p>
           </div>
 
@@ -258,20 +234,20 @@ export function LandingPage() {
             />
             <FeatureCard
               icon={<Zap className="h-8 w-8" />}
-              title="AI-анализ тональности"
-              description="Автоматическое определение эмоциональной окраски отзывов powered by LLM"
+              title="Sentiment Intelligence"
+              description="Тональность и категории проблем на основе локального анализа без хранения исходного текста."
             />
             <FeatureCard
               icon={<Shield className="h-8 w-8" />}
-              title="Защита от спама"
-              description="Rate limiting, фильтрация фейковых отзывов и защита от DDoS атак"
+              title="SI-Ассистент"
+              description="Подготавливает черновик ответа; отправку на площадке подтверждает и выполняет человек."
             />
           </div>
         </div>
       </section>
 
       {/* Pricing Section */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8">
+      <section className="px-4 py-24 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-white mb-4">
@@ -291,20 +267,16 @@ export function LandingPage() {
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8 bg-gray-900/30">
+      <section className="bg-plum px-4 py-24 text-white sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-4">
-            Ready to take control of your reputation?
+            Turn review trends into better service
           </h2>
-          <p className="text-gray-400 mb-8">
-            Join thousands of companies using SERM to monitor and improve their online presence
+          <p className="mb-8 text-white/75">
+            Следите за динамикой оценок и превращайте обратную связь в измеримые улучшения сервиса.
           </p>
           <Link to="/register">
-            <Button
-              size="lg"
-              className="text-black font-semibold hover:opacity-90 text-lg px-8"
-              style={{ backgroundColor: '#C5FF4A' }}
-            >
+            <Button size="lg" variant="accent" className="px-8 text-lg">
               Get Started Now
               <ArrowRight className="h-5 w-5 ml-2" />
             </Button>
@@ -313,10 +285,10 @@ export function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 py-12 px-4 sm:px-6 lg:px-8">
+      <footer className="border-t border-chrome-600 px-4 py-12 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
           <p className="text-gray-500 text-sm">
-            © 2024 SERM Platform. All rights reserved.
+            © 2026 Tenable SERM
           </p>
         </div>
       </footer>

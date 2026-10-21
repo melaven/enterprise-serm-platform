@@ -208,6 +208,8 @@ def test_factory() -> None:
         (fetch_platform_reviews, ({}, CID, "google_business")),
     ],
 )
-def test_legacy_review_ingestion_jobs_fail_closed(task: Any, args: tuple[Any, ...]) -> None:
+def test_legacy_review_ingestion_jobs_fail_closed(
+    task: Any, args: tuple[Any, ...]
+) -> None:
     with pytest.raises(RuntimeError, match="disabled"):
         run(task(*args))

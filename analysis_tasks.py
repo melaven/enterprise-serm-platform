@@ -52,15 +52,21 @@ async def process_reviews_batch(
         rows = (
             await session.execute(
                 # dlq_reason IS NULL: отзывы в DLQ изолированы от конвейера (вернуть может только оператор).
-                select(Review.id, Review.text, Review.rating).where(Review.id.in_(ids), Review.dlq_reason.is_(None))
+                select(Review.id, Review.text, Review.rating).where(
+                    Review.id.in_(ids), Review.dlq_reason.is_(None)
+                )
             )
         ).all()
-    reviews = [ReviewForInsights(id=r.id, text=r.text or "", rating=r.rating) for r in rows]
+    reviews = [
+        ReviewForInsights(id=r.id, text=r.text or "", rating=r.rating) for r in rows
+    ]
     raw_text: dict[UUID, str | None] = {r.id: r.text for r in rows}
     if len(reviews) != len(ids):
         logger.warning(
             "tenant=%s requested=%d visible=%d (остальные не найдены или чужие)",
-            tenant_id, len(ids), len(reviews),
+            tenant_id,
+            len(ids),
+            len(reviews),
         )
     if not reviews:
         return {"requested": len(ids), "found": 0, "analyzed": 0, "dlq": 0}
@@ -70,12 +76,19 @@ async def process_reviews_batch(
         insights = await service.analyze_many(reviews)
     except InsightsTransientError as exc:
         defer = ctx["job_try"] * 15
-        logger.warning("tenant=%s insights transient error, retry in %ss: %s", tenant_id, defer, exc)
+        logger.warning(
+            "tenant=%s insights transient error, retry in %ss: %s",
+            tenant_id,
+            defer,
+            exc,
+        )
         raise Retry(defer=defer) from exc
 
     by_id: dict[UUID, ReviewInsight] = {i.review_id: i for i in insights}
     if set(by_id) != {r.id for r in reviews}:
-        raise RuntimeError("insights service must return exactly one insight per review")
+        raise RuntimeError(
+            "insights service must return exactly one insight per review"
+        )
 
     # 3) Массовое обновление: ORM bulk UPDATE по первичному ключу. Сортировка по id даёт одинаковый порядок
     #    блокировок у параллельных батчей (защита от deadlock 40P01).
@@ -89,7 +102,9 @@ async def process_reviews_batch(
             "is_analyzed": i.complete,
             # 152-ФЗ: оригинал с ПДн заменяется очищенным текстом (LLM-версия после проверок либо детерминированная
             # очистка). Необратимо: исходный текст нигде не сохраняется. None -> тело не меняем.
-            "text": i.sanitized_text if i.sanitized_text is not None else raw_text[i.review_id],
+            "text": i.sanitized_text
+            if i.sanitized_text is not None
+            else raw_text[i.review_id],
         }
         for i in sorted(by_id.values(), key=lambda x: str(x.review_id))
     ]
@@ -98,16 +113,32 @@ async def process_reviews_batch(
 
         # DLQ: та же транзакция, что и результат анализа. Успех обнуляет счётчик, постоянная ошибка засчитывается;
         # на MAX_ANALYSIS_RETRIES-й раз отзыв изолируется (dlq_reason, ai_pending=false) с CRITICAL в логе.
-        await reset_retry_count([i.review_id for i in by_id.values() if i.complete], session)
+        await reset_retry_count(
+            [i.review_id for i in by_id.values() if i.complete], session
+        )
         in_dlq = 0
         for insight in sorted(by_id.values(), key=lambda x: str(x.review_id)):
             if insight.failure is None:
                 continue
             outcome = await record_analysis_failure(
-                insight.review_id, insight.failure, session, max_retries=MAX_ANALYSIS_RETRIES
+                insight.review_id,
+                insight.failure,
+                session,
+                max_retries=MAX_ANALYSIS_RETRIES,
             )
             in_dlq += int(outcome is not None and outcome.moved_to_dlq)
 
     analyzed = sum(1 for p in payload if p["is_analyzed"])
-    logger.info("tenant=%s batch done found=%d analyzed=%d dlq=%d", tenant_id, len(payload), analyzed, in_dlq)
-    return {"requested": len(ids), "found": len(payload), "analyzed": analyzed, "dlq": in_dlq}
+    logger.info(
+        "tenant=%s batch done found=%d analyzed=%d dlq=%d",
+        tenant_id,
+        len(payload),
+        analyzed,
+        in_dlq,
+    )
+    return {
+        "requested": len(ids),
+        "found": len(payload),
+        "analyzed": analyzed,
+        "dlq": in_dlq,
+    }

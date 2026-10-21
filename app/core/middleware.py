@@ -4,6 +4,7 @@ Enterprise middleware для Correlation ID и трассировки запро
 
 import time
 from collections.abc import Callable
+from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import Request, Response
@@ -149,7 +150,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         log_request_body: bool = False,
         log_response_body: bool = False,
         log_headers: bool = True,
-        sensitive_headers: list = None,
+        sensitive_headers: list[str] | None = None,
     ):
         super().__init__(app)
         self.log_request_body = log_request_body
@@ -175,7 +176,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         correlation_id = get_correlation_id()
 
         # Логирование деталей запроса
-        request_data = {
+        request_data: dict[str, Any] = {
             "correlation_id": correlation_id,
             "method": request.method,
             "path": request.url.path,
@@ -199,7 +200,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             "correlation_id": correlation_id,
             "status_code": response.status_code,
             "response_headers": (
-                self._filter_headers(dict(response.headers)) if self.log_headers else None
+                self._filter_headers(dict(response.headers))
+                if self.log_headers
+                else None
             ),
         }
 

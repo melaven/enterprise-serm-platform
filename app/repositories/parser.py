@@ -141,7 +141,10 @@ class ParserRepository(BaseRepository[Review]):
             raise DatabaseError("Ошибка получения статистики платформы", e)
 
     async def get_parsing_candidates(
-        self, company_id: UUID = None, min_last_parsed_hours: int = 24, limit: int = 50
+        self,
+        company_id: UUID | None = None,
+        min_last_parsed_hours: int = 24,
+        limit: int = 50,
     ) -> list[dict[str, Any]]:
         """
         Получить список платформ-кандидатов для парсинга
@@ -235,7 +238,7 @@ class ParserRepository(BaseRepository[Review]):
             raise DatabaseError("Ошибка получения кандидатов для парсинга", e)
 
     async def get_parsing_performance_stats(
-        self, company_id: UUID = None, days: int = 7
+        self, company_id: UUID | None = None, days: int = 7
     ) -> dict[str, Any]:
         """
         Получить статистику производительности парсинга
@@ -390,7 +393,7 @@ class ParserRepository(BaseRepository[Review]):
             delete_query = text("DELETE FROM reviews WHERE id = ANY(:ids)")
             delete_result = await self.db.execute(delete_query, {"ids": ids_to_delete})
 
-            return delete_result.rowcount
+            return getattr(delete_result, "rowcount", 0)
 
         except Exception as e:
             raise DatabaseError("Ошибка очистки старых записей", e)

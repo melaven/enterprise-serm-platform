@@ -70,7 +70,7 @@ class CompanyRepository(BaseRepository[Company]):
             )
 
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError("Ошибка поиска компаний по паттерну", e)
 
@@ -80,20 +80,20 @@ class CompanyRepository(BaseRepository[Company]):
             query = select(Company).options(selectinload(Company.platforms))
 
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError("Ошибка получения компаний с метриками", e)
 
     async def update_economics(
         self,
         company_id: UUID,
-        average_check: float = None,
-        margin_percent: float = None,
-        cac: float = None,
-        base_ltv: float = None,
+        average_check: float | None = None,
+        margin_percent: float | None = None,
+        cac: float | None = None,
+        base_ltv: float | None = None,
     ) -> Company:
         """Обновить экономические показатели компании"""
-        updates = {}
+        updates: dict[str, float] = {}
         if average_check is not None:
             updates["average_check"] = average_check
         if margin_percent is not None:

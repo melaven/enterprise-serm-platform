@@ -43,7 +43,9 @@ class ReviewInsight:
     threat_level: int  # 1 (безопасный) .. 5 (репутационная угроза)
     suggested_reply: str
     tags: tuple[str, ...]
-    complete: bool  # True -> reviews.is_analyzed = true (анализ полный, ответ сгенерирован)
+    complete: (
+        bool  # True -> reviews.is_analyzed = true (анализ полный, ответ сгенерирован)
+    )
     # Код ПОСТОЯННОЙ ошибки анализа (bad_json, отказ API 4xx): воркер засчитает попытку и после лимита уведёт отзыв
     # в DLQ. None - ошибки нет либо она временная (таймаут/429/5xx: не вина отзыва, попытку не считаем).
     failure: str | None = None
@@ -56,7 +58,9 @@ class ReviewInsight:
 
 
 class ReviewInsightsService(Protocol):
-    async def analyze_many(self, reviews: Sequence[ReviewForInsights]) -> list[ReviewInsight]:
+    async def analyze_many(
+        self, reviews: Sequence[ReviewForInsights]
+    ) -> list[ReviewInsight]:
         """Вернуть ровно один ReviewInsight на каждый отзыв (порядок не важен, ключ — review_id)."""
         ...
 
@@ -68,7 +72,9 @@ class RatingBasedInsightsService:
     проанализированные (is_analyzed остаётся false), а sentiment/threat_level заполняются приблизительно.
     """
 
-    async def analyze_many(self, reviews: Sequence[ReviewForInsights]) -> list[ReviewInsight]:
+    async def analyze_many(
+        self, reviews: Sequence[ReviewForInsights]
+    ) -> list[ReviewInsight]:
         return [self._one(r) for r in reviews]
 
     @staticmethod

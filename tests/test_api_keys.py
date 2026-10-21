@@ -93,7 +93,9 @@ class FakeRedis:
         *,
         withscores: bool = False,
     ) -> list[tuple[str, float]]:
-        entries = sorted(self.sorted_sets.get(key, {}).items(), key=lambda item: item[1])
+        entries = sorted(
+            self.sorted_sets.get(key, {}).items(), key=lambda item: item[1]
+        )
         selected = entries[start : end + 1]
         return selected if withscores else [member for member, _ in selected]
 

@@ -8,6 +8,7 @@ import os
 from asyncio import TimeoutError
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import cast
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import HTTPException, RequestValidationError
@@ -17,6 +18,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.types import ExceptionHandler
 
 from .core.audit_middleware import SecurityAuditMiddleware
 from .core.database import engine, get_db
@@ -220,12 +222,18 @@ app.add_middleware(
 
 
 # Подключение глобальных обработчиков исключений
-app.add_exception_handler(SERMException, serm_exception_handler)
-app.add_exception_handler(HTTPException, http_exception_handler)
-app.add_exception_handler(RequestValidationError, validation_exception_handler)
-app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
-app.add_exception_handler(TimeoutError, timeout_exception_handler)
-app.add_exception_handler(Exception, general_exception_handler)
+app.add_exception_handler(SERMException, cast(ExceptionHandler, serm_exception_handler))
+app.add_exception_handler(HTTPException, cast(ExceptionHandler, http_exception_handler))
+app.add_exception_handler(
+    RequestValidationError, cast(ExceptionHandler, validation_exception_handler)
+)
+app.add_exception_handler(
+    SQLAlchemyError, cast(ExceptionHandler, sqlalchemy_exception_handler)
+)
+app.add_exception_handler(
+    TimeoutError, cast(ExceptionHandler, timeout_exception_handler)
+)
+app.add_exception_handler(Exception, cast(ExceptionHandler, general_exception_handler))
 
 
 # Подключение роутеров

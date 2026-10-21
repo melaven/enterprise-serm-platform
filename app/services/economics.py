@@ -26,7 +26,7 @@ class EconomicsService:
         platform_id: UUID,
         rating: int,
         status: ReviewStatus = ReviewStatus.NEW,
-        custom_params: dict[str, Any] = None,
+        custom_params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """
         Основная функция расчета финансового влияния отзыва

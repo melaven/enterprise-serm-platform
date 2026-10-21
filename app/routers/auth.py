@@ -96,9 +96,15 @@ async def register(
 
         return UserResponse(
             id=str(user.id),
-            email=user.email,
+            email=user.email or str(user_data.email),
             tenant_id=user_data.tenant_id or "default-tenant",
-            created_at=user.created_at or datetime.utcnow().isoformat(),
+            created_at=(
+                user.created_at
+                if isinstance(user.created_at, datetime)
+                else datetime.fromisoformat(user.created_at)
+                if isinstance(user.created_at, str)
+                else datetime.utcnow()
+            ),
         )
 
     except Exception as e:
@@ -227,10 +233,14 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         # Получаем пользователя
         user_response = supabase.auth.get_user(token)
 
-        if user_response.user is None:
+        if user_response is None or user_response.user is None:
             raise HTTPException(status_code=401, detail="Not authenticated")
 
         user = user_response.user
+        if not user.email:
+            raise HTTPException(
+                status_code=401, detail="Authenticated user has no email"
+            )
 
         # Получаем tenant_id из user metadata
         tenant_id = (
@@ -243,9 +253,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
             id=str(user.id),
             email=user.email,
             tenant_id=tenant_id,
-            created_at=user.created_at.isoformat()
-            if hasattr(user.created_at, "isoformat")
-            else str(user.created_at),
+            created_at=(
+                user.created_at
+                if isinstance(user.created_at, datetime)
+                else datetime.fromisoformat(user.created_at)
+                if isinstance(user.created_at, str)
+                else datetime.utcnow()
+            ),
         )
 
     except HTTPException:
@@ -273,9 +287,6 @@ async def refresh_token(
             access_token=session.access_token,
             token_type="bearer",
             expires_in=session.expires_in if hasattr(session, "expires_in") else 3600,
-            refresh_token=session.refresh_token
-            if hasattr(session, "refresh_token")
-            else None,
         )
 
     except HTTPException:

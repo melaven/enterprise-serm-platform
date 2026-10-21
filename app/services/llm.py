@@ -146,9 +146,9 @@ class LLMService:
         self,
         review_text: str,
         rating: int,
-        author_name: str = None,
-        company_name: str = None,
-        custom_context: dict[str, Any] = None,
+        author_name: str | None = None,
+        company_name: str | None = None,
+        custom_context: dict[str, Any] | None = None,
     ) -> str:
         """
         Генерация ответа на отзыв (обратная совместимость)
@@ -163,7 +163,7 @@ class LLMService:
             raise LLMServiceError(f"Ошибка генерации ответа: {e}")
 
     async def generate_bulk_responses(
-        self, reviews_data: list[dict[str, Any]], company_name: str = None
+        self, reviews_data: list[dict[str, Any]], company_name: str | None = None
     ) -> list[dict[str, Any]]:
         """
         Массовая генерация ответов (обратная совместимость)

@@ -67,7 +67,7 @@ async def test_external_ingest_persists_only_safe_review_summary(
                         "platform": "google",
                         "published_at": "2026-01-01T12:00:00Z",
                     }
-                ]
+                ],
             },
         )
 

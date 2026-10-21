@@ -130,17 +130,21 @@ async def get_detailed_analytics(
     """
 
     try:
-        # Проверяем доступ к компаниям (RLS изоляция)
-        if company_ids:
-            # В реальной реализации здесь была бы проверка, что все company_ids принадлежат tenant_id
-            pass
+        if company_ids and any(company_id != tenant_id for company_id in company_ids):
+            raise HTTPException(
+                status_code=403, detail="Access to requested company is denied"
+            )
 
-        analytics_data = await analytics_service.get_detailed_analytics(
-            request,
-            company_ids=company_ids
-            or [tenant_id],  # Используем tenant_id как company_id по умолчанию
-            platform_ids=platform_ids,
-            include_trends=include_trends,
+        effective_request = request.model_copy(
+            update={
+                "platform_ids": (
+                    platform_ids if platform_ids is not None else request.platform_ids
+                ),
+                "include_trends": include_trends or request.include_trends,
+            }
+        )
+        analytics_data = await analytics_service.get_company_analytics(
+            tenant_id, effective_request
         )
 
         return JSONResponse(

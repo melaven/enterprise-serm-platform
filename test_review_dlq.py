@@ -15,7 +15,9 @@ if "sqlalchemy" not in sys.modules:
         ext = types.ModuleType("sqlalchemy.ext")
         asy = types.ModuleType("sqlalchemy.ext.asyncio")
         asy.AsyncSession = object
-        sys.modules.update({"sqlalchemy": sa, "sqlalchemy.ext": ext, "sqlalchemy.ext.asyncio": asy})
+        sys.modules.update(
+            {"sqlalchemy": sa, "sqlalchemy.ext": ext, "sqlalchemy.ext.asyncio": asy}
+        )
 
 import logging
 
@@ -60,24 +62,44 @@ def run(c):
 def test_third_failure_moves_to_dlq_with_critical_log(caplog):
     db, rid = FakeDb(), uuid4()
     with caplog.at_level(logging.WARNING, logger="review_dlq"):
-        outs = [run(review_dlq.record_analysis_failure(rid, "bad_json", db)) for _ in range(3)]
-    assert [o.moved_to_dlq for o in outs] == [False, False, True] and outs[-1].retry_count == 3
+        outs = [
+            run(review_dlq.record_analysis_failure(rid, "bad_json", db))
+            for _ in range(3)
+        ]
+    assert [o.moved_to_dlq for o in outs] == [False, False, True] and outs[
+        -1
+    ].retry_count == 3
     crit = [r for r in caplog.records if r.levelno == logging.CRITICAL]
     assert len(crit) == 1 and "review_moved_to_dlq" in crit[0].getMessage()
 
 
 def test_already_in_dlq_or_missing_not_counted():
-    assert run(review_dlq.record_analysis_failure(uuid4(), "x", FakeDb(in_dlq=True))) is None
-    assert run(review_dlq.record_analysis_failure(uuid4(), "x", FakeDb(exists=False))) is None
+    assert (
+        run(review_dlq.record_analysis_failure(uuid4(), "x", FakeDb(in_dlq=True)))
+        is None
+    )
+    assert (
+        run(review_dlq.record_analysis_failure(uuid4(), "x", FakeDb(exists=False)))
+        is None
+    )
 
 
 def test_move_review_to_dlq_sets_retry_and_cleans_reason():
     db = FakeDb(retry=1)
-    assert run(review_dlq.move_review_to_dlq(uuid4(), "  bad \n json " + "я" * 900, db, retry_count=3)) is True
+    assert (
+        run(
+            review_dlq.move_review_to_dlq(
+                uuid4(), "  bad \n json " + "я" * 900, db, retry_count=3
+            )
+        )
+        is True
+    )
     p = db.params[0]
     assert db.retry == 3 and db.in_dlq and p["retry_count"] == 3
     assert len(p["reason"]) == review_dlq.MAX_REASON_LEN and "\n" not in p["reason"]
-    assert run(review_dlq.move_review_to_dlq(uuid4(), "x", FakeDb(exists=False))) is False
+    assert (
+        run(review_dlq.move_review_to_dlq(uuid4(), "x", FakeDb(exists=False))) is False
+    )
 
 
 def test_empty_reason_gets_placeholder():

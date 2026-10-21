@@ -1,10 +1,5 @@
-"""Legacy ARQ entry point with review-processing jobs disabled."""
+"""Compatibility import for the configured ARQ worker."""
 
-from arq import WorkerSettings
+from app.services.worker.worker import WorkerSettings
 
-from app.core.redis import get_redis_settings
-
-
-class WorkerSettings(WorkerSettings):
-    redis_settings = get_redis_settings()
-    functions = []
+__all__ = ["WorkerSettings"]

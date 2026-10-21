@@ -25,7 +25,7 @@ class PlatformRepository(BaseRepository[Platform]):
         try:
             query = select(Platform).where(Platform.company_id == company_id)
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError("Ошибка получения платформ компании", e)
 
@@ -87,7 +87,7 @@ class PlatformRepository(BaseRepository[Platform]):
             raise DatabaseError("Ошибка обновления рейтинга платформы", e)
 
     async def get_platforms_with_stats(
-        self, company_id: UUID = None
+        self, company_id: UUID | None = None
     ) -> list[dict[str, Any]]:
         """Получить платформы со статистикой отзывов"""
         try:
@@ -133,7 +133,7 @@ class PlatformRepository(BaseRepository[Platform]):
             raise DatabaseError("Ошибка получения статистики платформ", e)
 
     async def get_top_platforms_by_impact(
-        self, limit: int = 10, company_id: UUID = None
+        self, limit: int = 10, company_id: UUID | None = None
     ) -> list[dict[str, Any]]:
         """Получить топ платформ по финансовому влиянию"""
         try:
@@ -174,12 +174,12 @@ class PlatformRepository(BaseRepository[Platform]):
     async def update_metrics(
         self,
         platform_id: UUID,
-        monthly_views: int = None,
-        conversion_rate: float = None,
-        cac_on_platform: float = None,
+        monthly_views: int | None = None,
+        conversion_rate: float | None = None,
+        cac_on_platform: float | None = None,
     ) -> Platform:
         """Обновить метрики платформы"""
-        updates = {}
+        updates: dict[str, int | float] = {}
         if monthly_views is not None:
             updates["monthly_views"] = monthly_views
         if conversion_rate is not None:

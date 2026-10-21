@@ -1,267 +1,114 @@
-# Tenable SERM
+# Tenable | Enterprise SI & SERM Engine
 
-**B2B SaaS-дашборд для аналитики публичных бизнес-оценок и уведомлений о рисках качества сервиса.**
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Frontend-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
-`FastAPI` · `PostgreSQL + RLS` · `Redis / ARQ` · `React + TypeScript` · `Stripe` · `Terraform + GitHub Actions + k6`
+Tenable is a B2B Sentiment Intelligence (SI) and Search Engine Reputation Management (SERM) platform for analyzing lawfully obtained public business feedback. It helps organizations understand sentiment, identify service-quality risks, and track reputation trends through tenant-isolated analytics.
 
-> Это MVP, но инженерные решения принимались так, как принимают их для платёжной многоарендной системы:
-> изоляция данных на уровне СУБД, атомарная квота, идемпотентные очереди и вебхуки, сквозная трассировка, Zero Trust по умолчанию.
-> Раздел [Статус](#статус-что-реализовано-а-что-нет) честно разделяет «работает и проверено», «написано, не подключено» и «спроектировано».
+> **Project status:** This repository contains an evolving MVP. Features and integrations may have different implementation and verification status. Do not interpret the architecture or this README as a claim of production readiness; validate the deployment, integrations, security controls, and operational procedures in your environment.
 
-[🇬🇧 English version](README.en.md)
+## Product Scope
 
----
+Tenable is designed to turn authorized review data into structured business intelligence:
 
-## Что делает продукт
+- Classify sentiment and recurring service themes.
+- Highlight feedback that may require timely human attention.
+- Present trends and analytics to authorized business users.
+- Support asynchronous analysis workloads without blocking API requests.
 
-| Для кого | Что получает |
+Tenable is an analytics tool. It is not a reputation-manipulation service, does not promise the removal of legitimate reviews, and does not autonomously publish replies.
+
+## Data Privacy & Compliance
+
+### Permitted use and data sources
+
+Tenable is intended **exclusively for lawful Sentiment Intelligence and reputation analytics**. It is not designed or authorized for “gray” scraping, access-control circumvention, or collection that violates applicable law, platform terms, or contractual restrictions.
+
+Use only data that the customer is authorized to process, such as data supplied by the customer or obtained through an authorized official integration. Confirm that each source and collection method is permitted before enabling it. Public availability alone does not establish a lawful basis for processing or override a platform’s terms.
+
+Automatic collection from public pages is disabled in the current application flow. Source integrations and availability can vary by deployment; verify the actual enabled configuration before use.
+
+### PII sanitization and data minimization
+
+The review-text ingestion path applies deterministic, code-based redaction **before review text is persisted and before it is made available for downstream LLM analysis**. The sanitizer targets supported patterns including email addresses, phone numbers, long numeric identifiers, and names that match configured contextual patterns. Redaction does not rely on an LLM.
+
+This is a data-minimization safeguard, **not a guarantee of complete anonymization or detection of every personal data element**. Pattern-based detection can miss unrecognized formats, names without supported context, or other sensitive information. Review non-text fields and source metadata separately: text redaction does not automatically sanitize every identifier, URL, metadata field, or integration payload. Validate the exact fields stored and transmitted in the deployed configuration, and do not submit data that is not necessary and authorized for the intended analysis.
+
+### Responsibilities and legal notice
+
+This README describes technical controls, not legal advice, a compliance certification, or a determination that any particular processing is lawful. Customers are responsible for establishing and documenting an appropriate lawful basis, providing required notices, respecting data-subject rights, and ensuring that submitted data may be shared with Tenable and any configured subprocessors. The operator must separately assess its own obligations, including security, retention, access control, incident response, and any international data transfers.
+
+Before production use, review applicable laws and platform terms, establish appropriate contractual arrangements, and assess the configured LLM provider’s data-processing terms, retention, and processing locations. The legal roles of the customer, operator, and service providers depend on the actual deployment and processing.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Client["Client<br/>React + Vite"] --> Nginx["Nginx<br/>Reverse proxy"]
+    Nginx --> API["FastAPI<br/>Ingest / API"]
+
+    API --> Sanitize["Deterministic PII<br/>redaction at ingestion"]
+    Sanitize --> DB[("Supabase<br/>PostgreSQL")]
+    Sanitize -->|Enqueue analysis job| Redis[("Redis")]
+    Redis --> Worker["ARQ workers"]
+
+    DB -. "Read sanitized review data" .-> Worker
+    Worker --> LLM["LLM<br/>Sentiment analysis"]
+    Worker -->|Persist analysis| DB
+    Worker -->|LLM / analysis failure| DLQ[("Dead Letter Queue<br/>persistent failed-task records")]
+    DLQ --> DB
+
+    subgraph TenantBoundary["Tenant-scoped data access"]
+        DB
+        DLQ
+        RLS["PostgreSQL Row Level Security<br/>tenant isolation"]
+    end
+
+    API -. "Tenant context and policies" .-> RLS
+    Worker -. "Tenant context and policies" .-> RLS
+```
+
+The diagram shows the intended processing flow. RLS policies enforce tenant-scoped access at the database layer; application and worker behavior must also be configured and tested for each deployment.
+
+## Core Features
+
+- **Multi-tenant data isolation:** PostgreSQL Row Level Security (RLS) policies scope business records to the authenticated tenant.
+- **Deterministic PII redaction:** Supported personal-data patterns in review text are redacted during ingestion, before persistence and downstream LLM analysis.
+- **Asynchronous processing:** Redis and ARQ workers handle background analysis outside the request-response path.
+- **Dead Letter Queue (DLQ):** Failed AI analysis tasks can be recorded for later inspection and controlled recovery instead of being silently discarded.
+- **Structured AI analysis:** Sentiment and issue classifications use typed output models and validation.
+- **Operational safeguards:** The codebase includes tenant-aware database access, request tracing, rate limiting, retries, and quota-related components. Their configuration and verification remain deployment-specific.
+
+## Technology Stack
+
+| Area | Technologies |
 |---|---|
-| **Владелец бизнеса** (рестораны, e-commerce, HoReCa) | Тональность, оценка риска и дашборд динамики публичных отзывов |
-
-**Минимизация данных.** Исходный текст анализируется в памяти и не сохраняется в БД; в `reviews` записывается только краткая выжимка из фиксированных аналитических категорий и оценки. Имена авторов заменяются общей меткой, внешние ID, ссылки и свободные ответы не сохраняются. Публикация ответов отключена.
-
-Автоматический сбор с публичных страниц отключён. Для получения отзывов используется авторизованная официальная интеграция Google Business Profile; иные источники могут поступать только как данные, предоставленные клиентом или через отдельно разрешённую официальную интеграцию. Ответы формируются как черновики и публикуются человеком.
-
-Это технические меры минимизации, а не юридическое заключение и не гарантия неприменимости 152-ФЗ. Клиент должен определить правовое основание и обеспечить законность передаваемых данных; роли сторон зависят от фактической обработки, а договор не снимает с поставщика его собственные обязанности. Условия обработки и уведомления следует проверить с юристом.
-
-**Монетизация.** Free (жёсткая квота) → Pro (Stripe-подписка). Квота — не маркетинг, а инвариант БД: исчерпал лимит — получил `402 Payment Required` с данными для paywall-а.
-
-**Чего продукт не делает намеренно:** не удаляет честные отзывы и не обещает этого (только жалобы на нарушения правил площадок), не накручивает рейтинг.
-
----
-
-## Архитектура
-
-```
-Browser (React + TypeScript + Zustand)
-   |
-   |  Bearer JWT (from Supabase Auth)
-   |  Protected routes with auto-logout on 401
-   v
-+------------------+
-| FastAPI API      |  PostgreSQL connection with pgbouncer compatibility
-| (uvicorn)        |  (statement_cache_size=0, unique prepared statement names)
-|                  |
-| - JWT validation |  RLS context set per request: app.company_id, app.user_id
-| - Quota checks   |  Atomic quota operations via SQL functions
-| - Rate limiting  |  Tenant isolation enforced by database policies
-+--------+---------+
-         |
-         |  asyncpg driver with NullPool
-         |  (no connection reuse across requests)
-         v
-+------------------------------------------+
-| PostgreSQL (Supabase)                    |
-| - Row Level Security on all tables       |
-| - tenant_quotas with atomic operations   |
-| - RLS policies filter by company_id      |
-| - Prepared statement compatibility       |
-+------------------------------------------+
-```
-
-**Key constraints:**
-- PostgreSQL required (SQLite is not supported)
-- Connection pooler compatibility: `statement_cache_size=0` prevents prepared statement conflicts with pgbouncer/Supavisor
-- Database initialization strict: server refuses to start if connection fails (no silent fallback)
-- Tenant isolation: RLS context set on every request, enforced by PostgreSQL policies
-
----
-
-## Ключевые инженерные решения
-
-**1. Изоляция арендаторов в СУБД, а не в `WHERE`.**
-Каждая запрос-транзакция начинается с `set_config('app.current_tenant_id', …, true)`; политики RLS отсекают чужие строки даже при ошибке в коде приложения. `company_id` берётся только из подписанного JWT (custom access token hook), не из тела запроса. Роль вебхука биллинга отделена и умеет вызывать только `app.billing_*`.
-
-**2. Конкурентность без advisory locks.**
-Гонки закрыты атомарными инструкциями и ограничениями, а не блокировками сессии:
-- квота: `UPDATE … WHERE used + :n <= limit RETURNING` в одном выражении (резерв **до** парсинга, возврат излишка после);
-- дубль задачи: детерминированный `job_id` (company + платформа + хеш URL) → второй клик получает `409`;
-- дедупликация по ID источника отключена; одинаковые записи сверяются только по tenant, площадке, дате публикации, рейтингу и безопасной выжимке;
-- дубль вебхука: `event_id` — PRIMARY KEY, запись события и применение — одна транзакция.
-
-Почему не advisory locks: через пулер Supavisor в transaction-режиме session-level блокировки небезопасны (соединение может смениться между запросами), а xact-level держат соединение и усложняют пул. Атомарный SQL проще, быстрее и проверяем тестом.
-
-**3. SSE-реалтайм прогресса задач.**
-Статус задачи парсинга приходит в браузер потоком `text/event-stream`, а не опросом: нативная реализация в `app/routers/parser.py`. Поток авторизуется той же HttpOnly-cookie (EventSource не умеет ставить заголовок `Authorization` — ещё один довод за cookie-сессии). Клиентский опрос `waitForJob` остаётся как фолбэк для сетей, режущих потоки.
-
-**4. Zero Trust.**
-HttpOnly + `__Host-` cookie с подписанным double-submit CSRF (токены недоступны JS), строгие заголовки (CSP, HSTS, nosniff, frame-ancestors), HMAC-псевдонимизация идентификаторов в других сценариях PII (не авторов отзывов), SSRF-защита (allowlist хостов площадок, проверка **каждого** редиректа, запрет приватных/служебных адресов; DNS-ребиндинг закрывается резолвером и egress-политикой), изоляция воркеров по сетям и ролям БД.
-
-**5. Stripe-биллинг как конечный автомат.**
-Подпись вебхука проверяется `stripe.Webhook.construct_event` по сырым байтам (окно 5 мин против replay) **до** любого разбора и обращения к БД. План меняется только подписанным событием; Pro без Stripe-подписки запрещён CHECK-ограничением. Запоздавшие и пришедшие не по порядку события безопасны.
-
-**6. Сквозная трассировка.**
-`X-Correlation-ID` проходит браузер → API → задача ARQ → воркер → JSON-логи; клиент показывает «ID запроса» в ошибке, поддержка находит весь путь одним поиском.
-
-**7. Деградация вместо падения.**
-LLM за circuit breaker-ом, «ядовитый» отзыв изолируется бисекцией пачки, отзывы без разметки получают `ai_pending` и дообрабатываются фоновым cron-ом с lease (`FOR UPDATE SKIP LOCKED`).
-
----
-
-## Статус: что реализовано, а что нет
-
-Мы не называем систему «готовой к нагрузке», пока нет цифр. Ниже — что реально лежит в репозитории.
-
-| Область | Статус | Проверка |
-|---|---|---|
-| Мультиарендность, RLS, tenant-сессии, атомарная квота (SQL 001–012b) | Реализовано | SQL-смоук-тест в репозитории; 008 и 013 применены и проверены на PostgreSQL 16 |
-| Очередь ARQ, идемпотентная постановка, ретраи AI, трассировка | Реализовано | Юнит-тесты `tests/core`, `parser_worker` |
-| Stripe: схема, вебхук с подписью, checkout, 402-гейт | Реализовано | SQL проверен на PG16; логика событий — 14 тестов; тест подписи на реальном SDK написан, ждёт окружения со `stripe` |
-| SSE-стриминг прогресса задач | Реализовано | Нативно в `app/routers/parser.py`; интеграционный тест потока с Redis — в планах |
-| React-клиент: дизайн-токены, дашборд, 401/402/429-интерсепторы, polling-фолбэк | Реализовано | Vitest-тесты API-слоя |
-| SSRF: allowlist площадок + проверка каждого редиректа в скрейпере | Реализовано | `tests/services/scrapers/test_ssrf.py` |
-| Zero Trust (cookie/CSRF, заголовки, PII-хеширование, DNS-резолвер SSRF, nginx) | Написано, **не подключено** | `hardening/`; PII/SSRF/OpSec прогнаны, middleware и cookie-auth требуют интеграционного теста |
-| IaC и CI/CD (Terraform, GitHub Actions, Trivy, k6) | Написано, **не запускалось** | `devops/`; нужен `terraform validate` и прогон пайплайна |
-| Нагрузочные цифры (RPS, p95, ёмкость пула) | **Нет данных** | Сценарий k6 готов; результаты появятся после прогона на staging |
-
-Известные пробелы (не скрываем): несколько каталогов (`billing/`, `billing_v2/`, `parsers/`, `dlq/`, `llm/`, `obs/`, `tenant/`, `analytics_api/`) — итерации модулей, которые консолидируются в `app/` и `parser_worker/`.
-
----
-
-## Публикация ответов и еженедельный дайджест
-
-Для Google Business настройте tenant-интеграцию через `PUT /api/v1/platforms/integrations/google-business`, передав OAuth access token со scope `business.manage`, `external_account_id` и `external_location_id`. Токен сохраняется зашифрованным. Затем `POST /api/v1/reviews/{review_id}/reply` с телом `{"reply_text":"..."}` ставит ответ в ARQ; результат публикации сохраняется в отзыве. Публикация на Яндекс.Картах пока не поддерживается.
-
-ARQ worker запускает еженедельные дайджесты по понедельникам в 09:00 UTC для компаний с `notification_email`. Для функций настройки интеграции, аудита и списка получателей дайджеста примените миграции `021`–`023` через `scripts/migrate.py`. Аудит сейчас фиксирует успешное удаление вебхука с tenant ID, user ID и IP клиентского соединения.
-
-Адаптеры-скрейперы используют Playwright с Chromium: после установки Python-зависимостей установите браузер командой `playwright install chromium` (в production-образе также должны быть системные зависимости Chromium). Для включения email- и Telegram-алертов настройте SMTP-параметры и `TELEGRAM_BOT_TOKEN` соответственно; шаблон переменных production находится в [`.env.prod.example`](.env.prod.example).
-
----
-
-## Карта репозитория
-
-```
-app/               FastAPI: `main.py`, роутеры (parser + SSE-стриминг, reviews, billing, webhooks), core (security, tracing), db, services
-parser_worker/     ARQ-воркер: скрапинг, AI-обогащение, ретраи, интеграция с квотами
-sql/               миграции: RLS, quota-функции, hardening, 013 Stripe
-redesign/          React + TypeScript + Tailwind: клиент, дизайн-система
-hardening/         Zero Trust: cookie-auth, CSRF, заголовки, PII, SSRF, nginx, изоляция
-devops/            Terraform (Hetzner), docker-compose.prod, GitHub Actions, k6
-tests/             pytest
-SYSTEM_DESIGN.md   архитектура, инварианты, модель угроз, ADR
-TRACING.md         сквозная трассировка
-```
-
----
-
-## Quick Start (Local Development)
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+ and npm
-- PostgreSQL 15+ (local or Supabase)
-- Redis (optional, for background tasks)
-
-### Environment Configuration
-
-Copy example environment file and configure required variables:
-
-```bash
-cp .env.example .env
-```
-
-Required variables in `.env`:
-
-```bash
-# PostgreSQL connection (required)
-DATABASE_URL=postgresql+asyncpg://user:password@host:5432/database
-TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:password@host:5432/database
-USE_TENANT_ROLE=true
-
-# Supabase configuration (for auth)
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_KEY=your-service-role-key
-SUPABASE_JWT_SECRET=your-jwt-secret
-
-# AI provider (optional, for Sentiment Intelligence features)
-GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-1.5-flash
-
-# Redis (optional, for background workers)
-REDIS_URL=redis://localhost:6379/0
-```
-
-### Database Initialization
-
-Apply migrations in order:
-
-```bash
-python scripts/migrate.py
-```
-
-This applies all SQL migrations from `migrations/` directory in sequence. The script is idempotent and tracks applied migrations in `serm_schema_migrations` table.
-
-### Backend Startup
-
-Install dependencies and start server:
-
-```bash
-# Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-source .venv/bin/activate  # Linux/Mac
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start development server
-uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
-```
-
-Expected startup log:
-```
-✅ Подключение к PostgreSQL установлено
-   database_driver=postgresql+asyncpg
-✅ Сервисы инициализированы
-```
-
-If PostgreSQL connection fails, server will refuse to start (no fallback to SQLite).
-
-### Frontend Startup
-
-Install dependencies and start development server:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Access at http://localhost:3000
-
-### Verification
-
-```bash
-# Health check
-curl http://127.0.0.1:8000/health
-
-# API documentation
-open http://127.0.0.1:8000/docs
-```
-
-### Testing
-
-```bash
-# Run backend tests
-pytest
-
-# Run frontend tests
-cd frontend
-npm test
-
-# Linting
-ruff check .  # Python
-cd frontend && npm run lint  # TypeScript
-```
-
----
-
-## Нагрузка: что мы докажем и как
-
-`devops/loadtest/k6-tenable.js` — 1000 виртуальных пользователей и четыре инварианта: ровно один `202` на дублирующий URL, `used ≤ limit` после гонки за квоту, отсутствие `5xx` при исчерпании пула соединений, отсутствие утечки данных между арендаторами. Пороги — стартовые гипотезы; результаты будут опубликованы здесь после прогона на staging.
-
-## Лицензия и контакты
-
-Maxim Nesterov — Backend & System Integration (https://t.me/melavenn) ❤️
+| **Frontend** | React 18, TypeScript, Vite, Zustand |
+| **Backend API** | Python 3.10+, FastAPI, Pydantic |
+| **Database** | Supabase-hosted PostgreSQL, PostgreSQL RLS |
+| **Async processing** | Redis, ARQ |
+| **AI analysis** | LLM integration through the configured provider; provider behavior and terms depend on deployment |
+| **Web / runtime** | Nginx, Docker, Docker Compose |
+| **Billing components** | Stripe integration components are present in the repository; enable and validate them separately |
+
+## Security and Operational Notes
+
+- PostgreSQL is the supported database for the application’s tenant-isolation model; SQLite is not a substitute for validating RLS behavior.
+- Apply database migrations through the repository’s migration runner rather than executing migration files ad hoc. See [`migrations/README.md`](migrations/README.md).
+- Protect secrets and credentials through deployment secrets management. Do not commit `.env` files or production credentials.
+- Review enabled integrations, tenant roles, network access, database policies, LLM configuration, logging, and retention settings before production use.
+- Treat the DLQ as operationally sensitive data. Restrict access and define retention and replay procedures appropriate to the deployment.
+
+## Repository Documentation
+
+- [`README.en.md`](README.en.md) — English project overview and implementation notes.
+- [`frontend/README.md`](frontend/README.md) — frontend-specific documentation.
+- [`migrations/README.md`](migrations/README.md) — database migration guidance.
+- [`devops/README.md`](devops/README.md) — DevOps and deployment documentation.
+
+## License
+
+No license grant is made by this README. Refer to the repository’s license file, if present, for the applicable terms.

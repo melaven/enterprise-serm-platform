@@ -6,6 +6,8 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
+🇬🇧 [English](README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
+
 Tenable is a B2B Sentiment Intelligence (SI) and Search Engine Reputation Management (SERM) platform for analyzing lawfully obtained public business feedback. It helps organizations understand sentiment, identify service-quality risks, and track reputation trends through tenant-isolated analytics.
 
 > **Project status:** This repository contains an evolving MVP. Features and integrations may have different implementation and verification status. Do not interpret the architecture or this README as a claim of production readiness; validate the deployment, integrations, security controls, and operational procedures in your environment.

@@ -80,8 +80,8 @@ The diagram shows the intended processing flow. RLS policies enforce tenant-scop
 - **Multi-tenant data isolation:** PostgreSQL Row Level Security (RLS) policies scope business records to the authenticated tenant.
 - **Deterministic PII redaction:** Supported personal-data patterns in review text are redacted during ingestion, before persistence and downstream LLM analysis.
 - **Asynchronous processing:** Redis and ARQ workers handle background analysis outside the request-response path.
-- **Dead Letter Queue (DLQ):** Failed AI analysis tasks can be recorded for later inspection and controlled recovery instead of being silently discarded.
-- **Structured AI analysis:** Sentiment and issue classifications use typed output models and validation.
+- **Dead Letter Queue (DLQ):** Failed SI analysis tasks can be recorded for later inspection and controlled recovery instead of being silently discarded.
+- **Structured SI analysis:** Sentiment and issue classifications use typed output models and validation.
 - **Operational safeguards:** The codebase includes tenant-aware database access, request tracing, rate limiting, retries, and quota-related components. Their configuration and verification remain deployment-specific.
 
 ## Technology Stack
@@ -92,7 +92,7 @@ The diagram shows the intended processing flow. RLS policies enforce tenant-scop
 | **Backend API** | Python 3.10+, FastAPI, Pydantic |
 | **Database** | Supabase-hosted PostgreSQL, PostgreSQL RLS |
 | **Async processing** | Redis, ARQ |
-| **AI analysis** | LLM integration through the configured provider; provider behavior and terms depend on deployment |
+| **SI analysis** | LLM integration through the configured provider; provider behavior and terms depend on deployment |
 | **Web / runtime** | Nginx, Docker, Docker Compose |
 | **Billing components** | Stripe integration components are present in the repository; enable and validate them separately |
 

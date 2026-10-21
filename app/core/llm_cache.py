@@ -21,13 +21,6 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-try:
-    from openai import AsyncOpenAI
-
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
-
 logger = logging.getLogger(__name__)
 
 
@@ -103,10 +96,11 @@ class LLMCache:
         self.openai_client = None
 
         logger.info(
-            "LLM Cache initialized",
-            memory_cache=enable_memory_cache,
-            pgvector_cache=enable_pgvector_cache,
-            similarity_threshold=self.SIMILARITY_THRESHOLD,
+            "LLM Cache initialized: memory_cache=%s pgvector_cache=%s "
+            "similarity_threshold=%s",
+            enable_memory_cache,
+            enable_pgvector_cache,
+            self.SIMILARITY_THRESHOLD,
         )
 
     def _generate_text_hash(self, text: str) -> str:
@@ -429,7 +423,7 @@ class LLMCache:
         tags: list[str],
         suggested_response: str | None = None,
         metadata: dict[str, Any] | None = None,
-        ttl_seconds: int = None,
+        ttl_seconds: int | None = None,
     ) -> bool:
         """
         Store LLM response in cache
@@ -510,7 +504,7 @@ class LLMCache:
                     DELETE FROM llm_cache
                     WHERE text_hash = :text_hash
                 """)
-                params = {"text_hash": text_hash}
+                params: dict[str, Any] = {"text_hash": text_hash}
             elif before_date:
                 query = text("""
                     DELETE FROM llm_cache
@@ -524,7 +518,7 @@ class LLMCache:
             result = await session.execute(query, params)
             await session.commit()
 
-            count = result.rowcount
+            count = getattr(result, "rowcount", 0)
             logger.info(f"Invalidated {count} cache entries")
 
             # Clear memory cache
@@ -553,7 +547,7 @@ class LLMCache:
         Returns:
             Dictionary with cache statistics
         """
-        stats = {
+        stats: dict[str, Any] = {
             "memory_cache_size": len(self._memory_cache),
             "memory_cache_max_size": self.MAX_MEMORY_CACHE_SIZE,
             "pgvector_enabled": self.enable_pgvector_cache,

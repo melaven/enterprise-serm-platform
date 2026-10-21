@@ -84,12 +84,20 @@ async def move_review_to_dlq(
     """
     reason = _clean_reason(reason)
     row = (
-        await db.execute(_MOVE, {"review_id": review_id, "reason": reason, "retry_count": retry_count})
+        await db.execute(
+            _MOVE,
+            {"review_id": review_id, "reason": reason, "retry_count": retry_count},
+        )
     ).one_or_none()
     if row is None:
         logger.warning("review_dlq_not_found review_id=%s", review_id)
         return False
-    logger.critical("review_moved_to_dlq review_id=%s retry_count=%s reason=%s", review_id, row.retry_count, reason)
+    logger.critical(
+        "review_moved_to_dlq review_id=%s retry_count=%s reason=%s",
+        review_id,
+        row.retry_count,
+        reason,
+    )
     return True
 
 
@@ -107,20 +115,29 @@ async def record_analysis_failure(
     reason = _clean_reason(reason)
     row = (
         await db.execute(
-            _RECORD_FAILURE, {"review_id": review_id, "reason": reason, "max_retries": max_retries}
+            _RECORD_FAILURE,
+            {"review_id": review_id, "reason": reason, "max_retries": max_retries},
         )
     ).one_or_none()
     if row is None:
         return None
-    outcome = FailureOutcome(retry_count=int(row.retry_count), moved_to_dlq=bool(row.in_dlq))
+    outcome = FailureOutcome(
+        retry_count=int(row.retry_count), moved_to_dlq=bool(row.in_dlq)
+    )
     if outcome.moved_to_dlq:
         logger.critical(
-            "review_moved_to_dlq review_id=%s retry_count=%s reason=%s", review_id, outcome.retry_count, reason
+            "review_moved_to_dlq review_id=%s retry_count=%s reason=%s",
+            review_id,
+            outcome.retry_count,
+            reason,
         )
     else:
         logger.warning(
             "review_analysis_failed review_id=%s attempt=%s/%s reason=%s",
-            review_id, outcome.retry_count, max_retries, reason,
+            review_id,
+            outcome.retry_count,
+            max_retries,
+            reason,
         )
     return outcome
 

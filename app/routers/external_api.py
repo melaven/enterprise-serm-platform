@@ -4,8 +4,7 @@ Endpoints for CRM integration with secure API key authentication and RLS isolati
 """
 
 from datetime import datetime, timedelta
-from typing import Literal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -65,7 +64,7 @@ class ReviewsBatchRequest(BaseModel):
 
     data_origin: Literal["customer_provided", "official_integration"]
     reviews: list[RawReview] = Field(
-        ..., min_items=1, max_items=50, description="Batch of reviews (max 50)"
+        ..., min_length=1, max_length=50, description="Batch of reviews (max 50)"
     )
 
 

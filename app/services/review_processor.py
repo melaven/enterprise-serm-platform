@@ -194,7 +194,7 @@ class ReviewProcessorService:
     ) -> dict[str, Any]:
         """Массовая обработка отзывов"""
 
-        results = {
+        results: dict[str, Any] = {
             "processed": [],
             "failed": [],
             "summary": {
@@ -226,7 +226,7 @@ class ReviewProcessorService:
         return results
 
     async def get_review_processing_queue(
-        self, priority_filter: str = None
+        self, priority_filter: str | None = None
     ) -> dict[str, Any]:
         """Получить очередь отзывов для обработки"""
 

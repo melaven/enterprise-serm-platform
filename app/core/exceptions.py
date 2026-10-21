@@ -25,7 +25,7 @@ class SERMException(Exception):
 class NotFoundError(SERMException):
     """Ресурс не найден (404)"""
 
-    def __init__(self, resource: str, identifier: str = None):
+    def __init__(self, resource: str, identifier: str | None = None):
         message = f"{resource} не найден"
         if identifier:
             message += f": {identifier}"
@@ -52,7 +52,9 @@ class DatabaseError(SERMException):
     """Ошибки работы с базой данных"""
 
     def __init__(
-        self, message: str = "Ошибка базы данных", original_error: Exception = None
+        self,
+        message: str = "Ошибка базы данных",
+        original_error: Exception | None = None,
     ):
         details = {}
         if original_error:
@@ -73,7 +75,7 @@ class DatabaseTimeoutError(DatabaseError):
 class ExternalServiceError(SERMException):
     """Ошибки внешних сервисов (LLM, Supabase, etc.)"""
 
-    def __init__(self, service: str, message: str = None):
+    def __init__(self, service: str, message: str | None = None):
         error_message = f"Ошибка внешнего сервиса {service}"
         if message:
             error_message += f": {message}"

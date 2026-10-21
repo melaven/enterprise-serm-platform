@@ -14,9 +14,7 @@ async def fetch_reviews_task(
     correlation_id: str | None = None,
     **kwargs: Any,
 ) -> dict[str, int]:
-    raise RuntimeError(
-        "Public-page scraping and review-text LLM analysis are disabled"
-    )
+    raise RuntimeError("Public-page scraping and review-text LLM analysis are disabled")
 
 
 async def fetch_platform_reviews(

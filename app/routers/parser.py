@@ -7,12 +7,9 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, HttpUrl, model_validator
-from session import get_tenant_session
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentPayload
 from app.core.rate_limit import check_parser_limits
-from app.services.entitlement import enforce_reviews_quota
 from app.services.parser_queue import ParserQueueManager
 
 log = structlog.get_logger(__name__)
@@ -24,10 +21,11 @@ _JOB_STATUS_POLL_INTERVAL_SECONDS = 2.0
 
 # Dependency для ParserQueueManager
 async def get_parser_queue() -> ParserQueueManager:
-    """Dependency: возвращает ParserQueueManager singleton."""
-    from app.core.dependencies import get_parser_queue_manager
-
-    return await get_parser_queue_manager()
+    """Reject access to the disabled public scraping queue."""
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Public-page scraping jobs are disabled",
+    )
 
 
 class ParseRequest(BaseModel):

@@ -7,7 +7,10 @@ from datetime import date, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import text
+
 from ..core.exceptions import BusinessLogicError, NotFoundError
+from ..models.economics import Platform
 from ..repositories import CompanyRepository, PlatformRepository, ReviewRepository
 from ..schemas.analytics import (
     AnalyticsRequest,
@@ -35,6 +38,35 @@ class AnalyticsService:
         self.review_repo = review_repo
         self.platform_repo = platform_repo
         self.company_repo = company_repo
+
+    async def get_company_summary(
+        self, company_id: UUID, days: int
+    ) -> CompanyAnalytics:
+        end_date = date.today()
+        request = AnalyticsRequest(
+            time_range=TimeRange.CUSTOM,
+            start_date=end_date - timedelta(days=days - 1),
+            end_date=end_date,
+        )
+        result = await self.get_company_analytics(company_id, request)
+        return result.company_analytics
+
+    async def get_platform_analytics(
+        self, platform_id: UUID, company_id: UUID, days: int
+    ) -> PlatformAnalytics:
+        platform = await self.platform_repo.get_by_id(platform_id)
+        if platform is None or platform.company_id != company_id:
+            raise NotFoundError("Платформа", str(platform_id))
+
+        end_date = date.today()
+        start_date = end_date - timedelta(days=days - 1)
+        return await self._get_platform_analytics(
+            platform, start_date, end_date, include_trends=False
+        )
+
+    async def health_check(self, tenant_id: UUID) -> dict[str, str]:
+        await self.review_repo.db.execute(text("SELECT 1"))
+        return {"database": "healthy", "tenant_id": str(tenant_id)}
 
     async def get_company_analytics(
         self, company_id: UUID, request: AnalyticsRequest
@@ -157,7 +189,11 @@ class AnalyticsService:
             raise BusinessLogicError(f"Ошибка получения аналитики: {str(e)}")
 
     async def _get_platform_analytics(
-        self, platform, start_date: date, end_date: date, include_trends: bool
+        self,
+        platform: Platform,
+        start_date: date,
+        end_date: date,
+        include_trends: bool,
     ) -> PlatformAnalytics:
         """Получение аналитики для конкретной платформы"""
 

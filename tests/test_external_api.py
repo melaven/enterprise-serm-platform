@@ -97,7 +97,7 @@ async def test_submit_reviews_analyzes_locally_and_persists_safe_metrics(
                     "platform": "google",
                     "published_at": "2026-01-01T12:00:00Z",
                 }
-            ]
+            ],
         },
     )
 
@@ -143,7 +143,7 @@ async def test_submit_reviews_rejects_missing_or_invalid_api_key(
                     "platform": "google",
                     "published_at": "2026-01-01T12:00:00Z",
                 }
-            ]
+            ],
         },
     )
 
@@ -181,7 +181,7 @@ async def test_submit_reviews_returns_payment_required_when_quota_is_exceeded(
                     "platform": "google",
                     "published_at": "2026-01-01T12:00:00Z",
                 }
-            ]
+            ],
         },
     )
 

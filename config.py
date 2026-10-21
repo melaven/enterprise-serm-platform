@@ -1,5 +1,4 @@
 from functools import lru_cache
-
 from pathlib import Path
 
 from pydantic import SecretStr
@@ -22,8 +21,12 @@ class Settings(BaseSettings):
     # Брокер ARQ. В проде: rediss://:<password>@host:6379/0 (Redis только во
     # внутренней сети: ARQ сериализует аргументы задач через pickle).
     # --- Таймауты БД: без них недоступный хост = зависание на минуты ---
-    db_connect_timeout: float = 5.0  # установка соединения (TCP+TLS+auth), сек; дефолт asyncpg = 60
-    db_command_timeout: float = 35.0  # страховка клиента; серверный statement_timeout = 30 с (context.py)
+    db_connect_timeout: float = (
+        5.0  # установка соединения (TCP+TLS+auth), сек; дефолт asyncpg = 60
+    )
+    db_command_timeout: float = (
+        35.0  # страховка клиента; серверный statement_timeout = 30 с (context.py)
+    )
     db_pool_recycle: int = 300  # Supavisor/NAT молча рвут простаивающие соединения
 
     redis_url: str = "redis://127.0.0.1:6379/0"
@@ -33,7 +36,9 @@ class Settings(BaseSettings):
 
     # --- Stripe. Всё необязательное: без ключей вебхук закрыт (503), checkout недоступен. ---
     stripe_secret_key: SecretStr | None = None
-    stripe_webhook_secret: SecretStr | None = None  # whsec_..., отдельный для каждого endpoint/режима
+    stripe_webhook_secret: SecretStr | None = (
+        None  # whsec_..., отдельный для каждого endpoint/режима
+    )
     stripe_price_pro: str | None = None  # price_...
     # Отдельный DSN роли billing_service (EXECUTE только на app.billing_*). НЕ тот же, что database_url.
     billing_database_url: str | None = None
@@ -41,10 +46,16 @@ class Settings(BaseSettings):
     apikey_database_url: str | None = None
     # --- LLM (Gemini). Без ключа воркер остаётся на эвристике по рейтингу (is_analyzed=false). ---
     gemini_api_key: SecretStr | None = None
-    gemini_model: str = "gemini-2.5-flash"  # проверь актуальное имя модели в консоли Google AI Studio
+    gemini_model: str = (
+        "gemini-2.5-flash"  # проверь актуальное имя модели в консоли Google AI Studio
+    )
     llm_call_timeout_s: float = 25.0  # один вызов LLM, включая сетевые ожидания
-    llm_thinking_budget: int | None = 0  # токены «мышления» Gemini 2.5 Flash; 0 = выкл. None = не передавать параметр
-    llm_concurrency: int = 8  # одновременных вызовов на процесс воркера (лимит RPM/квоты Gemini)
+    llm_thinking_budget: int | None = (
+        0  # токены «мышления» Gemini 2.5 Flash; 0 = выкл. None = не передавать параметр
+    )
+    llm_concurrency: int = (
+        8  # одновременных вызовов на процесс воркера (лимит RPM/квоты Gemini)
+    )
     # --- Telegram-алерты (Enterprise). Без токена Telegram-канал просто отключён, ARQ-конвейер не затрагивается. ---
     telegram_bot_token: SecretStr | None = None
     telegram_timeout_s: float = 5.0

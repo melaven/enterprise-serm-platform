@@ -830,7 +830,9 @@ class ProductionLLMService:
         # Handle exceptions in results
         processed_results = []
         for i, result in enumerate(results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
+                if isinstance(result, asyncio.CancelledError):
+                    raise result
                 logger.error(
                     "batch_item_failed",
                     index=i,

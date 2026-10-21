@@ -11,7 +11,7 @@ from uuid import UUID
 
 import httpx
 import structlog
-from supabase import Client, acreate_client
+from supabase import acreate_client
 
 from ...core.logger import configure_logging
 from ...repositories.dlq import SupabaseDLQStore, set_default_dlq_store
@@ -68,7 +68,7 @@ async def startup_with_dlq(ctx: dict[str, Any]) -> None:
 
     try:
         # Создаем async клиент с service role ключом
-        supabase_client: Client = await acreate_client(supabase_url, service_role_key)
+        supabase_client = await acreate_client(supabase_url, service_role_key)
 
         # Создаем DLQ store с Supabase клиентом
         dlq_store = SupabaseDLQStore(supabase_client)

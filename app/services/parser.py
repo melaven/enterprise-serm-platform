@@ -23,7 +23,7 @@ class ParserService:
         review_repo: ReviewRepository,
         platform_repo: PlatformRepository,
         company_repo: CompanyRepository,
-        review_processor: ReviewProcessorService,
+        review_processor: ReviewProcessorService | None = None,
     ):
         self.review_repo = review_repo
         self.platform_repo = platform_repo
@@ -61,9 +61,11 @@ class ParserService:
 
             # Проверяем что платформа принадлежит компании
             if platform.company_id != company_id:
-                raise ValidationError(f"Платформа не принадлежит компании {company_id}")
+                raise ValidationError(
+                    "platform_id", platform.id, "Платформа не принадлежит компании"
+                )
 
-            results = {
+            results: dict[str, Any] = {
                 "platform_url": platform_url,
                 "platform_name": platform.name,
                 "company_id": str(company_id),
@@ -91,6 +93,8 @@ class ParserService:
                     review_base = self._validate_parsed_review(review_data, platform.id)
 
                     # 3. Обрабатываем отзыв через основной процессор с LLM-данными
+                    if self.review_processor is None:
+                        raise RuntimeError("Review processor is not configured")
                     processed_result = (
                         await self.review_processor.process_new_review_with_analytics(
                             review_base, analytics
@@ -175,21 +179,23 @@ class ParserService:
 
             if missing_fields:
                 raise ValidationError(
-                    f"Отсутствуют обязательные поля: {', '.join(missing_fields)}"
+                    "review",
+                    review_data,
+                    f"Отсутствуют обязательные поля: {', '.join(missing_fields)}",
                 )
 
             # Валидация рейтинга
             rating = review_data.get("rating")
             if not isinstance(rating, int | float) or not (1 <= rating <= 5):
                 raise ValidationError(
-                    f"Рейтинг должен быть числом от 1 до 5, получено: {rating}"
+                    "rating", rating, "Рейтинг должен быть числом от 1 до 5"
                 )
 
             # Валидация текста
             text = review_data.get("text", "").strip()
             if len(text) < 10:
                 raise ValidationError(
-                    "Текст отзыва слишком короткий (минимум 10 символов)"
+                    "text", text, "Текст отзыва слишком короткий (минимум 10 символов)"
                 )
 
             # Создаем объект ReviewBase
@@ -203,7 +209,7 @@ class ParserService:
         except Exception as e:
             if isinstance(e, ValidationError):
                 raise
-            raise ValidationError(f"Ошибка валидации данных отзыва: {str(e)}")
+            raise ValidationError("review", review_data, f"Ошибка валидации: {e}")
 
     async def get_parsing_statistics(
         self, company_id: UUID, days: int = 30
@@ -222,7 +228,7 @@ class ParserService:
             # Получаем все платформы компании
             platforms = await self.platform_repo.get_by_company_id(company_id)
 
-            statistics = {
+            statistics: dict[str, Any] = {
                 "company_id": str(company_id),
                 "period_days": days,
                 "platforms": [],
@@ -308,7 +314,9 @@ class ParserService:
                 raise NotFoundError("Платформа", str(platform_id))
 
             if platform.company_id != company_id:
-                raise ValidationError(f"Платформа не принадлежит компании {company_id}")
+                raise ValidationError(
+                    "platform_id", platform.id, "Платформа не принадлежит компании"
+                )
 
             # Здесь бы отправлялась задача в ARQ, но для демонстрации возвращаем информацию
             return {

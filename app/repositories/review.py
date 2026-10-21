@@ -181,7 +181,7 @@ class ReviewRepository(BaseRepository[Review]):
         platform_id: UUID,
         limit: int = 100,
         offset: int = 0,
-        status: ReviewStatus = None,
+        status: ReviewStatus | None = None,
     ) -> list[Review]:
         """Получить отзывы по платформе"""
         try:
@@ -192,7 +192,7 @@ class ReviewRepository(BaseRepository[Review]):
 
             query = query.order_by(Review.created_at.desc()).limit(limit).offset(offset)
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError("Ошибка получения отзывов платформы", e)
 
@@ -232,12 +232,12 @@ class ReviewRepository(BaseRepository[Review]):
             )
 
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError("Ошибка получения отзывов по рейтингу", e)
 
     async def get_negative_reviews_without_response(
-        self, platform_id: UUID = None, days_ago: int = 30
+        self, platform_id: UUID | None = None, days_ago: int = 30
     ) -> list[Review]:
         """Получить негативные отзывы без ответа за период"""
         try:
@@ -257,12 +257,12 @@ class ReviewRepository(BaseRepository[Review]):
 
             query = query.order_by(Review.created_at.asc())
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError("Ошибка получения негативных отзывов", e)
 
     async def get_reviews_stats(
-        self, platform_id: UUID = None, days_ago: int = 30
+        self, platform_id: UUID | None = None, days_ago: int = 30
     ) -> dict[str, Any]:
         """Получить статистику отзывов за период"""
         try:
@@ -293,7 +293,9 @@ class ReviewRepository(BaseRepository[Review]):
                 )
 
             rating_result = await self.db.execute(rating_stats_query)
-            rating_stats = {row.rating: row.count for row in rating_result.fetchall()}
+            rating_stats = {
+                int(row[0]): int(row[1]) for row in rating_result.fetchall()
+            }
 
             # Статистика по статусам
             status_stats_query = (
@@ -323,6 +325,8 @@ class ReviewRepository(BaseRepository[Review]):
 
             impact_result = await self.db.execute(impact_query)
             impact_row = impact_result.first()
+            total_impact = float(impact_row.total_impact or 0) if impact_row else 0.0
+            average_impact = float(impact_row.avg_impact or 0) if impact_row else 0.0
 
             return {
                 "period_days": days_ago,
@@ -330,13 +334,14 @@ class ReviewRepository(BaseRepository[Review]):
                 "rating_distribution": rating_stats,
                 "status_distribution": status_stats,
                 "financial_impact": {
-                    "total": float(impact_row.total_impact or 0),
-                    "average": float(impact_row.avg_impact or 0),
+                    "total": total_impact,
+                    "average": average_impact,
                 },
-                "negative_reviews": rating_stats.get(1, 0)
-                + rating_stats.get(2, 0)
-                + rating_stats.get(3, 0),
-                "positive_reviews": rating_stats.get(4, 0) + rating_stats.get(5, 0),
+                "negative_reviews": (rating_stats.get(1) or 0)
+                + (rating_stats.get(2) or 0)
+                + (rating_stats.get(3) or 0),
+                "positive_reviews": (rating_stats.get(4) or 0)
+                + (rating_stats.get(5) or 0),
             }
         except Exception as e:
             raise DatabaseError("Ошибка получения статистики отзывов", e)
@@ -345,11 +350,11 @@ class ReviewRepository(BaseRepository[Review]):
         self,
         review_id: UUID,
         status: ReviewStatus,
-        si_response: str = None,
-        financial_impact: float = None,
+        si_response: str | None = None,
+        financial_impact: float | None = None,
     ) -> Review:
         """Обновить статус отзыва и ответ SI"""
-        updates = {"status": status}
+        updates: dict[str, Any] = {"status": status}
 
         if si_response is not None:
             updates["si_response"] = si_response
@@ -360,7 +365,7 @@ class ReviewRepository(BaseRepository[Review]):
         return await self.update(review_id, **updates)
 
     async def search_by_content(
-        self, search_term: str, platform_id: UUID = None, limit: int = 50
+        self, search_term: str, platform_id: UUID | None = None, limit: int = 50
     ) -> list[Review]:
         """Поиск отзывов по содержимому текста"""
         try:
@@ -376,7 +381,7 @@ class ReviewRepository(BaseRepository[Review]):
 
             query = query.order_by(Review.created_at.desc()).limit(limit)
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError("Ошибка поиска отзывов по содержимому", e)
 
@@ -408,7 +413,7 @@ class ReviewRepository(BaseRepository[Review]):
             )
 
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError("Ошибка получения отзывов, требующих внимания", e)
 
@@ -502,7 +507,13 @@ class ReviewRepository(BaseRepository[Review]):
             ratings_data = result.all()
 
             # Инициализируем распределение
-            distribution = {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0}
+            distribution: dict[str, int | float] = {
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0,
+                "5": 0,
+            }
             total_sum = 0
             total_count = 0
 

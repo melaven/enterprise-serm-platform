@@ -137,7 +137,7 @@ class PlatformAnalytics(BaseModel):
 
     platform_id: str
     platform_name: str
-    platform_url: str
+    platform_url: str | None
     total_reviews: int = Field(ge=0)
     sentiment_distribution: SentimentDistribution
     rating_distribution: RatingDistribution

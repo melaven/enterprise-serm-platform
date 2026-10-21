@@ -116,9 +116,15 @@ class ReviewIntelligenceResult(BaseModel):
 
     model_config = ConfigDict(extra="ignore", strict=False)
 
-    sentiment: Annotated[Literal["POSITIVE", "NEGATIVE", "NEUTRAL"], BeforeValidator(_norm_sentiment)]
-    threat_level: Annotated[int, Field(ge=1, le=5, strict=True)]  # bool/строка/float не принимаем
-    analysis_tags: Annotated[list[str], BeforeValidator(_norm_tags)] = Field(default_factory=list)
+    sentiment: Annotated[
+        Literal["POSITIVE", "NEGATIVE", "NEUTRAL"], BeforeValidator(_norm_sentiment)
+    ]
+    threat_level: Annotated[
+        int, Field(ge=1, le=5, strict=True)
+    ]  # bool/строка/float не принимаем
+    analysis_tags: Annotated[list[str], BeforeValidator(_norm_tags)] = Field(
+        default_factory=list
+    )
     suggested_reply: Annotated[str, Field(max_length=MAX_REPLY_LEN)] = ""
     # Очищенный от ПДн исходный текст. Пустой/отсутствующий НЕ ошибка формата: подставим детерминированную очистку.
     sanitized_text: Annotated[str, Field(max_length=MAX_SANITIZED_LEN)] = ""
@@ -174,7 +180,12 @@ class GeminiTransport:
     """Тонкая обёртка над google-genai (async). Клиент создаётся лениво, один на процесс."""
 
     def __init__(
-        self, api_key: str, model: str, timeout_s: float, *, thinking_budget: int | None = 0
+        self,
+        api_key: str,
+        model: str,
+        timeout_s: float,
+        *,
+        thinking_budget: int | None = 0,
     ) -> None:
         self._api_key, self._model, self._timeout_s = api_key, model, timeout_s
         # None -> не передавать (модели, где «мышление» нельзя отключить, вернут 400). Токены «мышления» входят
@@ -189,7 +200,9 @@ class GeminiTransport:
 
             self._client = genai.Client(
                 api_key=self._api_key,
-                http_options=types.HttpOptions(timeout=int(self._timeout_s * 1000)),  # мс
+                http_options=types.HttpOptions(
+                    timeout=int(self._timeout_s * 1000)
+                ),  # мс
             )
         return self._client
 
@@ -206,7 +219,11 @@ class GeminiTransport:
                 # В ответе теперь ещё и полный очищенный текст отзыва (до 4000 симв.): 1024 токенов не хватит.
                 max_output_tokens=4096,
                 **(
-                    {"thinking_config": types.ThinkingConfig(thinking_budget=self._thinking_budget)}
+                    {
+                        "thinking_config": types.ThinkingConfig(
+                            thinking_budget=self._thinking_budget
+                        )
+                    }
                     if self._thinking_budget is not None
                     else {}
                 ),
@@ -227,7 +244,9 @@ _WORD = re.compile(r"\w+", re.UNICODE)
 _PLACEHOLDER_WORDS = frozenset(w.lower() for w in _WORD.findall(PLACEHOLDER))
 
 
-def choose_sanitized(det: str, candidate: str, *, truncated: bool) -> tuple[str, str | None]:
+def choose_sanitized(
+    det: str, candidate: str, *, truncated: bool
+) -> tuple[str, str | None]:
     """Какой текст писать в БД. -> (текст, причина_отказа_от_LLM_версии | None).
 
     Детерминированная очистка `det` — основа. Версию LLM берём, только если она ей не противоречит:
@@ -238,12 +257,18 @@ def choose_sanitized(det: str, candidate: str, *, truncated: bool) -> tuple[str,
     """
     if truncated:
         return det, "truncated_input"
-    cand = redact_text(candidate).strip()  # последний рубеж: LLM могла вернуть телефон как есть
+    cand = redact_text(
+        candidate
+    ).strip()  # последний рубеж: LLM могла вернуть телефон как есть
     if not cand:
         return det, "empty"
     if len(cand) < 0.5 * len(det) or len(cand) > 1.5 * len(det) + 50:
         return det, "length_mismatch"
-    cand_words = [w for w in (x.lower() for x in _WORD.findall(cand)) if w not in _PLACEHOLDER_WORDS]
+    cand_words = [
+        w
+        for w in (x.lower() for x in _WORD.findall(cand))
+        if w not in _PLACEHOLDER_WORDS
+    ]
     det_words = {x.lower() for x in _WORD.findall(det)}
     if cand_words and sum(w in det_words for w in cand_words) / len(cand_words) < 0.8:
         return det, "content_mismatch"
@@ -254,7 +279,9 @@ def _clean_tags(tags: Sequence[str]) -> tuple[str, ...]:
     out: list[str] = []
     for t in tags:
         cleaned = redact_text(t)
-        if PLACEHOLDER not in cleaned and cleaned and cleaned not in out:  # тег с ПДн выбрасываем целиком
+        if (
+            PLACEHOLDER not in cleaned and cleaned and cleaned not in out
+        ):  # тег с ПДн выбрасываем целиком
             out.append(cleaned)
     return tuple(out)
 
@@ -287,38 +314,61 @@ class SentimentIntelligencePipeline:
 
         def failed(error: str, *, transient: bool) -> ReviewAnalysis:
             # Любой отказ LLM: в БД всё равно пишется очищенный детерминированно текст.
-            return replace(fallback_analysis(error, transient=transient), sanitized_text=det)
+            return replace(
+                fallback_analysis(error, transient=transient), sanitized_text=det
+            )
 
         last: ReviewAnalysis = failed("unknown", transient=False)
         for attempt in range(1, RETRY_ATTEMPTS + 1):
             try:
-                async with self._sem:  # семафор только вокруг вызова, не вокруг пауз между попытками
+                async with (
+                    self._sem
+                ):  # семафор только вокруг вызова, не вокруг пауз между попытками
                     async with asyncio.timeout(self._timeout):
-                        raw = await self._transport.generate_json(system=SYSTEM_PROMPT, user=user)
+                        raw = await self._transport.generate_json(
+                            system=SYSTEM_PROMPT, user=user
+                        )
                 parsed = parse_llm_json(raw)
             except (json.JSONDecodeError, ValidationError, ValueError):
                 logger.warning("llm_bad_json attempt=%d", attempt)
-                return failed("bad_json", transient=False)  # повтор того же промпта не лечит
+                return failed(
+                    "bad_json", transient=False
+                )  # повтор того же промпта не лечит
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # noqa: BLE001 - SDK бросает разные типы; классифицируем ниже
                 transient = _is_transient(exc)
                 last = failed(type(exc).__name__, transient=transient)
-                logger.warning("llm_call_failed attempt=%d type=%s transient=%s", attempt, type(exc).__name__, transient)
+                logger.warning(
+                    "llm_call_failed attempt=%d type=%s transient=%s",
+                    attempt,
+                    type(exc).__name__,
+                    transient,
+                )
                 if not transient:
                     return last  # 400/401/403: ключ/запрос неверны, ретрай бессмыслен
                 if attempt < RETRY_ATTEMPTS:
-                    await asyncio.sleep(self._retry_delay * (2 ** (attempt - 1)) * (0.5 + random.random()))
+                    await asyncio.sleep(
+                        self._retry_delay
+                        * (2 ** (attempt - 1))
+                        * (0.5 + random.random())
+                    )
                 continue
 
-            sanitized, rejected = choose_sanitized(det, parsed.sanitized_text, truncated=truncated)
+            sanitized, rejected = choose_sanitized(
+                det, parsed.sanitized_text, truncated=truncated
+            )
             if rejected not in (None, "truncated_input"):
-                logger.warning("llm_sanitized_rejected reason=%s", rejected)  # текст отзыва в лог не пишем
+                logger.warning(
+                    "llm_sanitized_rejected reason=%s", rejected
+                )  # текст отзыва в лог не пишем
             return ReviewAnalysis(
                 sentiment=ReviewSentiment(parsed.sentiment),
                 threat_level=parsed.threat_level,
                 analysis_tags=_clean_tags(parsed.analysis_tags),
-                suggested_reply=redact_text(parsed.suggested_reply).strip(),  # ответ не должен повторять ПДн
+                suggested_reply=redact_text(
+                    parsed.suggested_reply
+                ).strip(),  # ответ не должен повторять ПДн
                 is_analyzed=True,
                 sanitized_text=sanitized,
             )
@@ -329,11 +379,15 @@ class SentimentIntelligencePipeline:
         return list(await asyncio.gather(*(self.analyze_review(t) for t in texts)))
 
     # --- протокол воркера ReviewInsightsService
-    async def analyze_many(self, reviews: Sequence[ReviewForInsights]) -> list[ReviewInsight]:
+    async def analyze_many(
+        self, reviews: Sequence[ReviewForInsights]
+    ) -> list[ReviewInsight]:
         results = await self.process_batch([r.text for r in reviews])
         # LLM целиком недоступна (все отказы временные) -> пусть ARQ повторит задачу, а не пишем 200 fallback'ов.
         if reviews and all(a.error and a.transient for a in results):
-            raise InsightsTransientError(f"LLM unavailable for whole batch ({results[0].error})")
+            raise InsightsTransientError(
+                f"LLM unavailable for whole batch ({results[0].error})"
+            )
 
         heuristic = RatingBasedInsightsService()
         out: list[ReviewInsight] = []
@@ -353,8 +407,16 @@ class SentimentIntelligencePipeline:
             else:  # приблизительная оценка по рейтингу, is_analyzed=false: отзыв можно переанализировать позже
                 approx = heuristic._one(review)  # noqa: SLF001
                 # Постоянная ошибка (битый JSON, 4xx) -> кандидат в DLQ. Временная и пустой текст отзыв не «травят».
-                poison = a.error is not None and not a.transient and a.error != "empty_text"
-                out.append(replace(approx, failure=a.error if poison else None, sanitized_text=a.sanitized_text))
+                poison = (
+                    a.error is not None and not a.transient and a.error != "empty_text"
+                )
+                out.append(
+                    replace(
+                        approx,
+                        failure=a.error if poison else None,
+                        sanitized_text=a.sanitized_text,
+                    )
+                )
         return out
 
 
@@ -366,10 +428,14 @@ def build_insights_service() -> Any:
 
     s = get_settings()
     if s.gemini_api_key is None:
-        logger.warning("GEMINI_API_KEY is not set: using rating-based heuristic (is_analyzed stays false)")
+        logger.warning(
+            "GEMINI_API_KEY is not set: using rating-based heuristic (is_analyzed stays false)"
+        )
         return RatingBasedInsightsService()
     transport = GeminiTransport(
-        s.gemini_api_key.get_secret_value(), s.gemini_model, s.llm_call_timeout_s,
+        s.gemini_api_key.get_secret_value(),
+        s.gemini_model,
+        s.llm_call_timeout_s,
         thinking_budget=s.llm_thinking_budget,
     )
     return SentimentIntelligencePipeline(

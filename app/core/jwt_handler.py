@@ -48,7 +48,7 @@ class AuthContext(BaseModel):
 class JWTHandler:
     """Обработчик JWT токенов с поддержкой JWKS и legacy режима"""
 
-    def __init__(self, settings: AuthSettings = None):
+    def __init__(self, settings: AuthSettings | None = None):
         self.settings = settings or AuthSettings()
         self._jwks_cache: dict[str, Any] | None = None
         self._jwks_cache_expires: int | None = None
@@ -79,6 +79,8 @@ class JWTHandler:
                 )
             else:
                 # Legacy режим с HS256
+                if self.settings.jwt_secret is None:
+                    raise ValueError("JWT secret required for HS256 algorithm")
                 payload = jwt.decode(
                     token,
                     self.settings.jwt_secret,
@@ -149,7 +151,7 @@ class JWTHandler:
 
         return None
 
-    async def _get_public_key(self, kid: str | None) -> str:
+    async def _get_public_key(self, kid: str | None) -> Any:
         """Получение публичного ключа из JWKS endpoint"""
 
         if not self.settings.jwks_url:

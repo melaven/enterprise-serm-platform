@@ -215,7 +215,8 @@ class ParserQueueManager:
                 )
 
             # Маппинг ARQ статусов
-            arq_status = info.job_status
+            job_info: Any = info
+            arq_status = job_info.job_status
             status_map = {
                 JobStatus.deferred: "queued",
                 JobStatus.queued: "queued",
@@ -259,8 +260,12 @@ class ParserQueueManager:
                 result=result,
                 error=error,
                 created_at=info.enqueue_time.timestamp() if info.enqueue_time else None,
-                started_at=info.start_time.timestamp() if info.start_time else None,
-                finished_at=info.finish_time.timestamp() if info.finish_time else None,
+                started_at=(
+                    job_info.start_time.timestamp() if job_info.start_time else None
+                ),
+                finished_at=(
+                    job_info.finish_time.timestamp() if job_info.finish_time else None
+                ),
             )
 
         except HTTPException:

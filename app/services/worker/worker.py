@@ -4,6 +4,7 @@ ARQ Worker настройки для SERM с enterprise-логированием
 
 import os
 from datetime import timezone
+from typing import Any
 
 from arq import create_pool, cron
 
@@ -16,6 +17,9 @@ logger = get_logger(__name__)
 
 
 class WorkerSettings:
+    on_startup: Any
+    on_shutdown: Any
+
     """Конфигурация ARQ Worker с Dead Letter Queue"""
 
     # Настройки Redis
@@ -37,7 +41,6 @@ class WorkerSettings:
     max_jobs = 10
     job_timeout = 300  # 5 минут на задачу
     keep_result = 120  # Держим результаты 2 минуты
-    max_tries = 3  # Максимальное количество попыток для DLQ
     max_tries = 5  # Максимальное количество попыток для DLQ
 
     # Логирование
@@ -88,7 +91,7 @@ async def startup(ctx):
         # Конвертируем URL для asyncpg (убираем +asyncpg)
         asyncpg_url = tenant_url.replace("postgresql+asyncpg://", "postgresql://")
 
-        import asyncpg
+        import asyncpg  # type: ignore[import-untyped]
 
         logger.info("🔒 SECURITY CHECK: Testing app_tenant role connection...")
 

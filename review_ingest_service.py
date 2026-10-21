@@ -23,7 +23,9 @@ class ReviewIngestService:
                 # не попадают в хранилище даже если анализ позже упадёт или не запустится.
                 "text": redact_text(r.text) if r.text else r.text,
                 "published_at": r.published_at,
-                "reply_text": redact_text(r.reply_text) if r.reply_text else r.reply_text,
+                "reply_text": redact_text(r.reply_text)
+                if r.reply_text
+                else r.reply_text,
                 # ORM-атрибут `metadata` зарезервирован Declarative Base,
                 # поэтому колонка называется raw_metadata.
                 "raw_metadata": r.metadata,

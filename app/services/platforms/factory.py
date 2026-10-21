@@ -35,4 +35,4 @@ class PlatformAdapterFactory:
             raise ValueError(
                 f"Unsupported platform {platform!r}. Supported platforms: {supported}"
             )
-        return builder(api_key=api_key, meta_config=meta_config)
+        return builder(api_key, meta_config)

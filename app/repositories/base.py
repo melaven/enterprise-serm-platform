@@ -3,7 +3,7 @@
 """
 
 from abc import ABC
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Protocol, TypeVar
 from uuid import UUID
 
 from sqlalchemy import delete, select, update
@@ -12,7 +12,12 @@ from sqlalchemy.orm import selectinload
 
 from ..core.exceptions import DatabaseError, NotFoundError
 
-T = TypeVar("T")
+
+class HasId(Protocol):
+    id: Any
+
+
+T = TypeVar("T", bound=HasId)
 
 
 class BaseRepository(Generic[T], ABC):
@@ -34,7 +39,7 @@ class BaseRepository(Generic[T], ABC):
             await self.db.rollback()
             raise DatabaseError(f"Ошибка создания {self.model.__name__}", e)
 
-    async def get_by_id(self, id: UUID, relations: list[str] = None) -> T | None:
+    async def get_by_id(self, id: UUID, relations: list[str] | None = None) -> T | None:
         """Получить запись по ID"""
         try:
             query = select(self.model).where(self.model.id == id)
@@ -49,7 +54,7 @@ class BaseRepository(Generic[T], ABC):
         except Exception as e:
             raise DatabaseError(f"Ошибка получения {self.model.__name__} по ID", e)
 
-    async def get_by_id_or_404(self, id: UUID, relations: list[str] = None) -> T:
+    async def get_by_id_or_404(self, id: UUID, relations: list[str] | None = None) -> T:
         """Получить запись по ID или выбросить 404"""
         instance = await self.get_by_id(id, relations)
         if not instance:
@@ -60,8 +65,8 @@ class BaseRepository(Generic[T], ABC):
         self,
         limit: int = 100,
         offset: int = 0,
-        relations: list[str] = None,
-        filters: dict[str, Any] = None,
+        relations: list[str] | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[T]:
         """Получить все записи с пагинацией и фильтрами"""
         try:
@@ -80,7 +85,7 @@ class BaseRepository(Generic[T], ABC):
 
             query = query.limit(limit).offset(offset)
             result = await self.db.execute(query)
-            return result.scalars().all()
+            return list(result.scalars().all())
         except Exception as e:
             raise DatabaseError(f"Ошибка получения списка {self.model.__name__}", e)
 
@@ -96,7 +101,10 @@ class BaseRepository(Generic[T], ABC):
             await self.db.commit()
 
             # Возвращаем обновленную запись
-            return await self.get_by_id(id)
+            updated = await self.get_by_id(id)
+            if updated is None:
+                raise NotFoundError(self.model.__name__, str(id))
+            return updated
         except Exception as e:
             await self.db.rollback()
             raise DatabaseError(f"Ошибка обновления {self.model.__name__}", e)
@@ -111,7 +119,7 @@ class BaseRepository(Generic[T], ABC):
             result = await self.db.execute(query)
             await self.db.commit()
 
-            return result.rowcount > 0
+            return getattr(result, "rowcount", 0) > 0
         except Exception as e:
             await self.db.rollback()
             raise DatabaseError(f"Ошибка удаления {self.model.__name__}", e)
@@ -127,7 +135,7 @@ class BaseRepository(Generic[T], ABC):
                 f"Ошибка проверки существования {self.model.__name__}", e
             )
 
-    async def count(self, filters: dict[str, Any] = None) -> int:
+    async def count(self, filters: dict[str, Any] | None = None) -> int:
         """Подсчет записей с фильтрами"""
         try:
             from sqlalchemy import func

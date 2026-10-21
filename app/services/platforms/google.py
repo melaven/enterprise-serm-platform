@@ -24,7 +24,10 @@ class GoogleBusinessAdapter(BasePlatformAdapter):
         if not self.refresh_token:
             raise ValueError("Google OAuth refresh token is not configured")
         settings = get_settings()
-        if not settings.google_oauth_client_id or not settings.google_oauth_client_secret:
+        if (
+            not settings.google_oauth_client_id
+            or not settings.google_oauth_client_secret
+        ):
             raise ValueError("Google OAuth client credentials are not configured")
 
         async with httpx.AsyncClient(timeout=20.0) as client:
@@ -94,17 +97,26 @@ class GoogleBusinessAdapter(BasePlatformAdapter):
                 response.raise_for_status()
                 payload = response.json()
                 if not isinstance(payload, dict):
-                    raise ValueError("Google Business reviews response is not an object")
+                    raise ValueError(
+                        "Google Business reviews response is not an object"
+                    )
                 page_reviews = payload.get("reviews", [])
                 if not isinstance(page_reviews, list):
                     raise ValueError("Google Business reviews field is not a list")
 
                 for item in page_reviews:
                     if not isinstance(item, dict):
-                        raise ValueError("Google Business review entry is not an object")
+                        raise ValueError(
+                            "Google Business review entry is not an object"
+                        )
                     review_id = item.get("reviewId")
                     create_time = item.get("createTime")
-                    rating = _STAR_RATINGS.get(item.get("starRating"))
+                    star_rating = item.get("starRating")
+                    rating = (
+                        _STAR_RATINGS.get(star_rating)
+                        if isinstance(star_rating, str)
+                        else None
+                    )
                     if not isinstance(review_id, str) or not review_id:
                         raise ValueError("Google Business review has no reviewId")
                     if not isinstance(create_time, str):

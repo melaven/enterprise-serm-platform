@@ -149,7 +149,6 @@ async def get_review_processor_service(
     platform_repo: PlatformRepository = Depends(get_platform_repository),
     company_repo: CompanyRepository = Depends(get_company_repository),
     economics_service: EconomicsService = Depends(get_economics_service),
-    llm_service: LLMService = Depends(get_llm_service),
     sentiment_service: SentimentService = Depends(get_sentiment_service),
     tenant_id: UUID = Depends(get_current_tenant),
 ) -> ReviewProcessorService:
@@ -159,7 +158,6 @@ async def get_review_processor_service(
         platform_repo,
         company_repo,
         economics_service,
-        llm_service,
         sentiment_service,
         tenant_id,  # Передаем tenant_id для автозаполнения company_id
     )

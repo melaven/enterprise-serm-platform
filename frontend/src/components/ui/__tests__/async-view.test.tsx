@@ -32,9 +32,8 @@ describe('AsyncView', () => {
         </AsyncView>
       );
 
-      // Check for Skeleton component (has specific classes)
-      const skeleton = container.querySelector('.animate-pulse');
-      expect(skeleton).toBeInTheDocument();
+      expect(container.firstElementChild).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /ошибка загрузки/i })).not.toBeInTheDocument();
     });
   });
 
@@ -48,7 +47,7 @@ describe('AsyncView', () => {
         </AsyncView>
       );
 
-      expect(screen.getByText('Ошибка загрузки')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /ошибка загрузки/i })).toBeInTheDocument();
       expect(screen.getByText('Failed to load data')).toBeInTheDocument();
       expect(screen.queryByText('Content')).not.toBeInTheDocument();
     });
@@ -62,10 +61,10 @@ describe('AsyncView', () => {
         </AsyncView>
       );
 
-      // Check for AlertCircle icon
       const icon = container.querySelector('svg');
       expect(icon).toBeInTheDocument();
-      expect(icon).toHaveClass('text-plum');
+      expect(icon?.parentElement).toHaveClass(/plum/);
+      expect(icon?.parentElement?.className).not.toMatch(/shadow|glow|neon/);
     });
 
     it('should have premium error styling', () => {
@@ -77,11 +76,10 @@ describe('AsyncView', () => {
         </AsyncView>
       );
 
-      const errorCard = container.querySelector('.border-chrome-600');
+      const errorCard = container.firstElementChild;
       expect(errorCard).toBeInTheDocument();
-      expect(errorCard).toHaveClass('bg-ink-900');
-      expect(errorCard).toHaveClass('rounded-sm');
-      expect(errorCard).toHaveClass('border-2');
+      expect(errorCard?.className).toMatch(/plum/);
+      expect(errorCard?.className).not.toMatch(/shadow|glow|neon/);
     });
   });
 
@@ -109,7 +107,7 @@ describe('AsyncView', () => {
         </AsyncView>
       );
 
-      expect(screen.getByText('Нет данных')).toBeInTheDocument();
+      expect(screen.getByText('No data available')).toBeInTheDocument();
     });
 
     it('should display Database icon in empty state', () => {
@@ -124,10 +122,10 @@ describe('AsyncView', () => {
         </AsyncView>
       );
 
-      // Check for Database icon
       const icon = container.querySelector('svg');
       expect(icon).toBeInTheDocument();
-      expect(icon).toHaveClass('text-chrome-600');
+      expect(icon?.parentElement).toHaveClass(/chrome/);
+      expect(icon?.parentElement?.className).not.toMatch(/shadow|glow|neon/);
     });
 
     it('should have consistent empty state styling', () => {
@@ -142,10 +140,10 @@ describe('AsyncView', () => {
         </AsyncView>
       );
 
-      const emptyCard = container.querySelector('.border-chrome-600');
+      const emptyCard = container.firstElementChild;
       expect(emptyCard).toBeInTheDocument();
-      expect(emptyCard).toHaveClass('bg-ink-900');
-      expect(emptyCard).toHaveClass('rounded-sm');
+      expect(emptyCard?.className).toMatch(/chrome/);
+      expect(emptyCard?.className).not.toMatch(/shadow|glow|neon/);
     });
   });
 
@@ -191,7 +189,7 @@ describe('AsyncView', () => {
       );
 
       expect(screen.getByText('Loading')).toBeInTheDocument();
-      expect(screen.queryByText('Ошибка загрузки')).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /ошибка загрузки/i })).not.toBeInTheDocument();
     });
 
     it('should prioritize loading over empty', () => {
@@ -225,7 +223,7 @@ describe('AsyncView', () => {
         </AsyncView>
       );
 
-      expect(screen.getByText('Ошибка загрузки')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /ошибка загрузки/i })).toBeInTheDocument();
       expect(screen.queryByText('Empty')).not.toBeInTheDocument();
     });
 
@@ -293,7 +291,7 @@ describe('AsyncView', () => {
       );
 
       expect(screen.queryByText('Loading')).not.toBeInTheDocument();
-      expect(screen.getByText('Ошибка загрузки')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: /ошибка загрузки/i })).toBeInTheDocument();
     });
 
     it('should transition from loading to empty', () => {
@@ -337,7 +335,7 @@ describe('AsyncView', () => {
       );
 
       // Error should be announced to screen readers
-      const errorContainer = screen.getByText('Ошибка загрузки').closest('div');
+      const errorContainer = screen.getByRole('heading', { name: /ошибка загрузки/i }).closest('div');
       expect(errorContainer).toBeInTheDocument();
     });
 

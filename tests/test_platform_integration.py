@@ -69,6 +69,7 @@ async def test_google_business_integration_encrypts_and_hides_token(
         "/api/v1/platforms/integrations/google-business",
         json={
             "access_token": "oauth-access-token",
+            "refresh_token": "oauth-refresh-token",
             "external_account_id": "account-123",
             "external_location_id": "location-456",
         },
@@ -84,6 +85,8 @@ async def test_google_business_integration_encrypts_and_hides_token(
     assert "oauth-access-token" not in response.text
     assert session.record.company_id == tenant_id
     assert session.record.encrypted_api_key == "encrypted:oauth-access-token"
+    assert session.record.encrypted_refresh_token == "encrypted:oauth-refresh-token"
+    assert "oauth-refresh-token" not in response.text
 
 
 @pytest.mark.asyncio

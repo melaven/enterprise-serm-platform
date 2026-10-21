@@ -124,8 +124,7 @@ export function WebhookManagement({ webhooks, loading, onWebhookCreated, onWebho
             <Button
               onClick={() => setIsModalOpen(true)}
               size="sm"
-              style={{ backgroundColor: '#5A189A' }}
-              className="text-white hover:opacity-90"
+              className="bg-plum text-white hover:bg-plum-700"
             >
               <Plus className="h-4 w-4 mr-2" />
               Add Endpoint
@@ -236,8 +235,7 @@ export function WebhookManagement({ webhooks, loading, onWebhookCreated, onWebho
             <Button
               onClick={handleCreateWebhook}
               disabled={isCreating || !url.trim()}
-              style={{ backgroundColor: '#5A189A' }}
-              className="text-white hover:opacity-90"
+              className="bg-plum text-white hover:bg-plum-700"
             >
               {isCreating ? 'Создание...' : 'Создать'}
             </Button>
@@ -301,8 +299,7 @@ export function WebhookManagement({ webhooks, loading, onWebhookCreated, onWebho
             <Button
               onClick={handleCloseSecretModal}
               disabled={!hasCopiedSecret}
-              style={{ backgroundColor: '#C5FF4A' }}
-              className="text-black font-semibold hover:opacity-90"
+              variant="accent"
             >
               Понял, сохранил
             </Button>

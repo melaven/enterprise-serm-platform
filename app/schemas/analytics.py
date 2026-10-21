@@ -16,7 +16,6 @@ class DashboardReview(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    external_review_id: str | None
     platform: str | None
     author_name: str
     rating: int

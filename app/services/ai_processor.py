@@ -223,6 +223,10 @@ class ReviewAIProcessor:
     # ── публичный API ──
 
     async def process(self, reviews: Sequence[RawReview]) -> list[EnrichedReview]:
+        raise RuntimeError(
+            "External review AI processing is disabled by the local-only policy"
+        )
+
         started = time.perf_counter()
         items: list[_Item] = []
         out: dict[int, EnrichedReview] = {}
@@ -391,6 +395,9 @@ class ReviewAIProcessor:
         raise AssertionError("unreachable")  # pragma: no cover
 
     async def _request_once(self, items: list[_Item], run: _Run) -> str:
+        raise RuntimeError(
+            "External review AI requests are disabled by the local-only policy"
+        )
         cfg = self._cfg
         body = {
             "model": cfg.model,

@@ -42,9 +42,7 @@ export interface PaginatedResponse<T> {
 
 export interface Review {
   id: string;
-  external_review_id: string | null;
   platform: string | null;
-  author_name: string;
   rating: number;
   text: string;
   sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'UNCLASSIFIED' | null;
@@ -58,18 +56,6 @@ export interface Review {
   ai_pending: boolean;
   is_critical: boolean;
   created_at: string;
-}
-
-export interface ApproveAiResponseResult {
-  review_id: string;
-  status: Review['status'];
-  ai_pending: boolean;
-}
-
-export interface PublishReviewReplyResult {
-  review_id: string;
-  status: 'queued';
-  job_id: string;
 }
 
 export interface GoogleBusinessIntegration {
@@ -308,34 +294,9 @@ export async function getReviews(params?: {
   return data.data;
 }
 
-/**
- * Подтвердить AI-ответ отзыва текущего tenant.
- */
-export async function approveAiResponse(
-  reviewId: string,
-): Promise<ApproveAiResponseResult> {
-  const { data } = await apiClient.post<ApiResponse<ApproveAiResponseResult>>(
-    `/v1/reviews/${reviewId}/approve-ai-response`,
-  );
-  return data.data;
-}
-
-/**
- * Queue publication of an edited or generated reply to the review platform.
- */
-export async function publishReviewReply(
-  reviewId: string,
-  replyText: string,
-): Promise<PublishReviewReplyResult> {
-  const { data } = await apiClient.post<PublishReviewReplyResult>(
-    `/v1/reviews/${encodeURIComponent(reviewId)}/reply`,
-    { reply_text: replyText },
-  );
-  return data;
-}
-
 export async function configureGoogleBusinessIntegration(input: {
   access_token: string;
+  refresh_token?: string;
   external_account_id: string;
   external_location_id: string;
 }): Promise<GoogleBusinessIntegration> {

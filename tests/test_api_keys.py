@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import httpx
@@ -48,6 +48,7 @@ class FakeRedis:
         self.cache: dict[str, str] = {}
         self.counters: dict[str, int] = {}
         self.expirations: dict[str, int] = {}
+        self.sorted_sets: dict[str, dict[str, float]] = {}
 
     async def get(self, key: str) -> str | None:
         return self.cache.get(key)
@@ -59,6 +60,42 @@ class FakeRedis:
 
     async def delete(self, key: str) -> int:
         return int(self.cache.pop(key, None) is not None)
+
+    async def eval(self, script: str, numkeys: int, *args: object) -> int:
+        if "redis.call('SET'" in script:
+            marker_key, queue_key, timestamp, ttl, key_hash = args
+            if marker_key in self.cache:
+                return 0
+            self.cache[str(marker_key)] = str(timestamp)
+            self.expirations[str(marker_key)] = int(ttl)
+            self.sorted_sets.setdefault(str(queue_key), {})[str(key_hash)] = float(
+                timestamp
+            )
+            return 1
+
+        if "redis.call('ZSCORE'" in script:
+            queue_key = str(args[0])
+            values = self.sorted_sets.setdefault(queue_key, {})
+            for index in range(1, len(args), 2):
+                key_hash = str(args[index])
+                expected_score = float(args[index + 1])
+                if values.get(key_hash) == expected_score:
+                    del values[key_hash]
+            return 1
+
+        raise AssertionError(f"Unexpected Redis script: {script}")
+
+    async def zrange(
+        self,
+        key: str,
+        start: int,
+        end: int,
+        *,
+        withscores: bool = False,
+    ) -> list[tuple[str, float]]:
+        entries = sorted(self.sorted_sets.get(key, {}).items(), key=lambda item: item[1])
+        selected = entries[start : end + 1]
+        return selected if withscores else [member for member, _ in selected]
 
     def pipeline(self, transaction: bool = True) -> FakePipeline:
         assert transaction
@@ -199,4 +236,38 @@ async def test_verify_api_key_uses_redis_after_first_database_lookup(
     )
     assert redis.expirations[f"api_key:tenant:{hash_api_key(api_key_value)}"] == 300
     assert len(redis.counters) == 1
-    assert next(iter(redis.counters)).startswith(f"rate_limit:api:tenant:{tenant_id}:")
+    assert next(iter(redis.counters)).startswith(f"rate_limit:{tenant_id}:api:")
+    key_hash = hash_api_key(api_key_value)
+    assert redis.cache[f"apikey:last_used:{key_hash}"]
+    assert redis.expirations[f"apikey:last_used:{key_hash}"] == 60
+    assert redis.sorted_sets["apikey:last_used:pending"].keys() == {key_hash}
+
+
+@pytest.mark.asyncio
+async def test_api_key_usage_is_flushed_in_a_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services.worker import api_key_usage
+
+    redis = FakeRedis()
+    key_hash = "a" * 64
+    redis.sorted_sets["apikey:last_used:pending"] = {key_hash: 1234.5}
+    result = Mock()
+    result.scalar_one.return_value = 1
+    session = AsyncMock()
+    session.execute.return_value = result
+    monkeypatch.setattr(
+        api_key_usage,
+        "AsyncSessionLocal",
+        lambda: FakeSessionContext(session),
+    )
+
+    flushed = await api_key_usage.flush_api_key_usage({"redis": redis})
+
+    assert flushed == {"processed": 1, "updated": 1}
+    session.execute.assert_awaited_once()
+    statement, params = session.execute.await_args.args
+    assert "record_api_key_usage_batch" in str(statement)
+    assert params == {"key_hashes": [key_hash], "used_at": [1234.5]}
+    session.commit.assert_awaited_once()
+    assert redis.sorted_sets["apikey:last_used:pending"] == {}

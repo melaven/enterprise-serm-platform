@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import Literal
 
 import structlog
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, HttpUrl, model_validator
 from session import get_tenant_session
@@ -51,35 +51,16 @@ class ParseJobOut(BaseModel):
 
 @router.post("/jobs", response_model=ParseJobOut, status_code=status.HTTP_202_ACCEPTED)
 async def enqueue_fetch_reviews(
-    body: ParseRequest,
     auth: CurrentPayload,
-    session: AsyncSession = Depends(get_tenant_session),
-    queue: ParserQueueManager = Depends(get_parser_queue),
     _rate_limit: None = Depends(check_parser_limits),
 ) -> ParseJobOut:
-    """
-    Постановка задачи парсинга в очередь.
-
-    Returns 202 Accepted с job_id для отслеживания статуса.
-    """
-    url = str(body.url)
-    company_id = auth.tenant_id or auth.sub
-    await enforce_reviews_quota(session, company_id)
-
-    # Создаем запрос для ParserQueueManager
-    from app.services.parser_queue import ParserJobRequest
-
-    request = ParserJobRequest(
-        platform=body.platform,
-        url=url,
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "Public-page scraping is disabled. Connect an authorized official "
+            "integration or submit customer-provided data to the SI API."
+        ),
     )
-
-    # Ставим задачу в очередь
-    response = await queue.enqueue_parser_job(company_id, request)
-
-    log.info("parser_enqueued", job_id=response.job_id, platform=body.platform)
-
-    return ParseJobOut(job_id=response.job_id)
 
 
 async def _sse_status_generator(
@@ -164,7 +145,6 @@ async def _sse_status_generator(
 async def stream_parser_status(
     job_id: str,
     auth: CurrentPayload,
-    queue: ParserQueueManager = Depends(get_parser_queue),
 ) -> StreamingResponse:
     """
     SSE endpoint для real-time отслеживания статуса парсера.
@@ -184,15 +164,7 @@ async def stream_parser_status(
     });
     ```
     """
-    company_id = auth.tenant_id or auth.sub
-    log.info("sse_stream_started", job_id=job_id, tenant_id=str(company_id))
-
-    return StreamingResponse(
-        _sse_status_generator(job_id, str(company_id), queue),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # Отключаем буферизацию в nginx
-        },
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail="Public-page scraping jobs are disabled",
     )

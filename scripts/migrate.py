@@ -40,6 +40,14 @@ MIGRATIONS: Final = (
     "022_security_audit_log.sql",
     "023_weekly_digest_recipients.sql",
     "024_platform_metadata.sql",
+    "025_oauth_refresh_tokens.sql",
+    "026_api_key_last_used_batch.sql",
+    "027_review_analysis_dlq.sql",
+    "028_schema_cleanup.sql",
+    "029_anonymize_pii.sql",
+    "030_review_data_minimization.sql",
+    "031_authorized_local_si.sql",
+    "031_enforce_rls_all_tables.sql",
 )
 _DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _TRANSACTION_COMMANDS = {"BEGIN", "COMMIT", "ROLLBACK"}

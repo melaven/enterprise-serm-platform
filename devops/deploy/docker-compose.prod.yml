@@ -32,7 +32,7 @@ services:
 
   worker:
     <<: *app
-    command: ["arq", "app.worker.worker.WorkerSettings"]
+    command: ["python", "-m", "app.services.worker.main"]
     stop_grace_period: 40s
     mem_limit: 1g
     depends_on: { redis: { condition: service_healthy } }

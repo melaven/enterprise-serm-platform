@@ -6,11 +6,13 @@ from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, desc, func, or_, select, text
+from sqlalchemy import and_, desc, func, literal, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..core.anonymizer import anonymize_author_name
 from ..core.exceptions import DatabaseError
+from ..core.review_privacy import safe_review_summary
 from ..models.economics import Company, Platform, Review
 from ..schemas.economics import ReviewStatus
 from .base import BaseRepository
@@ -39,14 +41,13 @@ class ParserRepository(BaseRepository[Review]):
             for data in reviews_data:
                 review = Review(
                     platform_id=data["platform_id"],
-                    author_name=data["author_name"],
+                    author_name=anonymize_author_name(),
                     rating=data["rating"],
-                    text=data["text"],
-                    external_review_id=data.get("external_review_id"),
+                    text=safe_review_summary(data["rating"]),
                     company_id=data["company_id"],
                     status=data.get("status", ReviewStatus.NEW),
                     financial_impact=data.get("financial_impact", 0.0),
-                    si_response=data.get("si_response"),
+                    si_response=None,
                 )
                 reviews.append(review)
 
@@ -57,36 +58,6 @@ class ParserRepository(BaseRepository[Review]):
 
         except Exception as e:
             raise DatabaseError("Ошибка массового создания отзывов", e)
-
-    async def get_existing_external_ids(
-        self, platform_id: UUID, external_ids: list[str]
-    ) -> list[str]:
-        """
-        Получить список существующих external_id для платформы
-        (для проверки дубликатов перед массовой загрузкой)
-
-        Args:
-            platform_id: ID платформы
-            external_ids: Список внешних ID для проверки
-
-        Returns:
-            Список существующих external_id
-        """
-        try:
-            if not external_ids:
-                return []
-
-            query = select(Review.external_review_id).where(
-                and_(
-                    Review.platform_id == platform_id,
-                    Review.external_review_id.in_(external_ids),
-                )
-            )
-            result = await self.db.execute(query)
-            return [row[0] for row in result.fetchall() if row[0] is not None]
-
-        except Exception as e:
-            raise DatabaseError("Ошибка проверки дубликатов по external_id", e)
 
     async def get_platform_by_url(self, platform_url: str) -> Platform | None:
         """
@@ -263,46 +234,6 @@ class ParserRepository(BaseRepository[Review]):
         except Exception as e:
             raise DatabaseError("Ошибка получения кандидатов для парсинга", e)
 
-    async def mark_reviews_as_parsed(
-        self, platform_id: UUID, external_ids: list[str]
-    ) -> int:
-        """
-        Пометить отзывы как обработанные парсером
-        (можно использовать для отслеживания источника данных)
-
-        Args:
-            platform_id: ID платформы
-            external_ids: Список внешних ID обработанных отзывов
-
-        Returns:
-            Количество помеченных отзывов
-        """
-        try:
-            if not external_ids:
-                return 0
-
-            # Обновляем метку времени последнего обновления
-            query = text("""
-                UPDATE reviews
-                SET updated_at = :updated_at
-                WHERE platform_id = :platform_id
-                AND external_review_id = ANY(:external_ids)
-            """)
-
-            result = await self.db.execute(
-                query,
-                {
-                    "updated_at": datetime.utcnow(),
-                    "platform_id": platform_id,
-                    "external_ids": external_ids,
-                },
-            )
-
-            return result.rowcount
-
-        except Exception as e:
-            raise DatabaseError("Ошибка отметки отзывов как обработанных", e)
-
     async def get_parsing_performance_stats(
         self, company_id: UUID = None, days: int = 7
     ) -> dict[str, Any]:
@@ -331,19 +262,14 @@ class ParserRepository(BaseRepository[Review]):
             total_new_result = await self.db.execute(total_new_reviews_query)
             total_new_reviews = total_new_result.scalar() or 0
 
-            # Отзывы с external_review_id (спарсенные)
-            parsed_reviews_query = select(func.count(Review.id)).where(
-                and_(base_condition, Review.external_review_id.isnot(None))
-            )
-            parsed_result = await self.db.execute(parsed_reviews_query)
-            parsed_reviews = parsed_result.scalar() or 0
+            parsed_reviews = 0
 
             # Статистика по дням
             daily_stats_query = (
                 select(
                     func.date(Review.created_at).label("date"),
                     func.count(Review.id).label("reviews_count"),
-                    func.count(Review.external_review_id).label("parsed_count"),
+                    literal(0).label("parsed_count"),
                 )
                 .where(base_condition)
                 .group_by(func.date(Review.created_at))
@@ -371,7 +297,7 @@ class ParserRepository(BaseRepository[Review]):
                     Platform.id,
                     Platform.name,
                     func.count(Review.id).label("reviews_count"),
-                    func.count(Review.external_review_id).label("parsed_count"),
+                    literal(0).label("parsed_count"),
                 )
                 .select_from(Platform)
                 .join(Review, Platform.id == Review.platform_id)
@@ -426,7 +352,7 @@ class ParserRepository(BaseRepository[Review]):
     ) -> int:
         """
         Очистка старых неудачных попыток парсинга
-        (отзывы без external_review_id и текста)
+        (отзывы с пустой безопасной выжимкой)
 
         Args:
             days_old: Возраст записей в днях
@@ -438,13 +364,12 @@ class ParserRepository(BaseRepository[Review]):
         try:
             cutoff_date = datetime.utcnow() - timedelta(days=days_old)
 
-            # Находим записи для удаления (без external_id и с пустым текстом)
+            # Находим записи с пустым текстом
             query = (
                 select(Review.id)
                 .where(
                     and_(
                         Review.created_at < cutoff_date,
-                        Review.external_review_id.is_(None),
                         or_(
                             Review.text.is_(None),
                             Review.text == "",

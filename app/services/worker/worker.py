@@ -9,10 +9,8 @@ from arq import create_pool, cron
 
 from ...core.logger import configure_logging, get_logger
 from ...core.redis import get_redis_settings
-from .analysis_tasks import process_reviews_batch
+from .api_key_usage import flush_api_key_usage
 from .digest import enqueue_weekly_digests, send_company_weekly_digest
-from .reply_tasks import publish_review_reply
-from .tasks import fetch_reviews_task
 
 logger = get_logger(__name__)
 
@@ -25,14 +23,13 @@ class WorkerSettings:
 
     # Задачи для выполнения
     functions = [
-        fetch_reviews_task,
-        process_reviews_batch,
-        publish_review_reply,
         send_company_weekly_digest,
         enqueue_weekly_digests,
+        flush_api_key_usage,
     ]
     cron_jobs = [
         cron(enqueue_weekly_digests, weekday="mon", hour=9, minute=0),
+        cron(flush_api_key_usage, second=0),
     ]
     timezone = timezone.utc
 

@@ -109,7 +109,7 @@ export function QuotaWidget({
       </h2>
 
       <div className={cn(compact ? 'mt-6 space-y-6' : 'mt-10 space-y-10')}>
-        <QuotaRow label="LLM-токены" unit="ток." counter={llmTokens} compact={compact} />
+        <QuotaRow label="SI-анализ" unit="ток." counter={llmTokens} compact={compact} />
         <QuotaRow label="Разобрано отзывов" unit="отз." counter={reviewsParsed} compact={compact} />
       </div>
 

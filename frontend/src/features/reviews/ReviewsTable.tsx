@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Database, Download } from 'lucide-react';
-import { toast } from 'sonner';
 import { useReviews } from '../../store/useAppStore';
 import {
   Table,
@@ -33,11 +32,9 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
     reviewsLoading,
     reviewsTotal,
     fetchReviews,
-    approveAiResponse,
   } = useReviews();
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [approvingReviewId, setApprovingReviewId] = useState<string | null>(null);
 
   useEffect(() => {
     const params: {
@@ -69,29 +66,11 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
     setIsModalOpen(true);
   };
 
-  const handleApprove = async (reviewId: string) => {
-    setApprovingReviewId(reviewId);
-    try {
-      if (await approveAiResponse(reviewId)) {
-        toast.success('AI-ответ подтверждён');
-        setIsModalOpen(false);
-      }
-    } finally {
-      setApprovingReviewId(null);
-    }
-  };
-
-  const handleEdit = (reviewId: string) => {
-    console.log('Edit review:', reviewId);
-    // TODO: Implement navigation to edit page
-    setIsModalOpen(false);
-  };
-
   // Фильтрация по поисковому запросу (клиентская фильтрация)
   const filteredReviews = searchQuery
     ? reviews.filter((review) =>
         review.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        review.author_name?.toLowerCase().includes(searchQuery.toLowerCase())
+      review.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : reviews;
 
@@ -180,7 +159,7 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
           <p className="text-chrome-400 text-sm max-w-sm mb-4">
             {isSearching 
               ? 'Попробуйте изменить параметры фильтрации или сбросить фильтры'
-              : 'Отзывы появятся здесь после запуска сбора данных.'
+              : 'Данные появятся после импорта клиента или синхронизации официальной интеграции.'
             }
           </p>
           
@@ -203,7 +182,7 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
                 window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
             >
-              Запустить первый парсинг
+              Обновить
             </Button>
           )}
         </div>
@@ -256,12 +235,12 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
             <TableHeader>
               <TableRow>
                 <TableHead>Платформа</TableHead>
-                <TableHead>Автор</TableHead>
                 <TableHead>Рейтинг</TableHead>
-                <TableHead>Отзыв</TableHead>
+                <TableHead>Сводка SI</TableHead>
                 <TableHead>Тональность</TableHead>
+                <TableHead>Уровень угрозы</TableHead>
+                <TableHead>Теги</TableHead>
                 <TableHead>Дата</TableHead>
-                <TableHead className="text-right">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -273,11 +252,6 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
                 >
                   <TableCell className="font-medium">
                     {review.platform}
-                  </TableCell>
-                  <TableCell className="max-w-[200px]">
-                    <div className="truncate" title={review.author_name || 'Аноним'}>
-                      {review.author_name || 'Аноним'}
-                    </div>
                   </TableCell>
                   <TableCell>
                     <span className="text-lime font-mono text-sm">
@@ -292,20 +266,10 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
                   <TableCell>
                     {getSentimentBadge(review.sentiment)}
                   </TableCell>
+                  <TableCell>{review.threat_level ?? '—'}</TableCell>
+                  <TableCell>{review.tags.join(', ') || '—'}</TableCell>
                   <TableCell className="font-mono text-xs text-chrome-400 whitespace-nowrap">
                     {formatDate(review.created_at)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRowClick(review);
-                      }}
-                    >
-                      Детали
-                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -319,9 +283,6 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
         review={selectedReview}
         open={isModalOpen}
         onOpenChange={setIsModalOpen}
-        onApprove={handleApprove}
-        isApproving={approvingReviewId === selectedReview?.id}
-        onEdit={handleEdit}
       />
     </>
   );

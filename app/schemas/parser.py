@@ -25,6 +25,8 @@ class RawReview(BaseModel):
 
     platform_id: str = Field(min_length=1, max_length=128)  # ID отзыва на площадке
     author_name: str = Field(default="Аноним", max_length=200)
+    author_avatar_url: str | None = None
+    author_profile_url: str | None = None
     text: str = Field(default="", max_length=MAX_TEXT_CHARS)  # может быть пустым
     rating: float = Field(ge=0, le=5)
     date: dt.datetime  # всегда UTC, tz-aware

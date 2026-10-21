@@ -2,10 +2,8 @@
 Enterprise middleware для Correlation ID и трассировки запросов
 """
 
-import json
 import time
 from collections.abc import Callable
-from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import Request, Response
@@ -164,7 +162,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             "cookie",
             "x-api-key",
             "x-auth-token",
-            "authorization",
+            "set-cookie",
+            "proxy-authenticate",
+            "www-authenticate",
         ]
 
         self.logger = get_logger("request_logging")
@@ -178,23 +178,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_data = {
             "correlation_id": correlation_id,
             "method": request.method,
-            "url": str(request.url),
             "path": request.url.path,
-            "query_params": dict(request.query_params),
         }
 
         # Добавляем заголовки если нужно
         if self.log_headers:
             request_data["headers"] = self._filter_headers(dict(request.headers))
 
-        # Добавляем тело запроса если нужно
+        # Request bodies are never logged; they may contain review text or credentials.
         if self.log_request_body and request.method in ["POST", "PUT", "PATCH"]:
-            try:
-                body = await request.body()
-                if body:
-                    request_data["body"] = self._filter_request_body(body)
-            except Exception as e:
-                request_data["body_error"] = str(e)
+            request_data["body"] = "<omitted>"
 
         self.logger.debug("Request details", **request_data)
 
@@ -205,7 +198,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         response_data = {
             "correlation_id": correlation_id,
             "status_code": response.status_code,
-            "response_headers": dict(response.headers) if self.log_headers else None,
+            "response_headers": (
+                self._filter_headers(dict(response.headers)) if self.log_headers else None
+            ),
         }
 
         self.logger.debug("Response details", **response_data)
@@ -225,40 +220,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         return filtered
 
     def _filter_request_body(self, body: bytes) -> str:
-        try:
-            decoded_body = body.decode("utf-8")
-        except UnicodeDecodeError:
-            return f"<binary request body, {len(body)} bytes>"
-
-        try:
-            data = json.loads(decoded_body)
-        except json.JSONDecodeError:
-            return f"<non-JSON request body, {len(body)} bytes>"
-
-        sensitive_fields = {
-            "access_token",
-            "api_key",
-            "client_secret",
-            "password",
-            "refresh_token",
-            "secret",
-            "secret_key",
-            "token",
-        }
-
-        def redact(value: Any) -> Any:
-            if isinstance(value, dict):
-                return {
-                    key: "***HIDDEN***"
-                    if key.lower().replace("-", "_") in sensitive_fields
-                    else redact(item)
-                    for key, item in value.items()
-                }
-            if isinstance(value, list):
-                return [redact(item) for item in value]
-            return value
-
-        return json.dumps(redact(data), ensure_ascii=False)
+        return "<omitted>"
 
 
 class PerformanceMiddleware(BaseHTTPMiddleware):

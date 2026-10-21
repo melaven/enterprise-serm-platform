@@ -1,7 +1,10 @@
+import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import httpx
 import pytest
+from pydantic import SecretStr
 from sqlalchemy.dialects import postgresql
 
 from app.models.economics import PlatformIntegration
@@ -79,48 +82,86 @@ async def test_provider_fetch_methods_fail_explicitly_until_implemented() -> Non
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("status_code", "expected"), [(204, True), (400, False), (500, False)]
+    ("adapter_type", "platform"),
+    [
+        (YandexBusinessAdapter, "Яндекс Бизнес"),
+        (TwoGisAdapter, "2ГИС"),
+        (AvitoAdapter, "Авито"),
+        (OtzovikScraperAdapter, "Отзовик"),
+    ],
 )
-async def test_yandex_publish_reply_sends_request_and_reports_http_status(
-    monkeypatch: pytest.MonkeyPatch,
-    status_code: int,
-    expected: bool,
+async def test_manual_assistant_adapters_log_ready_reply_and_succeed(
+    adapter_type: type[BasePlatformAdapter],
+    platform: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
+    caplog.set_level(logging.INFO)
+    adapter = adapter_type("test-token", {})
+
+    assert await adapter.publish_reply("review-456", "Thanks") is True
+    assert (
+        "Режим SI-Ассистента: текст готов для ручной публикации на площадке "
+        f"{platform}"
+    ) in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_oauth_adapters_refresh_after_401_and_retry_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter_type = GoogleBusinessAdapter
+    meta_config: dict[str, object] = {
+        "external_account_id": "account-123",
+        "external_location_id": "loc-456",
+    }
+    token_url = "https://oauth2.googleapis.com/token"
+    auth_header = "Bearer"
     requests: list[httpx.Request] = []
 
     def handle_request(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(status_code)
+        if str(request.url) == token_url:
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": "new-access-token",
+                    "refresh_token": "rotated-refresh-token",
+                    "expires_in": 3600,
+                },
+            )
+        if request.headers["Authorization"] == f"{auth_header} old-access-token":
+            return httpx.Response(401)
+        return httpx.Response(200, json={"reviews": []})
 
     original_async_client = httpx.AsyncClient
     monkeypatch.setattr(
-        "app.services.platforms.yandex.httpx.AsyncClient",
-        lambda: original_async_client(transport=httpx.MockTransport(handle_request)),
+        "app.services.platforms.google.httpx.AsyncClient",
+        lambda **kwargs: original_async_client(
+            transport=httpx.MockTransport(handle_request),
+            **kwargs,
+        ),
+    )
+    monkeypatch.setattr(
+        "app.services.platforms.google.get_settings",
+        lambda: SimpleNamespace(
+            **{
+                "google_oauth_client_id": "client-id",
+                "google_oauth_client_secret": SecretStr("client-secret"),
+            }
+        ),
     )
 
-    adapter = YandexBusinessAdapter(
-        "test-token",
-        {"yandex_org_id": "org-123"},
+    adapter = adapter_type(
+        "old-access-token",
+        meta_config,
+        refresh_token="old-refresh-token",
     )
-    result = await adapter.publish_reply("review-456", "Thanks for your feedback")
 
-    assert result is expected
-    assert len(requests) == 1
-    request = requests[0]
-    assert request.method == "POST"
-    assert str(request.url) == (
-        "https://api.yandex.ru/v1/orgs/org-123/reviews/" "review-456/replies"
-    )
-    assert request.headers["Authorization"] == "OAuth test-token"
-    assert request.read() == b'{"text":"Thanks for your feedback"}'
-
-
-@pytest.mark.asyncio
-async def test_yandex_publish_reply_requires_organization_id() -> None:
-    adapter = YandexBusinessAdapter("test-token", {})
-
-    with pytest.raises(
-        ValueError,
-        match="^Missing yandex_org_id in meta_config$",
-    ):
-        await adapter.publish_reply("review-456", "reply")
+    assert await adapter.fetch_reviews(datetime.now(timezone.utc)) == []
+    assert len(requests) == 3
+    assert str(requests[1].url) == token_url
+    assert requests[1].method == "POST"
+    assert requests[2].headers["Authorization"] == f"{auth_header} new-access-token"
+    assert adapter.api_key == "new-access-token"
+    assert adapter.refresh_token == "rotated-refresh-token"
+    assert adapter.expires_at is not None

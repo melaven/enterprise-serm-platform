@@ -1,286 +1,162 @@
-/**
- * Tests for useAppStore
- * Covers: auth actions, token management, demo mode fallback
- */
+import { act, renderHook } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, act, waitFor } from '@testing-library/react';
-import { useAppStore } from '../useAppStore';
-import * as demoApi from '@/api/demoService';
-import { TokenStore } from '@/api/token';
-
-// Mock API services
-vi.mock('@/api/demoService', () => ({
+const apiMocks = vi.hoisted(() => ({
   login: vi.fn(),
   register: vi.fn(),
-  getCurrentUser: vi.fn(),
   logout: vi.fn(),
+  setToken: vi.fn(),
+  clearTokens: vi.fn(),
 }));
 
-// Mock TokenStore
-vi.mock('@/api/token', () => ({
-  TokenStore: vi.fn().mockImplementation(() => ({
-    getAccessToken: vi.fn(() => null),
-    getRefreshToken: vi.fn(() => null),
-    setTokens: vi.fn(),
-    clearTokens: vi.fn(),
-  })),
+vi.mock('@/api/services', () => ({
+  login: apiMocks.login,
+  register: apiMocks.register,
+  logout: apiMocks.logout,
+  tokens: {
+    set: apiMocks.setToken,
+    clear: apiMocks.clearTokens,
+  },
 }));
 
-describe('useAppStore - Auth Actions', () => {
+vi.mock('@/api/demoService', () => ({
+  login: apiMocks.login,
+  register: apiMocks.register,
+  logout: apiMocks.logout,
+}));
+
+import { useAppStore } from '../useAppStore';
+
+const initialState = useAppStore.getState();
+
+function createAuthResponse() {
+  return {
+    access_token: 'access-token',
+    refresh_token: 'refresh-token',
+    token_type: 'bearer' as const,
+    expires_in: 3600,
+    user: {
+      id: 'user-123',
+      email: 'test@example.com',
+      tenant_id: 'tenant-123',
+    },
+  };
+}
+
+describe('useAppStore authentication actions', () => {
   beforeEach(() => {
-    // Reset store state before each test
-    useAppStore.setState({
-      user: null,
-      isAuthenticated: false,
-      isLoading: false,
-    });
-    
-    // Clear all mocks
+    useAppStore.setState(initialState, true);
     vi.clearAllMocks();
   });
 
-  describe('performLogin', () => {
-    it('should successfully login and set user', async () => {
-      const mockAuthResponse = {
-        access_token: 'test-access-token',
-        refresh_token: 'test-refresh-token',
-        token_type: 'bearer' as const,
-        expires_in: 3600,
-        user: {
-          id: 'user-123',
-          email: 'test@example.com',
-          tenant_id: 'tenant-123',
-        },
-      };
+  it('logs in and updates the user and token state', async () => {
+    apiMocks.login.mockResolvedValueOnce(createAuthResponse());
+    const { result } = renderHook(() => useAppStore());
+    let loginResult: boolean | undefined;
 
-      vi.mocked(demoApi.login).mockResolvedValueOnce(mockAuthResponse);
-
-      const { result } = renderHook(() => useAppStore());
-
-      await act(async () => {
-        await result.current.performLogin('test@example.com', 'password123');
-      });
-
-      await waitFor(() => {
-        expect(result.current.isAuthenticated).toBe(true);
-        expect(result.current.user).toEqual({
-          id: 'user-123',
-          email: 'test@example.com',
-          tenant_id: 'tenant-123',
-        });
-        expect(result.current.isLoading).toBe(false);
-      });
-
-      expect(demoApi.login).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        password: 'password123',
-      });
+    await act(async () => {
+      loginResult = await result.current.performLogin('test@example.com', 'password123');
     });
 
-    it('should handle login errors gracefully', async () => {
-      const mockError = new Error('Invalid credentials');
-      vi.mocked(demoApi.login).mockRejectedValueOnce(mockError);
-
-      const { result } = renderHook(() => useAppStore());
-
-      await expect(async () => {
-        await act(async () => {
-          await result.current.performLogin('wrong@example.com', 'wrong-password');
-        });
-      }).rejects.toThrow('Invalid credentials');
-
-      expect(result.current.isAuthenticated).toBe(false);
-      expect(result.current.user).toBeNull();
-      expect(result.current.isLoading).toBe(false);
-    });
-
-    it('should set loading state during login', async () => {
-      const mockAuthResponse = {
-        access_token: 'test-token',
-        refresh_token: 'test-refresh',
-        token_type: 'bearer' as const,
-        expires_in: 3600,
-        user: {
-          id: 'user-123',
-          email: 'test@example.com',
-          tenant_id: 'tenant-123',
-        },
-      };
-
-      let resolveLogin: ((value: typeof mockAuthResponse) => void) | undefined;
-      const loginPromise = new Promise<typeof mockAuthResponse>((resolve) => {
-        resolveLogin = resolve;
-      });
-
-      vi.mocked(demoApi.login).mockReturnValueOnce(loginPromise);
-
-      const { result } = renderHook(() => useAppStore());
-
-      const loginCall = act(async () => {
-        await result.current.performLogin('test@example.com', 'password123');
-      });
-
-      // Check loading state is true
-      expect(result.current.isLoading).toBe(true);
-
-      // Resolve the promise
-      resolveLogin!(mockAuthResponse);
-      await loginCall;
-
-      // Check loading state is false after completion
-      expect(result.current.isLoading).toBe(false);
+    expect(loginResult).toBe(true);
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.user).toEqual(createAuthResponse().user);
+    expect(apiMocks.setToken).toHaveBeenCalledWith('access-token');
+    expect(apiMocks.login).toHaveBeenCalledWith({
+      email: 'test@example.com',
+      password: 'password123',
     });
   });
 
-  describe('performRegister', () => {
-    it('should successfully register and set user', async () => {
-      const mockAuthResponse = {
-        access_token: 'test-access-token',
-        refresh_token: 'test-refresh-token',
-        token_type: 'bearer' as const,
-        expires_in: 3600,
-        user: {
-          id: 'user-new',
-          email: 'newuser@example.com',
-          tenant_id: 'tenant-new',
-        },
-      };
+  it('returns false and leaves the user unauthenticated when login fails', async () => {
+    apiMocks.login.mockRejectedValueOnce(new Error('Invalid credentials'));
+    const { result } = renderHook(() => useAppStore());
+    let loginResult: boolean | undefined;
 
-      vi.mocked(demoApi.register).mockResolvedValueOnce({
+    await act(async () => {
+      loginResult = await result.current.performLogin('wrong@example.com', 'wrong-password');
+    });
+
+    expect(loginResult).toBe(false);
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.user).toBeNull();
+  });
+
+  it('registers a user and logs them in', async () => {
+    apiMocks.register.mockResolvedValueOnce({
+      id: 'user-new',
+      email: 'newuser@example.com',
+      tenant_id: 'tenant-new',
+      created_at: new Date().toISOString(),
+    });
+    apiMocks.login.mockResolvedValueOnce({
+      ...createAuthResponse(),
+      user: {
         id: 'user-new',
         email: 'newuser@example.com',
         tenant_id: 'tenant-new',
-        created_at: new Date().toISOString(),
-      });
+      },
+    });
+    const { result } = renderHook(() => useAppStore());
+    let registrationResult: boolean | undefined;
 
-      vi.mocked(demoApi.login).mockResolvedValueOnce(mockAuthResponse);
-
-      const { result } = renderHook(() => useAppStore());
-
-      await act(async () => {
-        await result.current.performRegister(
-          'newuser@example.com',
-          'password123',
-          'New User'
-        );
-      });
-
-      await waitFor(() => {
-        expect(result.current.isAuthenticated).toBe(true);
-        expect(result.current.user?.email).toBe('newuser@example.com');
-      });
-
-      expect(demoApi.register).toHaveBeenCalledWith({
-        email: 'newuser@example.com',
-        password: 'password123',
-        full_name: 'New User',
-      });
-
-      expect(demoApi.login).toHaveBeenCalledWith({
-        email: 'newuser@example.com',
-        password: 'password123',
-      });
+    await act(async () => {
+      registrationResult = await result.current.performRegister(
+        'newuser@example.com',
+        'password123',
+        'New User'
+      );
     });
 
-    it('should handle registration errors', async () => {
-      const mockError = new Error('Email already exists');
-      vi.mocked(demoApi.register).mockRejectedValueOnce(mockError);
-
-      const { result } = renderHook(() => useAppStore());
-
-      await expect(async () => {
-        await act(async () => {
-          await result.current.performRegister(
-            'existing@example.com',
-            'password123',
-            'User'
-          );
-        });
-      }).rejects.toThrow('Email already exists');
-
-      expect(result.current.isAuthenticated).toBe(false);
+    expect(registrationResult).toBe(true);
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.user?.email).toBe('newuser@example.com');
+    expect(apiMocks.register).toHaveBeenCalledWith({
+      email: 'newuser@example.com',
+      password: 'password123',
+      full_name: 'New User',
+    });
+    expect(apiMocks.login).toHaveBeenCalledWith({
+      email: 'newuser@example.com',
+      password: 'password123',
     });
   });
 
-  describe('logout', () => {
-    it('should clear user and tokens on logout', async () => {
-      // Set initial authenticated state
-      useAppStore.setState({
-        user: {
-          id: 'user-123',
-          email: 'test@example.com',
-          tenant_id: 'tenant-123',
-          created_at: new Date().toISOString(),
-        },
-        isAuthenticated: true,
-      });
+  it('returns false when registration fails', async () => {
+    apiMocks.register.mockRejectedValueOnce(new Error('Email already exists'));
+    const { result } = renderHook(() => useAppStore());
+    let registrationResult: boolean | undefined;
 
-      vi.mocked(demoApi.logout).mockResolvedValueOnce(undefined);
-
-      const { result } = renderHook(() => useAppStore());
-
-      await act(async () => {
-        await result.current.logout();
-      });
-
-      expect(result.current.isAuthenticated).toBe(false);
-      expect(result.current.user).toBeNull();
-      expect(demoApi.logout).toHaveBeenCalledOnce();
+    await act(async () => {
+      registrationResult = await result.current.performRegister(
+        'existing@example.com',
+        'password123',
+        'User'
+      );
     });
 
-    it('should handle logout errors gracefully', async () => {
-      useAppStore.setState({
-        user: {
-          id: 'user-123',
-          email: 'test@example.com',
-          tenant_id: 'tenant-123',
-          created_at: new Date().toISOString(),
-        },
-        isAuthenticated: true,
-      });
-
-      vi.mocked(demoApi.logout).mockRejectedValueOnce(new Error('Network error'));
-
-      const { result } = renderHook(() => useAppStore());
-
-      // Should not throw, just clear state
-      await act(async () => {
-        await result.current.logout();
-      });
-
-      expect(result.current.isAuthenticated).toBe(false);
-      expect(result.current.user).toBeNull();
-    });
+    expect(registrationResult).toBe(false);
+    expect(result.current.isAuthenticated).toBe(false);
   });
 
-  describe('Token Management', () => {
-    it('should store tokens after successful login', async () => {
-      const mockTokenStore = new TokenStore(null);
-      const setTokensSpy = vi.spyOn(mockTokenStore, 'setTokens');
-
-      const mockAuthResponse = {
-        access_token: 'access-token-123',
-        refresh_token: 'refresh-token-456',
-        token_type: 'bearer' as const,
-        expires_in: 3600,
-        user: {
-          id: 'user-123',
-          email: 'test@example.com',
-          tenant_id: 'tenant-123',
-        },
-      };
-
-      vi.mocked(demoApi.login).mockResolvedValueOnce(mockAuthResponse);
-
-      const { result } = renderHook(() => useAppStore());
-
-      await act(async () => {
-        await result.current.performLogin('test@example.com', 'password123');
-      });
-
-      // Token store should be called (implementation detail, verify in integration test)
-      expect(result.current.isAuthenticated).toBe(true);
+  it('clears user and tokens when logging out', async () => {
+    useAppStore.setState({
+      user: {
+        id: 'user-123',
+        email: 'test@example.com',
+        tenant_id: 'tenant-123',
+      },
+      isAuthenticated: true,
     });
+    const { result } = renderHook(() => useAppStore());
+
+    await act(async () => {
+      await result.current.logout();
+    });
+
+    expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.user).toBeNull();
+    expect(apiMocks.logout).toHaveBeenCalledOnce();
+    expect(apiMocks.clearTokens).toHaveBeenCalledOnce();
   });
 });

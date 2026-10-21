@@ -40,7 +40,7 @@ x-app: &app
       condition: service_healthy
   networks:
     - data   # postgres/redis: сеть без выхода наружу
-    - edge   # исходящий интернет (Gemini, Stripe, парсеры) и связь с nginx
+    - edge   # исходящий интернет для разрешенных интеграций и связь с nginx
 
 services:
   api:
@@ -65,22 +65,17 @@ services:
 
   worker:
     <<: *app
-    build:
-      context: .
-      dockerfile: worker.Dockerfile # воркер с Playwright/Chromium (API-образ без браузера)
-      target: runtime
-      args:
-        PYTHON_VERSION: "3.12"
-    image: tenable-serm-worker:${APP_VERSION:-latest}
-    command: ["arq", "app.worker.worker.WorkerSettings"]
+    command: ["arq", "app.services.worker.worker.WorkerSettings"]
     stop_grace_period: 40s # дать дозавершить задачи; прерванные ARQ вернёт в очередь
-    mem_limit: ${WORKER_MEM_LIMIT:-2g} # Chromium прожорлив: 1 ГБ мало при нескольких страницах
-    # /dev/shm по умолчанию 64 МБ: Chromium на нём падает («Aw, Snap»/crashed). Либо shm_size, либо --disable-dev-shm-usage.
-    shm_size: 1g
-    tmpfs:
-      - /tmp:size=512m,mode=1777 # HOME и профиль Chromium; в read-only ФС писать больше некуда
+    mem_limit: ${WORKER_MEM_LIMIT:-1g}
+    depends_on: *app-deps
+    environment:
+      <<: *app-env
+    networks:
+      - data
+      - edge
     healthcheck:
-      test: ["CMD", "arq", "--check", "app.worker.worker.WorkerSettings"]
+      test: ["CMD", "arq", "--check", "app.services.worker.worker.WorkerSettings"]
       interval: 30s
       timeout: 10s
       retries: 3

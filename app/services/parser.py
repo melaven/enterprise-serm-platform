@@ -44,6 +44,11 @@ class ParserService:
         Returns:
             Результат обработки с статистикой
         """
+        raise RuntimeError(
+            "Public-page review parsing is disabled; use customer-provided data "
+            "or an authorized official integration"
+        )
+
         logger.info(
             f"Processing {len(parsed_reviews)} parsed reviews for company {company_id}"
         )
@@ -163,7 +168,7 @@ class ParserService:
         """
         try:
             # Обязательные поля
-            required_fields = ["rating", "text", "author_name"]
+            required_fields = ["rating", "text"]
             missing_fields = [
                 field for field in required_fields if not review_data.get(field)
             ]
@@ -187,18 +192,11 @@ class ParserService:
                     "Текст отзыва слишком короткий (минимум 10 символов)"
                 )
 
-            # Валидация имени автора
-            author_name = review_data.get("author_name", "").strip()
-            if len(author_name) < 2:
-                raise ValidationError("Имя автора слишком короткое (минимум 2 символа)")
-
             # Создаем объект ReviewBase
             return ReviewBase(
                 platform_id=platform_id,
-                author_name=author_name,
                 rating=int(rating),  # Приводим к int для консистентности
                 text=text,
-                external_review_id=review_data.get("external_id"),  # Может быть None
                 status=ReviewStatus.NEW,  # Новые отзывы всегда начинают со статуса NEW
             )
 

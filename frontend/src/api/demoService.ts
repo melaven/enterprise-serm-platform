@@ -135,16 +135,6 @@ export async function getReviewById(reviewId: string): Promise<realApi.Review> {
   }
 }
 
-export async function approveAiResponse(
-  reviewId: string,
-): Promise<realApi.ApproveAiResponseResult> {
-  if (isDemoMode) {
-    await mockData.simulateNetworkDelay();
-    return mockData.approveMockAiResponse(reviewId);
-  }
-  return realApi.approveAiResponse(reviewId);
-}
-
 // ========================================
 // Dashboard Services with Demo Fallback
 // ========================================

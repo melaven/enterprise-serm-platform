@@ -1,8 +1,8 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode } from 'react';
 
 /**
  * AuthShell - Обёртка для страниц авторизации
- * Строгий flat-design с минималистичным блестящим эффектом на кнопках
+ * Строгая flat-обёртка для страниц авторизации
  */
 
 interface AuthShellProps {
@@ -12,13 +12,6 @@ interface AuthShellProps {
 }
 
 export const AuthShell = ({ children, title, subtitle }: AuthShellProps) => {
-  const [glareTriggered, setGlareTriggered] = useState(false);
-
-  const handleGlare = () => {
-    setGlareTriggered(true);
-    setTimeout(() => setGlareTriggered(false), 800);
-  };
-
   return (
     <div className="min-h-screen bg-ink flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -26,13 +19,6 @@ export const AuthShell = ({ children, title, subtitle }: AuthShellProps) => {
         <div className="flex justify-center mb-8">
           <div className="w-16 h-16 bg-plum rounded-none flex items-center justify-center relative overflow-hidden">
             <span className="text-white font-bold text-2xl relative z-10">TS</span>
-            {/* Резкий блик при ховере */}
-            <div
-              className={`absolute inset-0 w-1/3 h-full bg-gradient-to-r from-transparent via-white/40 to-transparent ${
-                glareTriggered ? 'animate-hard-glare' : ''
-              }`}
-              style={{ left: '-150%' }}
-            />
           </div>
         </div>
 
@@ -49,10 +35,7 @@ export const AuthShell = ({ children, title, subtitle }: AuthShellProps) => {
         </div>
 
         {/* Content Card */}
-        <div 
-          className="card p-6"
-          onMouseEnter={handleGlare}
-        >
+        <div className="card p-6">
           {children}
         </div>
 

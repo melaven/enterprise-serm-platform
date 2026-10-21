@@ -62,7 +62,6 @@ interface AppState {
     sentiment?: string;
     search?: string;
   }) => Promise<void>;
-  approveAiResponse: (reviewId: string) => Promise<boolean>;
   fetchDashboard: () => Promise<void>;
   startParser: (platform: string, url: string) => Promise<string | null>;
   pollParserStatus: (jobId: string) => Promise<void>;
@@ -207,42 +206,6 @@ export const useAppStore = create<AppState>()(
         set({ reviewsLoading: false });
       },
 
-      approveAiResponse: async (reviewId) => {
-        const result = await withErrorHandling(() =>
-          apiClient.approveAiResponse(reviewId),
-        );
-        if (!result) {
-          return false;
-        }
-
-        set((state) => {
-          const wasPending = state.reviews.some(
-            (review) => review.id === result.review_id && review.ai_pending,
-          );
-          return {
-            reviews: state.reviews.map((review) =>
-              review.id === result.review_id
-                ? {
-                    ...review,
-                    status: result.status,
-                    ai_pending: result.ai_pending,
-                  }
-                : review,
-            ),
-            dashboard: state.dashboard
-              ? {
-                  ...state.dashboard,
-                  ai_pending: Math.max(
-                    0,
-                    state.dashboard.ai_pending - Number(wasPending),
-                  ),
-                }
-              : null,
-          };
-        });
-        return true;
-      },
-
       fetchDashboard: async () => {
         set({ dashboardLoading: true });
         await withErrorHandling(async () => {
@@ -327,7 +290,6 @@ export const useReviews = () => useAppStore((state) => ({
   reviewsPageSize: state.reviewsPageSize,
   reviewsTotalPages: state.reviewsTotalPages,
   fetchReviews: state.fetchReviews,
-  approveAiResponse: state.approveAiResponse,
 }));
 
 export const useDashboard = () => useAppStore((state) => ({

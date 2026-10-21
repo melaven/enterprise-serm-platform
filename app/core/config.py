@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     jwt_audience: str = "authenticated"
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-1.5-flash"
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: SecretStr | None = None
+    yandex_oauth_client_id: str | None = None
+    yandex_oauth_client_secret: SecretStr | None = None
 
     # --- Stripe. Всё необязательное: без ключей вебхук закрыт (503), checkout недоступен. ---
     stripe_secret_key: SecretStr | None = None

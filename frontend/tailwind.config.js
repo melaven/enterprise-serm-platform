@@ -1,16 +1,17 @@
 import colors from 'tailwindcss/colors';
 
+const channelColor = (token) => `rgb(var(${token}) / <alpha-value>)`;
+
 /**
- * Tenable SERM: монолитный flat. Только Ink / Zinc (Chrome) / Royal Plum / Electric Lime.
+ * Tenable SERM: enterprise flat. Plum is the branded surface; Lime is reserved for CTAs and small accents.
  *
- *   Ink     #000000 (фон приложения), zinc-950 (карточки)
- *   Chrome  zinc-800 (рамки), zinc-400 (второстепенный текст)
- *   Plum    #5A189A  основные кнопки, активные пункты меню, логотип
- *   Lime    #C5FF4A  позитивные метрики, успешные статусы, прогресс квот, онлайн-индикаторы
+ *   Ink     plum-tinted charcoal surfaces
+ *   Chrome  accessible borders and secondary text
+ *   Plum    #5A189A  branded surfaces and primary controls
+ *   Lime    #C5FF4A  key CTAs and restrained accents
  *
- * Тени, кольца, градиенты, blur и стекло ОТКЛЮЧЕНЫ на уровне corePlugins:
- * классы shadow-*, ring-*, bg-gradient-*, backdrop-blur-* просто не генерируются
- * (в том числе внутри shadcn/ui: фокус рисует глобальный outline, см. globals.css).
+ * Тени, ring и blur отключены на уровне corePlugins. Клавиатурный фокус
+ * обозначается контрастным глобальным outline.
  *
  * Токены shadcn (background, card, primary...) сохранены и привязаны к палитре,
  * поэтому штатные компоненты shadcn/ui продолжают работать.
@@ -30,95 +31,95 @@ export default {
         black: '#000000',
         white: '#FFFFFF',
         ink: {
-          DEFAULT: 'var(--color-ink)',
-          50: 'var(--color-ink-50)',
-          100: 'var(--color-ink-100)',
-          200: 'var(--color-ink-200)',
-          300: 'var(--color-ink-300)',
-          400: 'var(--color-ink-400)',
-          500: 'var(--color-ink-500)',
-          600: 'var(--color-ink-600)',
-          700: 'var(--color-ink-700)',
-          800: 'var(--color-ink-800)',
-          900: 'var(--color-ink-900)',
-          950: 'var(--color-ink-950)',
+          DEFAULT: channelColor('--color-ink'),
+          50: channelColor('--color-ink-50'),
+          100: channelColor('--color-ink-100'),
+          200: channelColor('--color-ink-200'),
+          300: channelColor('--color-ink-300'),
+          400: channelColor('--color-ink-400'),
+          500: channelColor('--color-ink-500'),
+          600: channelColor('--color-ink-600'),
+          700: channelColor('--color-ink-700'),
+          800: channelColor('--color-ink-800'),
+          900: channelColor('--color-ink-900'),
+          950: channelColor('--color-ink-950'),
         },
         zinc: colors.zinc,
         chrome: {
-          DEFAULT: 'var(--color-chrome)',
-          50: 'var(--color-chrome-50)',
-          100: 'var(--color-chrome-100)',
-          200: 'var(--color-chrome-200)',
-          300: 'var(--color-chrome-300)',
-          400: 'var(--color-chrome-400)',
-          500: 'var(--color-chrome-500)',
-          600: 'var(--color-chrome-600)',
-          700: 'var(--color-chrome-700)',
-          800: 'var(--color-chrome-800)',
-          900: 'var(--color-chrome-900)',
+          DEFAULT: channelColor('--color-chrome'),
+          50: channelColor('--color-chrome-50'),
+          100: channelColor('--color-chrome-100'),
+          200: channelColor('--color-chrome-200'),
+          300: channelColor('--color-chrome-300'),
+          400: channelColor('--color-chrome-400'),
+          500: channelColor('--color-chrome-500'),
+          600: channelColor('--color-chrome-600'),
+          700: channelColor('--color-chrome-700'),
+          800: channelColor('--color-chrome-800'),
+          900: channelColor('--color-chrome-900'),
         },
         plum: {
-          DEFAULT: 'var(--color-plum)',
-          50: 'var(--color-plum-50)',
-          100: 'var(--color-plum-100)',
-          200: 'var(--color-plum-200)',
-          300: 'var(--color-plum-300)',
-          400: 'var(--color-plum-400)',
-          500: 'var(--color-plum-500)',
-          600: 'var(--color-plum-600)',
-          700: 'var(--color-plum-700)',
-          800: 'var(--color-plum-800)',
-          900: 'var(--color-plum-900)',
-          deep: 'var(--color-plum-deep)',
+          DEFAULT: channelColor('--color-plum'),
+          50: channelColor('--color-plum-50'),
+          100: channelColor('--color-plum-100'),
+          200: channelColor('--color-plum-200'),
+          300: channelColor('--color-plum-300'),
+          400: channelColor('--color-plum-400'),
+          500: channelColor('--color-plum-500'),
+          600: channelColor('--color-plum-600'),
+          700: channelColor('--color-plum-700'),
+          800: channelColor('--color-plum-800'),
+          900: channelColor('--color-plum-900'),
+          deep: channelColor('--color-plum-deep'),
         },
         lime: {
-          DEFAULT: 'var(--color-lime)',
-          50: 'var(--color-lime-50)',
-          100: 'var(--color-lime-100)',
-          200: 'var(--color-lime-200)',
-          300: 'var(--color-lime-300)',
-          400: 'var(--color-lime-400)',
-          500: 'var(--color-lime-500)',
-          600: 'var(--color-lime-600)',
-          700: 'var(--color-lime-700)',
-          800: 'var(--color-lime-800)',
-          900: 'var(--color-lime-900)',
+          DEFAULT: channelColor('--color-lime'),
+          50: channelColor('--color-lime-50'),
+          100: channelColor('--color-lime-100'),
+          200: channelColor('--color-lime-200'),
+          300: channelColor('--color-lime-300'),
+          400: channelColor('--color-lime-400'),
+          500: channelColor('--color-lime-500'),
+          600: channelColor('--color-lime-600'),
+          700: channelColor('--color-lime-700'),
+          800: channelColor('--color-lime-800'),
+          900: channelColor('--color-lime-900'),
         },
 
         // Сохраняем старые токены для совместимости
-        background: 'var(--color-background)',
-        foreground: 'var(--color-foreground)',
+        background: channelColor('--background'),
+        foreground: channelColor('--foreground'),
         card: {
-          DEFAULT: 'var(--color-card)',
-          foreground: 'var(--color-card-foreground)',
+          DEFAULT: channelColor('--card'),
+          foreground: channelColor('--card-foreground'),
         },
         popover: {
-          DEFAULT: 'var(--color-popover)',
-          foreground: 'var(--color-popover-foreground)',
+          DEFAULT: channelColor('--popover'),
+          foreground: channelColor('--popover-foreground'),
         },
         primary: {
-          DEFAULT: 'var(--color-primary)',
-          foreground: 'var(--color-primary-foreground)',
+          DEFAULT: channelColor('--primary'),
+          foreground: channelColor('--primary-foreground'),
         },
         secondary: {
-          DEFAULT: 'var(--color-secondary)',
-          foreground: 'var(--color-secondary-foreground)',
+          DEFAULT: channelColor('--secondary'),
+          foreground: channelColor('--secondary-foreground'),
         },
         muted: {
-          DEFAULT: 'var(--color-muted)',
-          foreground: 'var(--color-muted-foreground)',
+          DEFAULT: channelColor('--muted'),
+          foreground: channelColor('--muted-foreground'),
         },
         accent: {
-          DEFAULT: 'var(--color-accent)',
-          foreground: 'var(--color-accent-foreground)',
+          DEFAULT: channelColor('--accent'),
+          foreground: channelColor('--accent-foreground'),
         },
         destructive: {
-          DEFAULT: 'var(--color-destructive)',
-          foreground: 'var(--color-destructive-foreground)',
+          DEFAULT: channelColor('--destructive'),
+          foreground: channelColor('--destructive-foreground'),
         },
-        border: 'var(--color-border)',
-        input: 'var(--color-input)',
-        ring: 'var(--color-ring)',
+        border: channelColor('--border'),
+        input: channelColor('--input'),
+        ring: channelColor('--ring'),
       },
 
       // Максимум 2px везде, включая rounded-full и shadcn (rounded-lg/md/sm).
@@ -153,8 +154,8 @@ export default {
     ringOpacity: false,
     dropShadow: false,
     blur: false,
-    backdropFilter: true,  // Включаем для QuotaExceededDialog overlay
-    backdropBlur: true,    // Включаем для матового стекла (bg-black/60 + backdrop-blur-md)
+    backdropFilter: false,
+    backdropBlur: false,
     backdropBrightness: false,
     backdropContrast: false,
     backdropGrayscale: false,

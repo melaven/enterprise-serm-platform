@@ -8,6 +8,7 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI, Header, HTTPException, status
 
+from app.core.anonymizer import anonymize_author_name
 from app.core.api_keys import verify_api_key
 from app.routers import external_api
 
@@ -19,7 +20,9 @@ class FakeSession:
         self.flush = AsyncMock(side_effect=self._assign_ids)
         self.commit = AsyncMock()
         self.close = AsyncMock()
-        self.execute = AsyncMock()
+        self.execute = AsyncMock(
+            return_value=SimpleNamespace(scalar_one_or_none=lambda: None)
+        )
 
     async def _assign_ids(self) -> None:
         for item in self.added:
@@ -71,7 +74,7 @@ async def external_client() -> (
 
 
 @pytest.mark.asyncio
-async def test_submit_reviews_saves_and_enqueues_batch(
+async def test_submit_reviews_analyzes_locally_and_persists_safe_metrics(
     external_client: tuple[httpx.AsyncClient, FakeSession, FakeArqPool, UUID],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -86,31 +89,34 @@ async def test_submit_reviews_saves_and_enqueues_batch(
         "/api/v1/external/reviews",
         headers={"X-API-Key": "valid-test-key"},
         json={
+            "data_origin": "customer_provided",
             "reviews": [
                 {
                     "text": "Great service",
                     "rating": 5,
-                    "author_name": "Test Customer",
                     "platform": "google",
-                    "external_review_id": "google-123",
+                    "published_at": "2026-01-01T12:00:00Z",
                 }
             ]
         },
     )
 
-    assert response.status_code == status.HTTP_202_ACCEPTED
+    assert response.status_code == status.HTTP_200_OK
     payload = response.json()
     assert payload["success"] is True
     assert payload["count"] == 1
     assert payload["tenant_id"] == str(tenant_id)
-    assert payload["review_ids"] == [str(session.added[0].id)]
-    session.flush.assert_awaited_once()
+    saved_review = session.added[-1]
+    assert payload["review_ids"] == [str(saved_review.id)]
+    assert saved_review.author_name == anonymize_author_name()
+    assert saved_review.text == "Положительный отзыв; оценка 5/5."
+    assert saved_review.tags == ["SERVICE"]
+    assert not hasattr(saved_review, "external_review_id")
+    assert not hasattr(saved_review, "author_avatar_url")
+    assert not hasattr(saved_review, "author_profile_url")
+    session.flush.assert_awaited()
     session.commit.assert_awaited_once()
-    arq_pool.enqueue_job.assert_awaited_once_with(
-        "process_reviews_batch",
-        tenant_id=str(tenant_id),
-        review_ids=payload["review_ids"],
-    )
+    arq_pool.enqueue_job.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -129,12 +135,13 @@ async def test_submit_reviews_rejects_missing_or_invalid_api_key(
         "/api/v1/external/reviews",
         headers=headers,
         json={
+            "data_origin": "customer_provided",
             "reviews": [
                 {
                     "text": "Review",
                     "rating": 4,
-                    "author_name": "Customer",
                     "platform": "google",
+                    "published_at": "2026-01-01T12:00:00Z",
                 }
             ]
         },
@@ -166,12 +173,13 @@ async def test_submit_reviews_returns_payment_required_when_quota_is_exceeded(
         "/api/v1/external/reviews",
         headers={"X-API-Key": "valid-test-key"},
         json={
+            "data_origin": "customer_provided",
             "reviews": [
                 {
                     "text": "Review",
                     "rating": 4,
-                    "author_name": "Customer",
                     "platform": "google",
+                    "published_at": "2026-01-01T12:00:00Z",
                 }
             ]
         },

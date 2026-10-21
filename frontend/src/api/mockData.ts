@@ -35,11 +35,9 @@ export const MOCK_AUTH_RESPONSE: AuthResponse = {
 export const MOCK_REVIEWS: Review[] = [
   {
     id: '1',
-    external_review_id: '2gis_001',
     platform: '2GIS',
-    author_name: 'Александр К.',
     rating: 5,
-    text: 'Отличный сервис! Быстро обработали заказ, все пришло вовремя. Менеджеры вежливые и компетентные. Рекомендую всем!',
+    text: 'Положительный отзыв; оценка 5/5.',
     sentiment: 'POSITIVE',
     threat_level: null,
     suggested_reply: null,
@@ -54,11 +52,9 @@ export const MOCK_REVIEWS: Review[] = [
   },
   {
     id: '2',
-    external_review_id: '2gis_002',
     platform: '2GIS',
-    author_name: 'Мария С.',
     rating: 4,
-    text: 'В целом хорошо, но были небольшие задержки с доставкой. Качество товара на высоте.',
+    text: 'Положительный отзыв; оценка 4/5.',
     sentiment: 'POSITIVE',
     threat_level: null,
     suggested_reply: null,
@@ -73,30 +69,26 @@ export const MOCK_REVIEWS: Review[] = [
   },
   {
     id: '3',
-    external_review_id: '2gis_003',
     platform: '2GIS',
-    author_name: 'Дмитрий В.',
     rating: 2,
-    text: 'Долго ждал ответа от поддержки. Товар пришел с браком, пришлось возвращать. Разочарован.',
+    text: 'Негативный отзыв; оценка 2/5.',
     sentiment: 'NEGATIVE',
     threat_level: 4,
-    suggested_reply: 'Уважаемый Дмитрий! Приносим искренние извинения за неудобства. Мы уже проверили качество товара и организуем возврат. Предлагаем скидку 15% на следующий заказ в качестве компенсации.',
+    suggested_reply: null,
     status: 'new',
-    tags: [],
+    tags: ['PRODUCT_QUALITY'],
     financial_impact: 0,
     si_response: null,
-    auto_reply: 'Здравствуйте! Благодарим за отзыв. Мы разберёмся в ситуации и свяжемся с вами.',
-    ai_pending: true,
+    auto_reply: null,
+    ai_pending: false,
     is_critical: true,
     created_at: '2026-10-08T16:50:00Z',
   },
   {
     id: '4',
-    external_review_id: 'yandex_001',
     platform: 'Yandex Maps',
-    author_name: 'Елена Т.',
     rating: 5,
-    text: 'Потрясающе! Лучший опыт покупки за последние годы. Все четко, быстро, профессионально.',
+    text: 'Положительный отзыв; оценка 5/5.',
     sentiment: 'POSITIVE',
     threat_level: null,
     suggested_reply: null,
@@ -111,11 +103,9 @@ export const MOCK_REVIEWS: Review[] = [
   },
   {
     id: '5',
-    external_review_id: 'google_001',
     platform: 'Google Reviews',
-    author_name: 'Иван П.',
     rating: 3,
-    text: 'Средне. Ничего особенного, но и претензий нет. Обычный сервис.',
+    text: 'Нейтральный отзыв; оценка 3/5.',
     sentiment: 'NEUTRAL',
     threat_level: null,
     suggested_reply: null,
@@ -130,11 +120,9 @@ export const MOCK_REVIEWS: Review[] = [
   },
   {
     id: '6',
-    external_review_id: '2gis_004',
     platform: '2GIS',
-    author_name: 'Ольга М.',
     rating: 5,
-    text: 'Очень довольна! Персонал приветливый, цены адекватные, ассортимент широкий. Буду обращаться еще.',
+    text: 'Положительный отзыв; оценка 5/5.',
     sentiment: 'POSITIVE',
     threat_level: null,
     suggested_reply: null,
@@ -149,30 +137,26 @@ export const MOCK_REVIEWS: Review[] = [
   },
   {
     id: '7',
-    external_review_id: 'yandex_002',
     platform: 'Yandex Maps',
-    author_name: 'Сергей Н.',
     rating: 1,
-    text: 'Ужасно! Грубый персонал, долгое ожидание, товар не соответствует описанию. Больше не вернусь.',
+    text: 'Негативный отзыв; оценка 1/5.',
     sentiment: 'NEGATIVE',
     threat_level: 5,
-    suggested_reply: 'Уважаемый Сергей! Нам искренне жаль, что ваш опыт оказался негативным. Мы проведем внутреннее расследование работы персонала. Пожалуйста, свяжитесь с нами напрямую для решения проблемы.',
+    suggested_reply: null,
     status: 'new',
     tags: [],
     financial_impact: 0,
     si_response: null,
-    auto_reply: 'Здравствуйте! Сожалеем о вашем опыте. Передали отзыв команде для решения проблемы.',
-    ai_pending: true,
+    auto_reply: null,
+    ai_pending: false,
     is_critical: true,
     created_at: '2026-10-04T15:05:00Z',
   },
   {
     id: '8',
-    external_review_id: 'google_002',
     platform: 'Google Reviews',
-    author_name: 'Анна К.',
     rating: 4,
-    text: 'Хороший магазин. Немного дороговато, но качество того стоит. Удобное расположение.',
+    text: 'Положительный отзыв; оценка 4/5.',
     sentiment: 'POSITIVE',
     threat_level: null,
     suggested_reply: null,
@@ -187,11 +171,9 @@ export const MOCK_REVIEWS: Review[] = [
   },
   {
     id: '9',
-    external_review_id: '2gis_005',
     platform: '2GIS',
-    author_name: 'Павел Л.',
     rating: 3,
-    text: 'Нормально. Без восторга, но и без жалоб. Стандартный уровень обслуживания.',
+    text: 'Нейтральный отзыв; оценка 3/5.',
     sentiment: 'NEUTRAL',
     threat_level: null,
     suggested_reply: null,
@@ -206,11 +188,9 @@ export const MOCK_REVIEWS: Review[] = [
   },
   {
     id: '10',
-    external_review_id: 'yandex_003',
     platform: 'Yandex Maps',
-    author_name: 'Наталья Р.',
     rating: 5,
-    text: 'Замечательно! Все понравилось от А до Я. Спасибо за отличный сервис!',
+    text: 'Положительный отзыв; оценка 5/5.',
     sentiment: 'POSITIVE',
     threat_level: null,
     suggested_reply: null,
@@ -291,7 +271,7 @@ export const getPaginatedReviews = (params?: {
     filtered = filtered.filter(
       (review) =>
         review.text.toLowerCase().includes(search) ||
-        review.author_name.toLowerCase().includes(search),
+        review.tags.some((tag) => tag.toLowerCase().includes(search)),
     );
   }
 
@@ -312,26 +292,6 @@ export const getPaginatedReviews = (params?: {
     total_pages,
   };
 };
-
-export function approveMockAiResponse(
-  reviewId: string,
-): { review_id: string; status: Review['status']; ai_pending: boolean } {
-  const review = MOCK_REVIEWS.find((item) => item.id === reviewId);
-  if (!review) {
-    throw new Error(`Review ${reviewId} not found in demo data`);
-  }
-  if (!review.ai_pending || !review.auto_reply) {
-    throw new Error(`Review ${reviewId} has no pending AI response`);
-  }
-
-  review.status = 'resolved';
-  review.ai_pending = false;
-  return {
-    review_id: review.id,
-    status: review.status,
-    ai_pending: review.ai_pending,
-  };
-}
 
 /**
  * Генерация случайного Job ID для парсера
@@ -394,7 +354,7 @@ export const MOCK_SUBSCRIPTION_TIERS: SubscriptionTier[] = [
       max_reviews: 1000,
     },
     features: [
-      '100K AI токенов / месяц',
+      '100K токенов для SI-анализа / месяц',
       '1,000 отзывов / месяц',
       'Базовая аналитика',
       'Email поддержка',
@@ -412,7 +372,7 @@ export const MOCK_SUBSCRIPTION_TIERS: SubscriptionTier[] = [
       max_reviews: 10000,
     },
     features: [
-      '500K AI токенов / месяц',
+      '500K токенов для SI-анализа / месяц',
       '10,000 отзывов / месяц',
       'Расширенная аналитика',
       'Priority поддержка',
@@ -432,7 +392,7 @@ export const MOCK_SUBSCRIPTION_TIERS: SubscriptionTier[] = [
       max_reviews: 50000,
     },
     features: [
-      '2M AI токенов / месяц',
+      '2M токенов для SI-анализа / месяц',
       '50,000 отзывов / месяц',
       'Кастомная аналитика',
       'Dedicated менеджер',

@@ -109,7 +109,7 @@ async def test_authenticated_limit_is_100_per_tenant(
     assert exc_info.value.status_code == 429
     assert exc_info.value.headers == {"Retry-After": "60"}
     assert request.state.rate_limit_headers["X-RateLimit-Limit"] == "100"
-    assert next(iter(redis.values)).startswith(f"rate_limit:api:tenant:{tenant_id}:2")
+    assert next(iter(redis.values)).startswith(f"rate_limit:{tenant_id}:dashboard:2")
     assert redis.expirations[next(iter(redis.values))] == 61
     assert redis.pipeline_calls == 101
 
@@ -129,4 +129,35 @@ async def test_anonymous_limit_is_20_per_ip() -> None:
     assert exc_info.value.status_code == 429
     assert exc_info.value.headers == {"Retry-After": "60"}
     assert request.state.rate_limit_headers["X-RateLimit-Limit"] == "20"
-    assert next(iter(redis.values)).startswith("rate_limit:api:ip:203.0.113.12:2")
+    assert next(iter(redis.values)).startswith("rate_limit:203.0.113.12:anon:2")
+
+
+@pytest.mark.asyncio
+async def test_api_key_and_dashboard_use_separate_scopes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid4()
+    secret = "test-secret-for-rate-limit-tests-32-bytes"
+    redis = FakeRedis()
+    monkeypatch.setattr(
+        rate_limit,
+        "get_auth_config",
+        lambda: AuthConfig(secret=secret, jwks_url=None),
+    )
+
+    async def resolve_api_tenant(_: Request) -> object:
+        return tenant_id
+
+    monkeypatch.setattr(rate_limit, "resolve_api_key_tenant_id", resolve_api_tenant)
+    dependency = rate_limit.RateLimitDependency()
+    dashboard_request = make_request(redis, make_token(str(tenant_id), secret))
+    api_request = make_request(redis)
+    api_request.scope["headers"].append((b"x-api-key", b"test-api-key"))
+
+    await dependency(dashboard_request)
+    await dependency(api_request)
+
+    assert set(redis.values) == {
+        f"rate_limit:{tenant_id}:dashboard:2",
+        f"rate_limit:{tenant_id}:api:2",
+    }

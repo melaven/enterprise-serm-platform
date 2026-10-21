@@ -102,10 +102,9 @@ const reviewColumns: readonly DataTableColumn<Review>[] = [
     header: 'Источник',
     cell: (review) => <span className="font-medium text-chrome-200">{review.platform || 'Не указан'}</span>,
   },
-  { key: 'author', header: 'Автор', cell: (review) => review.author_name || 'Аноним' },
   {
-    key: 'review',
-    header: 'Отзыв',
+    key: 'summary',
+    header: 'Сводка SI',
     cell: (review) => <span className="block max-w-lg truncate">{review.text}</span>,
   },
   {
@@ -218,8 +217,8 @@ export default function Dashboard() {
           },
         },
         {
-          id: 'ai-pending',
-          label: 'Ожидают AI-анализа',
+          id: 'si-pending',
+          label: 'Без SI-оценки',
           value: data.summary.ai_pending.toLocaleString('ru-RU'),
           detail: `${data.summary.sentiment.unclassified.toLocaleString('ru-RU')} без тональности`,
           icon: Sparkles,
@@ -238,7 +237,7 @@ export default function Dashboard() {
       <div className="min-h-full space-y-6 bg-ink-950">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-sm text-chrome-400">Сводка по репутации</p>
+            <p className="text-sm text-chrome-400">Метрики оценок и качества сервиса</p>
             <h1 className="mt-1 text-2xl font-semibold text-chrome-50">Главная</h1>
           </div>
           <p className="text-sm text-chrome-500">Последние 30 дней</p>
@@ -260,8 +259,10 @@ export default function Dashboard() {
                   const TrendIcon = metric.trend?.direction === 'up' ? TrendingUp : TrendingDown;
 
                   return (
-                    <Card 
-                      className="border-2 border-chrome-600 bg-ink-900 transition-all duration-200 ease-in-out hover:border-plum" 
+                    <Card
+                      className={metric.id === 'reviews'
+                        ? 'border border-plum-700 bg-plum-900 transition-colors hover:border-plum-500'
+                        : 'border border-chrome-600 bg-ink-900 transition-colors hover:border-plum-500'}
                       key={metric.id}
                     >
                       <CardHeader className="flex-row items-start justify-between space-y-0 p-5 pb-3">

@@ -203,6 +203,10 @@ class GeminiJSONClient:
     async def generate_json(
         self, *, system_instruction: str, prompt: str, schema: type[BaseModel]
     ) -> GenerationResult:
+        raise RuntimeError(
+            "External review LLM analysis is disabled by the local-only policy"
+        )
+
         config = genai_types.GenerateContentConfig(
             system_instruction=system_instruction,
             response_mime_type="application/json",
@@ -248,6 +252,10 @@ class LLMReviewAnalyzer:
         rating: int | None = None,
         platform: str | None = None,
     ) -> tuple[ReviewAnalysisResult, int]:
+        raise RuntimeError(
+            "External review LLM analysis is disabled by the local-only policy"
+        )
+
         """Строго типизированный анализ. Бросает LLMAnalysisError (см. подклассы).
 
         Returns:

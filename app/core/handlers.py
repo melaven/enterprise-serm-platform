@@ -55,13 +55,15 @@ def create_error_response(
 
 async def serm_exception_handler(request: Request, exc: SERMException) -> JSONResponse:
     """Обработчик кастомных исключений SERM."""
-    logger.error("SERM Exception: %s", exc.message, exc_info=True)
+    logger.error(
+        "SERM exception",
+        extra={"error_type": type(exc).__name__, "status_code": exc.status_code},
+    )
 
     return create_error_response(
         status_code=exc.status_code,
-        message=exc.message,
+        message="Business operation failed",
         error_type=type(exc).__name__,
-        details=exc.details,
         request_id=getattr(request.state, "correlation_id", None)
         or get_correlation_id(),
     )
@@ -69,23 +71,23 @@ async def serm_exception_handler(request: Request, exc: SERMException) -> JSONRe
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Обработчик стандартных HTTP исключений FastAPI."""
-    logger.warning("HTTP Exception %s: %s", exc.status_code, exc.detail)
+    logger.warning("HTTP exception", extra={"status_code": exc.status_code})
 
     message_map = {
         404: "Ресурс не найден",
         403: "Доступ запрещен",
         401: "Требуется авторизация",
         405: "Метод не поддерживается",
+        410: "Операция отключена",
         500: "Внутренняя ошибка сервера",
     }
 
-    message = message_map.get(exc.status_code, str(exc.detail))
+    message = message_map.get(exc.status_code, "HTTP request failed")
 
     return create_error_response(
         status_code=exc.status_code,
         message=message,
         error_type="HTTPException",
-        details={"original_detail": exc.detail} if exc.detail != message else None,
         request_id=getattr(request.state, "correlation_id", None)
         or get_correlation_id(),
         headers=exc.headers,
@@ -96,25 +98,33 @@ async def validation_exception_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     """Обработчик ошибок валидации Pydantic."""
-    logger.warning("Validation Error: %s", exc.errors())
+    validation_errors = exc.errors()
+    logger.warning(
+        "Validation Error",
+        extra={
+            "fields": [
+                {
+                    "field": " -> ".join(str(part) for part in error["loc"]),
+                    "type": error["type"],
+                }
+                for error in validation_errors
+            ]
+        },
+    )
 
-    validation_errors = []
-    for error in exc.errors():
-        field_path = " -> ".join(str(x) for x in error["loc"])
-        validation_errors.append(
-            {
-                "field": field_path,
-                "message": error["msg"],
-                "type": error["type"],
-                "input": error.get("input"),
-            }
-        )
+    safe_validation_errors = [
+        {
+            "field": " -> ".join(str(part) for part in error["loc"]),
+            "type": error["type"],
+        }
+        for error in validation_errors
+    ]
 
     return create_error_response(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         message="Ошибка валидации входных данных",
         error_type="ValidationError",
-        details={"validation_errors": validation_errors},
+        details={"validation_errors": safe_validation_errors},
         request_id=getattr(request.state, "correlation_id", None)
         or get_correlation_id(),
     )
@@ -124,7 +134,7 @@ async def sqlalchemy_exception_handler(
     request: Request, exc: SQLAlchemyError
 ) -> JSONResponse:
     """Обработчик ошибок SQLAlchemy/Базы данных."""
-    logger.error("Database Error: %s", str(exc), exc_info=True)
+    logger.error("Database error", extra={"error_type": type(exc).__name__})
 
     if isinstance(exc, IntegrityError):
         message = "Нарушение целостности данных"
@@ -162,7 +172,7 @@ async def timeout_exception_handler(
     request: Request, exc: TimeoutError
 ) -> JSONResponse:
     """Обработчик таймаутов."""
-    logger.error("Timeout Error: %s", str(exc), exc_info=True)
+    logger.error("Timeout error")
 
     return create_error_response(
         status_code=status.HTTP_504_GATEWAY_TIMEOUT,
@@ -175,7 +185,9 @@ async def timeout_exception_handler(
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Обработчик всех непредвиденных исключений."""
-    logger.critical("Unhandled Exception: %s", str(exc), exc_info=True)
+    logger.critical(
+        "Unhandled exception", extra={"error_type": type(exc).__name__}
+    )
 
     return create_error_response(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

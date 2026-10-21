@@ -50,18 +50,18 @@ interface PaywallModalProps {
 
 const REASON_MESSAGES = {
   parser_limit: {
-    title: 'Parser Limit Reached',
-    description: "You've used all 5 free parser runs this month. Upgrade to Pro for unlimited parsing.",
+    title: 'Лимит импорта исчерпан',
+    description: 'Вы использовали доступный лимит импорта за месяц. Перейдите на Pro, чтобы увеличить квоту.',
     icon: '🚀',
   },
   review_limit: {
-    title: 'Review Limit Reached',
-    description: "You've reached your monthly review limit. Upgrade to Pro for 10,000 reviews per month.",
+    title: 'Лимит отзывов исчерпан',
+    description: 'Вы достигли месячного лимита. Перейдите на Pro, чтобы увеличить число анализируемых записей.',
     icon: '📊',
   },
   token_limit: {
-    title: 'LLM Token Limit Reached',
-    description: "You've used all your LLM tokens. Upgrade to Pro for 1M tokens per month.",
+    title: 'Лимит SI-анализа исчерпан',
+    description: 'Вы использовали месячную квоту SI-анализа. Перейдите на Pro, чтобы увеличить лимит.',
     icon: '🤖',
   },
 };
@@ -127,9 +127,8 @@ export function PaywallModal({
   
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg border-2 border-plum-700 bg-ink-900 p-0">
-        {/* Header with gradient */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-plum-900 to-ink-900 p-6 border-b-2 border-plum-700">
+      <DialogContent className="max-w-lg border border-plum-700 bg-ink-900 p-0">
+        <div className="relative overflow-hidden border-b border-plum-700 bg-plum-900 p-6">
           <button 
             onClick={() => onClose?.()}
             className="absolute right-4 top-4 text-chrome-400 hover:text-white transition-colors"
@@ -179,26 +178,26 @@ export function PaywallModal({
             </div>
           )}
           
-          {/* Pro Features */}
+          {/* Возможности тарифа Pro */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Crown className="h-5 w-5 text-lime" />
+              <Crown className="h-5 w-5 text-plum-200" />
               <h3 className="text-sm font-semibold text-white uppercase tracking-wider">
-                Pro Features
+                Возможности Pro
               </h3>
             </div>
             
             <ul className="space-y-2">
               {[
-                'Unlimited parser runs',
-                '10,000 reviews per month',
-                '1M LLM tokens per month',
-                'Advanced analytics',
-                'Priority support 24/7',
-                'API access',
+                'Расширенная квота импорта',
+                '10 000 записей в месяц',
+                '1 млн токенов SI-анализа',
+                'Расширенная аналитика',
+                'Приоритетная поддержка',
+                'Доступ к API',
               ].map((feature, index) => (
                 <li key={index} className="flex items-center gap-2 text-sm text-chrome-300">
-                  <Zap className="h-4 w-4 text-lime shrink-0" />
+                  <Zap className="h-4 w-4 shrink-0 text-plum-200" />
                   {feature}
                 </li>
               ))}
@@ -206,25 +205,25 @@ export function PaywallModal({
           </div>
           
           {/* Pricing */}
-          <div className="border-2 border-lime/30 rounded-sm p-4 bg-lime/5">
+          <div className="rounded-sm border border-plum-700 bg-plum-900 p-4">
             <div className="flex items-baseline gap-2 mb-1">
               <span className="text-3xl font-bold text-white">$49</span>
-              <span className="text-chrome-400">/month</span>
+              <span className="text-chrome-400">/месяц</span>
             </div>
             <p className="text-xs text-chrome-400">
-              14-day money-back guarantee
+              Поддержка в рабочее время
             </p>
           </div>
         </div>
         
         {/* Footer Actions */}
-        <div className="border-t-2 border-chrome-700 p-6 bg-ink-950 flex items-center gap-3">
+        <div className="flex items-center gap-3 border-t border-chrome-700 bg-ink-950 p-6">
           <Button
             onClick={handleViewPlans}
             variant="outline"
             className="flex-1"
           >
-            View All Plans
+            Все тарифы
           </Button>
           
           <Button
@@ -236,7 +235,7 @@ export function PaywallModal({
               'Processing...'
             ) : (
               <>
-                Upgrade to Pro
+                Перейти на Pro
                 <ArrowRight className="h-4 w-4 ml-1" />
               </>
             )}

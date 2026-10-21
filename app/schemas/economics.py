@@ -48,12 +48,8 @@ class PlatformResponse(PlatformBase):
 
 class ReviewBase(BaseModel):
     platform_id: UUID
-    author_name: str
     rating: int = Field(..., ge=1, le=5)
     text: str
-    external_review_id: str | None = Field(
-        None, description="Внешний ID отзыва (от Google Maps, 2GIS и др.)"
-    )
     status: ReviewStatus = ReviewStatus.NEW
     financial_impact: float = Field(
         default=0.0,
@@ -68,6 +64,5 @@ class ReviewBase(BaseModel):
 class ReviewResponse(ReviewBase):
     id: UUID
     created_at: datetime
-    external_review_id: str | None = None
     auto_reply: str | None = Field(None, description="Ответ, предложенный AI")
     ai_pending: bool = False

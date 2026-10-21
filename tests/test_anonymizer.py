@@ -1,8 +1,8 @@
-from uuid import uuid4
+from datetime import datetime, timezone
 
 from app.core.anonymizer import anonymize_author_name
 from app.core.review_privacy import safe_review_summary
-from app.schemas.economics import ReviewBase
+from app.schemas.parser import RawReview
 
 
 def test_author_label_is_constant_and_does_not_encode_identity() -> None:
@@ -10,12 +10,14 @@ def test_author_label_is_constant_and_does_not_encode_identity() -> None:
     assert anonymize_author_name("Иван") == "Автор отзыва"
 
 
-def test_economics_review_schema_defaults_profile_urls_to_null() -> None:
-    review = ReviewBase(
-        platform_id=uuid4(),
+def test_raw_review_schema_defaults_profile_urls_to_null() -> None:
+    review = RawReview(
+        platform_id="review-123",
         author_name="Клиент #123456",
         rating=4,
         text="Review text",
+        date=datetime.now(timezone.utc),
+        platform="2gis",
     )
 
     assert review.author_avatar_url is None

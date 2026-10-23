@@ -9,8 +9,9 @@ import * as mockData from '../mockData';
 
 let demoApi: typeof import('../demoService');
 
-async function loadDemoApi(mode: string) {
+async function loadDemoApi(mode: string, useMocks = 'false') {
   vi.stubEnv('VITE_DEMO_MODE', mode);
+  vi.stubEnv('VITE_USE_MOCKS', useMocks);
   vi.resetModules();
   demoApi = await import('../demoService');
 }
@@ -42,6 +43,15 @@ describe('DemoService - API Fallback', () => {
   describe('Demo Mode Active', () => {
     beforeEach(async () => {
       await loadDemoApi('true');
+    });
+
+    it('should use mock data when VITE_USE_MOCKS is enabled', async () => {
+      await loadDemoApi('false', 'true');
+
+      const result = await demoApi.getReviews({ page: 1, page_size: 10 });
+
+      expect(result.total).toBe(mockData.MOCK_REVIEWS.length);
+      expect(realApi.getReviews).not.toHaveBeenCalled();
     });
 
     it('should use mock data for login when demo mode is active', async () => {

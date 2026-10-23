@@ -18,6 +18,12 @@ interface ImportMetaEnv {
    * @example 'true' | 'false'
    */
   readonly VITE_DEMO_MODE?: string;
+
+  /**
+   * Use bundled mock API data without starting the backend
+   * @example 'true' | 'false'
+   */
+  readonly VITE_USE_MOCKS?: string;
   
   /**
    * Vite mode: 'development' | 'production'

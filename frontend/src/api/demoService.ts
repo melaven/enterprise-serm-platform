@@ -7,7 +7,8 @@ import * as realApi from './services';
 import * as mockData from './mockData';
 
 // Проверяем режим demo из environment variables
-const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+const isDemoMode =
+  import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_USE_MOCKS === 'true';
 
 // ========================================
 // Auth Services with Demo Fallback

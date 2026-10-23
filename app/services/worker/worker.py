@@ -91,7 +91,7 @@ async def startup(ctx):
         # Конвертируем URL для asyncpg (убираем +asyncpg)
         asyncpg_url = tenant_url.replace("postgresql+asyncpg://", "postgresql://")
 
-        import asyncpg  # type: ignore[import-untyped]
+        import asyncpg
 
         logger.info("🔒 SECURITY CHECK: Testing app_tenant role connection...")
 

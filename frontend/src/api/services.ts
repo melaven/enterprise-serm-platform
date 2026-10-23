@@ -42,12 +42,15 @@ export interface PaginatedResponse<T> {
 
 export interface Review {
   id: string;
+  branch_id?: string;
+  author_name?: string;
   platform: string | null;
   rating: number;
   text: string;
   sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'UNCLASSIFIED' | null;
   threat_level: number | null;
   suggested_reply: string | null;
+  moderation_status?: 'new' | 'drafted' | 'pending_moderation' | 'published';
   tags: string[];
   status: 'new' | 'si_processing' | 'resolved' | 'lost';
   financial_impact: number;

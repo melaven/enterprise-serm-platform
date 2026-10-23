@@ -6,12 +6,12 @@ client_reference_id = company_id из ПРОВЕРЕННОГО JWT: по нем�
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from session import get_tenant_session
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentPayload
 from app.core.config import get_settings
+from app.core.dependencies import get_tenant_db
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -25,7 +25,7 @@ class CheckoutOut(BaseModel):
 
 @router.post("/checkout", response_model=CheckoutOut)
 async def create_checkout(
-    auth: CurrentPayload, session: AsyncSession = Depends(get_tenant_session)
+    auth: CurrentPayload, session: AsyncSession = Depends(get_tenant_db)
 ) -> CheckoutOut:
     s = get_settings()
     if not (s.stripe_secret_key and s.stripe_price_pro):

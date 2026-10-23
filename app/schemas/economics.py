@@ -12,6 +12,15 @@ class ReviewStatus(str, Enum):
     LOST = "lost"  # Негатив не отработан (убыток)
 
 
+class ReplyModerationStatus(str, Enum):
+    """FSM статусы модерации ответа на отзыв."""
+    NEW = "new"  # Новый отзыв без ответа
+    DRAFTED = "drafted"  # Черновик ответа сгенерирован
+    PENDING_MODERATION = "pending_moderation"  # Отправлен на модерацию
+    APPROVED = "approved"  # Одобрен модератором
+    PUBLISHED = "published"  # Ответ опубликован на площадке
+
+
 class CompanyBase(BaseModel):
     name: str = Field(..., description="Название бизнеса")
     average_check: float = Field(..., description="Средний чек (L3: Экономика)")
@@ -66,3 +75,41 @@ class ReviewResponse(ReviewBase):
     created_at: datetime
     auto_reply: str | None = Field(None, description="Ответ, предложенный AI")
     ai_pending: bool = False
+
+
+# Assistant schemas
+class AssistantReviewSchema(BaseModel):
+    """Схема для списка отзывов в рабочем месте ассистента."""
+    id: UUID
+    platform: str | None
+    text: str
+    rating: int
+    created_at: datetime
+    sentiment: str | None
+    status: ReplyModerationStatus
+    has_reply: bool = Field(default=False, description="Есть ли черновик или опубликованный ответ")
+
+
+class GenerateReplyRequest(BaseModel):
+    """Запрос на генерацию ответа."""
+    tone: str = Field(..., pattern="^(official|friendly|crisis)$")
+
+
+class GenerateReplyResponse(BaseModel):
+    """Ответ с сгенерированным черновиком."""
+    draft_text: str
+
+
+class SubmitModerationRequest(BaseModel):
+    """Запрос на отправку на модерацию."""
+    reply_text: str | None = Field(None, max_length=4000)
+    text: str | None = Field(None, max_length=4000)
+    tone: str | None = Field(None)
+
+    @property
+    def resolved_text(self) -> str:
+        """Разрешить текст ответа из любого поля."""
+        val = self.reply_text or self.text
+        if not val or not val.strip():
+            raise ValueError("Текст ответа обязателен")
+        return val.strip()

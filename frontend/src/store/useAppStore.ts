@@ -13,7 +13,8 @@ import { withErrorHandling } from '../api/errorHandler';
  */
 
 // Выбор API: Demo Mode или Production
-const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+const isDemoMode =
+  import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_USE_MOCKS === 'true';
 const apiClient = isDemoMode ? demoApi : api;
 
 type User = api.AuthResponse['user'];

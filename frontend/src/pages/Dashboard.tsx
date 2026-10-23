@@ -14,7 +14,8 @@ import { DashboardLayout } from '@/features/dashboard/DashboardLayout';
 import { useAppStore } from '@/store/useAppStore';
 
 // Demo Mode: выбор API
-const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
+const isDemoMode =
+  import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_USE_MOCKS === 'true';
 const apiClient = isDemoMode ? demoApi : api;
 
 type DashboardSummary = api.DashboardSummary;
@@ -181,6 +182,30 @@ function DashboardLoading() {
 export default function Dashboard() {
   const { user, logout } = useAppStore();
   const { data, isLoading, error, retry } = useDashboardData();
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      const blob = await api.exportAnalyticsToCSV({ days: 30 });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `analytics-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('CSV файл успешно скачан');
+    } catch (error) {
+      toast.error('Не удалось экспортировать данные', {
+        description: error instanceof Error ? error.message : 'Попробуйте снова',
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const metrics: DashboardMetric[] = data
     ? [
         {
@@ -237,10 +262,22 @@ export default function Dashboard() {
       <div className="min-h-full space-y-6 bg-ink-950">
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-sm text-chrome-400">Метрики оценок и качества сервиса</p>
+            <p className="text-sm text-chrome-400">Сводка по репутации</p>
             <h1 className="mt-1 text-2xl font-semibold text-chrome-50">Главная</h1>
           </div>
-          <p className="text-sm text-chrome-500">Последние 30 дней</p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-chrome-500">Последние 30 дней</p>
+            <Button
+              variant="outline"
+              onClick={handleExportCSV}
+              disabled={isExporting}
+              className="border-[#5A189A] text-[#5A189A] hover:bg-[#5A189A]/10"
+              style={{ borderColor: '#5A189A', color: '#5A189A' }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              {isExporting ? 'Экспорт...' : 'Export to CSV'}
+            </Button>
+          </div>
         </header>
 
         <AsyncView

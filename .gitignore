@@ -11,6 +11,12 @@ tenable-engine/venv/
 __pycache__/
 **/__pycache__/
 *.pyc
+.mypy_cache/
+**/.mypy_cache/
+.pytest_cache/
+**/.pytest_cache/
+.ruff_cache/
+**/.ruff_cache/
 
 # Build output
 dist/

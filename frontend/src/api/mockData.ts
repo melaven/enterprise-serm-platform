@@ -4,6 +4,21 @@
  */
 
 import type { Review, DashboardSummary, AuthResponse, UserProfile, PaginatedResponse } from './services';
+import demoReviewDump from '../mocks/reviews_mock.json';
+
+function mapModerationStatus(
+  status: string,
+): NonNullable<Review['moderation_status']> {
+  switch (status) {
+    case 'new':
+    case 'drafted':
+    case 'pending_moderation':
+    case 'published':
+      return status;
+    default:
+      throw new Error(`Unsupported review moderation status: ${status}`);
+  }
+}
 
 // ========================================
 // Mock Users
@@ -32,178 +47,35 @@ export const MOCK_AUTH_RESPONSE: AuthResponse = {
 // Mock Reviews
 // ========================================
 
-export const MOCK_REVIEWS: Review[] = [
-  {
-    id: '1',
-    platform: '2GIS',
-    rating: 5,
-    text: 'Положительный отзыв; оценка 5/5.',
-    sentiment: 'POSITIVE',
-    threat_level: null,
+export const MOCK_REVIEWS: Review[] = demoReviewDump.map((review) => {
+  const sentiment =
+    review.sentiment === 'positive'
+      ? 'POSITIVE'
+      : review.sentiment === 'negative'
+        ? 'NEGATIVE'
+        : 'NEUTRAL';
+
+  return {
+    id: review.id,
+    branch_id: review.branch_id,
+    author_name: review.author_name,
+    platform: review.platform,
+    rating: review.rating,
+    text: review.text,
+    sentiment,
+    threat_level: review.rating <= 2 ? 6 - review.rating : null,
     suggested_reply: null,
-    status: 'resolved',
+    status: review.rating <= 2 ? 'new' : 'resolved',
+    moderation_status: mapModerationStatus(review.moderation_status),
     tags: [],
     financial_impact: 0,
     si_response: null,
     auto_reply: null,
     ai_pending: false,
-    is_critical: false,
-    created_at: '2026-10-10T14:35:00Z',
-  },
-  {
-    id: '2',
-    platform: '2GIS',
-    rating: 4,
-    text: 'Положительный отзыв; оценка 4/5.',
-    sentiment: 'POSITIVE',
-    threat_level: null,
-    suggested_reply: null,
-    status: 'resolved',
-    tags: [],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: false,
-    created_at: '2026-10-09T11:20:00Z',
-  },
-  {
-    id: '3',
-    platform: '2GIS',
-    rating: 2,
-    text: 'Негативный отзыв; оценка 2/5.',
-    sentiment: 'NEGATIVE',
-    threat_level: 4,
-    suggested_reply: null,
-    status: 'new',
-    tags: ['PRODUCT_QUALITY'],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: true,
-    created_at: '2026-10-08T16:50:00Z',
-  },
-  {
-    id: '4',
-    platform: 'Yandex Maps',
-    rating: 5,
-    text: 'Положительный отзыв; оценка 5/5.',
-    sentiment: 'POSITIVE',
-    threat_level: null,
-    suggested_reply: null,
-    status: 'resolved',
-    tags: [],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: false,
-    created_at: '2026-10-07T09:25:00Z',
-  },
-  {
-    id: '5',
-    platform: 'Google Reviews',
-    rating: 3,
-    text: 'Нейтральный отзыв; оценка 3/5.',
-    sentiment: 'NEUTRAL',
-    threat_level: null,
-    suggested_reply: null,
-    status: 'resolved',
-    tags: [],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: false,
-    created_at: '2026-10-06T13:15:00Z',
-  },
-  {
-    id: '6',
-    platform: '2GIS',
-    rating: 5,
-    text: 'Положительный отзыв; оценка 5/5.',
-    sentiment: 'POSITIVE',
-    threat_level: null,
-    suggested_reply: null,
-    status: 'resolved',
-    tags: [],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: false,
-    created_at: '2026-10-05T10:35:00Z',
-  },
-  {
-    id: '7',
-    platform: 'Yandex Maps',
-    rating: 1,
-    text: 'Негативный отзыв; оценка 1/5.',
-    sentiment: 'NEGATIVE',
-    threat_level: 5,
-    suggested_reply: null,
-    status: 'new',
-    tags: [],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: true,
-    created_at: '2026-10-04T15:05:00Z',
-  },
-  {
-    id: '8',
-    platform: 'Google Reviews',
-    rating: 4,
-    text: 'Положительный отзыв; оценка 4/5.',
-    sentiment: 'POSITIVE',
-    threat_level: null,
-    suggested_reply: null,
-    status: 'resolved',
-    tags: [],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: false,
-    created_at: '2026-10-03T12:25:00Z',
-  },
-  {
-    id: '9',
-    platform: '2GIS',
-    rating: 3,
-    text: 'Нейтральный отзыв; оценка 3/5.',
-    sentiment: 'NEUTRAL',
-    threat_level: null,
-    suggested_reply: null,
-    status: 'resolved',
-    tags: [],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: false,
-    created_at: '2026-10-02T14:45:00Z',
-  },
-  {
-    id: '10',
-    platform: 'Yandex Maps',
-    rating: 5,
-    text: 'Положительный отзыв; оценка 5/5.',
-    sentiment: 'POSITIVE',
-    threat_level: null,
-    suggested_reply: null,
-    status: 'resolved',
-    tags: [],
-    financial_impact: 0,
-    si_response: null,
-    auto_reply: null,
-    ai_pending: false,
-    is_critical: false,
-    created_at: '2026-10-01T11:05:00Z',
-  },
-];
+    is_critical: review.rating <= 2,
+    created_at: review.created_at,
+  };
+});
 
 // ========================================
 // Mock Dashboard Summary
@@ -212,26 +84,20 @@ export const MOCK_REVIEWS: Review[] = [
 export const MOCK_DASHBOARD_SUMMARY: DashboardSummary = {
   total_reviews: MOCK_REVIEWS.length,
   sentiment: {
-    positive: 6,
-    neutral: 2,
-    negative: 2,
+    positive: MOCK_REVIEWS.filter((review) => review.sentiment === 'POSITIVE').length,
+    neutral: MOCK_REVIEWS.filter((review) => review.sentiment === 'NEUTRAL').length,
+    negative: MOCK_REVIEWS.filter((review) => review.sentiment === 'NEGATIVE').length,
     unclassified: 0,
-    total: 10,
+    total: MOCK_REVIEWS.length,
   },
-  timeline: [
-    { date: '2026-10-01', reviews: 1 },
-    { date: '2026-10-02', reviews: 1 },
-    { date: '2026-10-03', reviews: 1 },
-    { date: '2026-10-04', reviews: 1 },
-    { date: '2026-10-05', reviews: 1 },
-    { date: '2026-10-06', reviews: 1 },
-    { date: '2026-10-07', reviews: 1 },
-    { date: '2026-10-08', reviews: 1 },
-    { date: '2026-10-09', reviews: 1 },
-    { date: '2026-10-10', reviews: 1 },
-  ],
-  critical_reviews: 2,
-  ai_pending: 0,
+  timeline: [...new Set(MOCK_REVIEWS.map((review) => review.created_at.slice(0, 10)))]
+    .sort()
+    .map((date) => ({
+      date,
+      reviews: MOCK_REVIEWS.filter((review) => review.created_at.startsWith(date)).length,
+    })),
+  critical_reviews: MOCK_REVIEWS.filter((review) => review.is_critical).length,
+  ai_pending: MOCK_REVIEWS.filter((review) => review.ai_pending).length,
 };
 
 // ========================================

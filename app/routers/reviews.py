@@ -34,7 +34,14 @@ from ..schemas.analytics import (
     DashboardReviewsPage,
     DashboardReviewsResponse,
 )
-from ..schemas.economics import ReviewBase, ReviewStatus
+from ..schemas.economics import (
+    AssistantReviewSchema,
+    GenerateReplyRequest,
+    GenerateReplyResponse,
+    ReviewBase,
+    ReviewStatus,
+    SubmitModerationRequest,
+)
 from ..services import ReviewProcessorService, SentimentService
 
 router = APIRouter()
@@ -567,4 +574,226 @@ async def get_reviews_summary(
     return DashboardMetricsResponse(
         success=True,
         data=DashboardMetrics(**metrics),
+    )
+
+
+# ============================================================================
+# ASSISTANT API ENDPOINTS - для рабочего места SI-Ассистента
+# ============================================================================
+
+
+@router.get(
+    "/assistant",
+    response_model=list[AssistantReviewSchema],
+    summary="Список отзывов для ассистента",
+    description="Получить отзывы для рабочего места ассистента с фильтрацией",
+)
+async def get_assistant_reviews(
+    filter: str = Query(
+        "all",
+        pattern="^(all|negative|unanswered)$",
+        description="Фильтр: all, negative, unanswered",
+    ),
+    branch_id: UUID | None = Query(None, description="Фильтр по филиалу"),
+    limit: int = Query(50, ge=1, le=100, description="Количество отзывов"),
+    offset: int = Query(0, ge=0, description="Смещение для пагинации"),
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> list[AssistantReviewSchema]:
+    """
+    Получить список отзывов для рабочего места ассистента.
+
+    **RLS изоляция:** Автоматическая фильтрация по tenant_id через RLS политику.
+
+    **Параметры:**
+    - filter: all (все), negative (только негативные), unanswered (без ответа)
+    - branch_id: фильтр по филиалу (опционально)
+    - limit: количество отзывов (максимум 100)
+    - offset: смещение для пагинации
+
+    **FSM статус moderation_status:**
+    - new: новый отзыв без ответа
+    - drafted: черновик ответа сгенерирован
+    - pending_moderation: отправлен на модерацию
+    - approved: одобрен модератором
+    - published: ответ опубликован
+    """
+    from ..schemas.economics import ReplyModerationStatus
+
+    # Базовый фильтр по tenant
+    filters = [Review.company_id == tenant_id]
+
+    # Фильтр по филиалу
+    if branch_id:
+        filters.append(Review.branch_id == branch_id)
+
+    # Фильтр по типу
+    if filter == "negative":
+        filters.append(Review.sentiment == "NEGATIVE")
+    elif filter == "unanswered":
+        filters.append(
+            Review.moderation_status.in_(
+                [ReplyModerationStatus.NEW, ReplyModerationStatus.DRAFTED]
+            )
+        )
+
+    query = (
+        select(Review)
+        .where(and_(*filters))
+        .order_by(Review.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+
+    result = await db.execute(query)
+    reviews = list(result.scalars().all())
+
+    # Преобразуем в AssistantReviewSchema
+    assistant_reviews = []
+    for review in reviews:
+        has_reply = review.suggested_reply is not None or review.auto_reply is not None
+        assistant_reviews.append(
+            AssistantReviewSchema(
+                id=review.id,
+                platform=review.platform,
+                text=review.text,
+                rating=review.rating,
+                created_at=review.created_at,
+                sentiment=review.sentiment,
+                status=review.moderation_status,
+                has_reply=has_reply,
+            )
+        )
+
+    return assistant_reviews
+
+
+@router.post(
+    "/{review_id}/generate-reply",
+    response_model=GenerateReplyResponse,
+    summary="Сгенерировать черновик ответа",
+    description="Генерация ответа с использованием системного промпта для заданного тона",
+)
+async def generate_reply(
+    review_id: UUID,
+    request: GenerateReplyRequest,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> GenerateReplyResponse:
+    """
+    Сгенерировать черновик ответа на отзыв.
+
+    **FSM переход:** new -> drafted
+
+    **Безопасность:**
+    - Системные промпты хранятся на сервере (app.core.assistant_prompts)
+    - Клиент передает только идентификатор тона (official | friendly | crisis)
+    - Защита от prompt injection
+
+    **RLS изоляция:** Проверка прав доступа к отзыву через tenant_id.
+    """
+    from ..core.assistant_prompts import build_assistant_prompt
+    from ..schemas.economics import ReplyModerationStatus
+
+    # Получаем отзыв с проверкой RLS
+    query = select(Review).where(
+        and_(Review.id == review_id, Review.company_id == tenant_id)
+    )
+    result = await db.execute(query)
+    review = result.scalar_one_or_none()
+
+    if not review:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Review not found or access denied",
+        )
+
+    # Проверяем FSM: можно генерировать из new или drafted (регенерация)
+    if review.moderation_status not in [
+        ReplyModerationStatus.NEW,
+        ReplyModerationStatus.DRAFTED,
+    ]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Генерация невозможна для отзывов на модерации или опубликованных",
+        )
+
+    # Формируем промпт с серверным системным промптом
+    full_prompt = build_assistant_prompt(review.text, request.tone)
+
+    # TODO: Интеграция с LLM для генерации ответа
+    # Для MVP возвращаем заглушку
+    draft_text = f"[Draft - {request.tone} tone] Спасибо за ваш отзыв. Мы рассмотрим его и свяжемся с вами для решения вопроса."
+
+    # Обновляем статус (FSM переход: new -> drafted)
+    review.moderation_status = ReplyModerationStatus.DRAFTED
+    review.suggested_reply = draft_text
+    await db.commit()
+
+    return GenerateReplyResponse(draft_text=draft_text)
+
+
+@router.post(
+    "/{review_id}/submit-moderation",
+    response_model=AssistantReviewSchema,
+    summary="Отправить ответ на модерацию",
+    description="Сохранить ответ и отправить на модерацию (FSM переход: drafted -> pending_moderation)",
+)
+async def submit_moderation(
+    review_id: UUID,
+    request: SubmitModerationRequest,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> AssistantReviewSchema:
+    """
+    Отправить ответ на модерацию.
+
+    **FSM переход:** drafted -> pending_moderation
+
+    **Валидация:**
+    - Переход разрешен только из статуса drafted
+    - Текст ответа должен быть непустым (1-4000 символов)
+    - Никакой автопубликации!
+
+    **RLS изоляция:** Проверка прав доступа к отзыву через tenant_id.
+    """
+    from ..schemas.economics import ReplyModerationStatus
+
+    # Получаем отзыв с проверкой RLS
+    query = select(Review).where(
+        and_(Review.id == review_id, Review.company_id == tenant_id)
+    )
+    result = await db.execute(query)
+    review = result.scalar_one_or_none()
+
+    if not review:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Review not found or access denied",
+        )
+
+    # Проверяем FSM: можно отправлять только из статуса drafted
+    if review.moderation_status != ReplyModerationStatus.DRAFTED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot submit moderation in status {review.moderation_status.value}. Current status must be 'drafted'.",
+        )
+
+    # Сохраняем ответ и обновляем статус
+    review.suggested_reply = request.resolved_text
+    review.moderation_status = ReplyModerationStatus.PENDING_MODERATION
+    await db.commit()
+    await db.refresh(review)
+
+    # Возвращаем обновленный отзыв
+    has_reply = review.suggested_reply is not None or review.auto_reply is not None
+    return AssistantReviewSchema(
+        id=review.id,
+        platform=review.platform,
+        text=review.text,
+        rating=review.rating,
+        created_at=review.created_at,
+        sentiment=review.sentiment,
+        status=review.moderation_status,
+        has_reply=has_reply,
     )

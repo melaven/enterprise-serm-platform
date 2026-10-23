@@ -28,7 +28,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.core.database import Base
 from app.core.security import EncryptionError, decrypt_token, encrypt_token
-from app.schemas.economics import ReviewStatus
+from app.schemas.economics import ReviewStatus, ReplyModerationStatus
 
 
 class Company(Base):
@@ -111,6 +111,10 @@ class Review(Base):
         nullable=False,
     )
     tenant_id = synonym("company_id")
+    # Branch identifier for multi-location businesses
+    branch_id: Mapped[UUID | None] = mapped_column(
+        Uuid(as_uuid=True), nullable=True, index=True
+    )
     # Добавляем поле для названия платформы как строки (для упрощения парсинга)
     platform: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     author_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -124,6 +128,16 @@ class Review(Base):
         ),
         nullable=False,
         default=ReviewStatus.NEW,
+    )
+    # FSM статус модерации ответа
+    moderation_status: Mapped[ReplyModerationStatus] = mapped_column(
+        SQLAlchemyEnum(
+            ReplyModerationStatus,
+            name="reply_moderation_status",
+            values_callable=lambda statuses: [status.value for status in statuses],
+        ),
+        nullable=False,
+        default=ReplyModerationStatus.NEW,
     )
     financial_impact: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     si_response: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -170,6 +184,8 @@ class Review(Base):
 
     __table_args__ = (
         Index("ix_reviews_company_id", "company_id"),
+        Index("ix_reviews_branch_id", "branch_id"),
+        Index("idx_reviews_tenant_branch", "company_id", "branch_id"),
         Index("ix_reviews_platform_company", "platform_id", "company_id"),
         Index("ix_reviews_status_company", "status", "company_id"),
         Index(

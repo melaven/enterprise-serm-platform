@@ -47,7 +47,7 @@ class LLMReviewAnalysisResult(BaseModel):
     @field_validator("tags")
     @classmethod
     def _normalize_tags(cls, value: list[str]) -> list[str]:
-        seen: dict[str, None] = {}
+        seen: dict[str, str] = {}
         for tag in value:
             clean = " ".join(tag.split())[:40]
             if clean:

@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def get_arq_pool(request: Request) -> ArqRedis:
-    return request.app.state.arq_pool  # type: ignore[no-any-return]
+    return request.app.state.arq_pool
 
 
 ArqPool = Annotated[ArqRedis, Depends(get_arq_pool)]

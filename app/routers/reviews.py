@@ -793,7 +793,6 @@ async def generate_reply(
 
     **RLS изоляция:** Проверка прав доступа к отзыву через tenant_id.
     """
-    from ..core.assistant_prompts import build_assistant_prompt
     from ..schemas.economics import ReplyModerationStatus
 
     # Получаем отзыв с проверкой RLS
@@ -818,9 +817,6 @@ async def generate_reply(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Генерация невозможна для отзывов на модерации или опубликованных",
         )
-
-    # Формируем промпт с серверным системным промптом
-    full_prompt = build_assistant_prompt(review.text, request.tone)
 
     # TODO: Интеграция с LLM для генерации ответа
     # Для MVP возвращаем заглушку

@@ -14,6 +14,12 @@ python scripts/migrate.py
 python scripts/seed_db.py
 ```
 
+Review text awaiting background analysis is stored only in the
+Fernet-encrypted `review_analysis_payloads` table and deleted after successful
+processing. Configure `ENCRYPTION_KEY` in `.env` using a Fernet key and keep it
+stable while encrypted payloads exist; without it, review creation fails
+explicitly rather than storing plaintext.
+
 `scripts/migrate.py` applies the ordered SQL chain transactionally, serializes
 concurrent runners with a PostgreSQL advisory lock, and records successful
 versions in `public.serm_schema_migrations`. It stops on the first error; fix

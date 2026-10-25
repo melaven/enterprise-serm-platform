@@ -28,7 +28,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.core.database import Base
 from app.core.security import EncryptionError, decrypt_token, encrypt_token
-from app.schemas.economics import ReviewStatus, ReplyModerationStatus
+from app.review_state import ReviewState
+from app.schemas.economics import ReplyModerationStatus, ReviewStatus
 
 
 class Company(Base):
@@ -46,7 +47,6 @@ class Company(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-
     platforms: Mapped[list["Platform"]] = relationship(
         back_populates="company",
         cascade="all, delete-orphan",
@@ -120,6 +120,7 @@ class Review(Base):
     author_name: Mapped[str] = mapped_column(String(255), nullable=False)
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    original_text = synonym("text")
     status: Mapped[ReviewStatus] = mapped_column(
         SQLAlchemyEnum(
             ReviewStatus,
@@ -139,11 +140,23 @@ class Review(Base):
         nullable=False,
         default=ReplyModerationStatus.NEW,
     )
+    # FSM состояние отзыва (единое поле для управления жизненным циклом)
+    state: Mapped[ReviewState] = mapped_column(
+        SQLAlchemyEnum(
+            ReviewState,
+            name="review_state",
+            values_callable=lambda statuses: [status.value for status in statuses],
+        ),
+        nullable=False,
+        default=ReviewState.NEW,
+        index=True,
+    )
     financial_impact: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     si_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     sentiment: Mapped[str | None] = mapped_column(String(20), nullable=True)
     threat_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     suggested_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
+    draft_response = synonym("suggested_reply")
     analysis_tags: Mapped[list[str]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"),
         nullable=False,
@@ -173,6 +186,12 @@ class Review(Base):
     dlq_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     tenant_id = synonym("company_id")

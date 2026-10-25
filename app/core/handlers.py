@@ -134,7 +134,11 @@ async def sqlalchemy_exception_handler(
     request: Request, exc: SQLAlchemyError
 ) -> JSONResponse:
     """Обработчик ошибок SQLAlchemy/Базы данных."""
-    logger.error("Database error", extra={"error_type": type(exc).__name__})
+    logger.error(
+        "Database error",
+        extra={"error_type": type(exc).__name__},
+        exc_info=True,  # Log full traceback
+    )
 
     if isinstance(exc, IntegrityError):
         message = "Нарушение целостности данных"

@@ -6,20 +6,22 @@ HTTP-обработка запросов, валидация, делегиров
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import and_, column, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.auth import get_current_tenant
 from ..core.dependencies import (
-    get_review_processor_service,
     get_review_repository,
     get_sentiment_service,
     get_tenant_db,
 )
 from ..core.rate_limit import check_llm_limits
-from ..models.economics import Review
+from ..core.review_privacy import safe_review_summary
+from ..core.security import encrypt_token
+from ..models.economics import Platform, Review
+from ..models.review_analysis_payload import ReviewAnalysisPayload
 from ..repositories import ReviewRepository
 from ..repositories.analytics_repo import (
     get_dashboard_metrics,
@@ -27,6 +29,7 @@ from ..repositories.analytics_repo import (
 from ..repositories.analytics_repo import (
     get_reviews_list as fetch_dashboard_reviews,
 )
+from ..review_state import ReviewState
 from ..schemas.analytics import (
     DashboardMetrics,
     DashboardMetricsResponse,
@@ -42,9 +45,105 @@ from ..schemas.economics import (
     ReviewStatus,
     SubmitModerationRequest,
 )
-from ..services import ReviewProcessorService, SentimentService
+from ..schemas.review import ReviewCreate, ReviewResponse
+from ..services import SentimentService
 
 router = APIRouter()
+
+
+async def _create_review_and_enqueue(
+    request: Request,
+    db: AsyncSession,
+    tenant_id: UUID,
+    platform_id: UUID,
+    rating: int,
+    text: str,
+    review_status: ReviewStatus = ReviewStatus.NEW,
+    financial_impact: float = 0.0,
+) -> Review:
+    arq_pool = getattr(request.app.state, "arq_pool", None)
+    if arq_pool is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Review processing queue is unavailable",
+        )
+    if not text.strip() or len(text) > 10000:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Review text must contain 1 to 10000 characters",
+        )
+
+    platform = await db.scalar(
+        select(Platform).where(
+            Platform.id == platform_id,
+            Platform.company_id == tenant_id,
+        )
+    )
+    if platform is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Platform not found",
+        )
+
+    initial_sentiment = (
+        "POSITIVE" if rating >= 4 else "NEUTRAL" if rating == 3 else "NEGATIVE"
+    )
+    review = Review(
+        company_id=tenant_id,
+        platform_id=platform_id,
+        author_name="Автор отзыва",
+        rating=rating,
+        text=safe_review_summary(rating, initial_sentiment),
+        status=review_status,
+        state=ReviewState.NEW,
+        financial_impact=financial_impact,
+    )
+    db.add(review)
+    await db.flush()
+    db.add(
+        ReviewAnalysisPayload(
+            review_id=review.id,
+            company_id=tenant_id,
+            encrypted_text=encrypt_token(text),
+        )
+    )
+    await db.flush()
+    await db.refresh(review)
+    await db.commit()
+
+    await arq_pool.enqueue_job(
+        "process_review_task",
+        str(review.id),
+        str(tenant_id),
+        _job_id=f"process-review-{review.id}",
+    )
+    return review
+
+
+@router.post(
+    "/",
+    response_model=ReviewResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Создать новый отзыв",
+    description="Принять новый отзыв от внешней системы и сохранить в базу данных",
+)
+async def create_review(
+    review_data: ReviewCreate,
+    request: Request,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> ReviewResponse:
+    """Сохранить отзыв и поставить его анализ в ARQ без ожидания обработки."""
+    new_review = await _create_review_and_enqueue(
+        request=request,
+        db=db,
+        tenant_id=tenant_id,
+        platform_id=review_data.platform_id,
+        rating=review_data.rating,
+        text=review_data.text,
+    )
+
+    return ReviewResponse.model_validate(new_review)
 
 
 @router.post(
@@ -83,29 +182,31 @@ async def approve_ai_response(
 )
 async def receive_review_webhook(
     review_data: ReviewBase,
-    processor: ReviewProcessorService = Depends(get_review_processor_service),
+    request: Request,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> JSONResponse:
-    """
-    Webhook для получения отзывов от внешних систем:
-    - Google Maps, 2GIS, Trustpilot и др.
-    - Автоматическая обработка и анализ
-    - Генерация ответов для критических случаев
-    """
-
-    # Полная обработка отзыва через сервис
-    result = await processor.process_new_review(review_data)
+    """Принять отзыв и поставить его обработку в ARQ очередь."""
+    review = await _create_review_and_enqueue(
+        request=request,
+        db=db,
+        tenant_id=tenant_id,
+        platform_id=review_data.platform_id,
+        rating=review_data.rating,
+        text=review_data.text,
+        review_status=review_data.status,
+        financial_impact=review_data.financial_impact,
+    )
 
     return JSONResponse(
         status_code=201,
         content={
             "success": True,
-            "message": "Отзыв успешно получен и обработан",
+            "message": "Отзыв принят и поставлен в очередь обработки",
             "data": {
-                "review_id": result["review_id"],
-                "status": result["status"],
-                "priority": result["sentiment_analysis"]["priority"],
-                "financial_impact": result["financial_impact"]["financial_impact"],
-                "response_generated": bool(result["generated_response"]),
+                "review_id": str(review.id),
+                "status": review.state.value,
+                "queued": True,
             },
         },
     )

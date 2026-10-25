@@ -10,6 +10,14 @@
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+With GNU Make installed and the project virtual environment activated, you can
+start the API or background worker from the repository root:
+
+```bash
+make api
+make worker
+```
+
 **Frontend:** http://localhost:3000
 ```powershell
 cd frontend

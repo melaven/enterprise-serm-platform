@@ -1,0 +1,4 @@
+sqlalchemy[asyncio]>=2.0.36,<2.1
+asyncpg>=0.30,<1
+alembic>=1.14,<2
+python-dotenv>=1.0,<2

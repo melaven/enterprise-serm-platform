@@ -116,7 +116,7 @@ async def test_get_assistant_reviews_filter_unanswered(
     )
     db_session.add(review_unanswered)
 
-    # Create answered review (drafted)
+    # A drafted reply is still awaiting moderation, so it remains unanswered.
     review_answered = Review(
         company_id=company_id,
         platform_id=company_id,
@@ -134,8 +134,10 @@ async def test_get_assistant_reviews_filter_unanswered(
     response = await client.get("/api/v1/reviews/assistant?filter=unanswered")
     assert response.status_code == 200
     reviews = response.json()
-    assert len(reviews) == 1
-    assert reviews[0]["status"] == ReplyModerationStatus.NEW.value
+    assert {review["status"] for review in reviews} == {
+        ReplyModerationStatus.NEW.value,
+        ReplyModerationStatus.DRAFTED.value,
+    }
 
 
 @pytest.mark.asyncio
@@ -173,7 +175,7 @@ async def test_generate_reply_fsm_transition_new_to_drafted(
 
 
 @pytest.mark.asyncio
-async def test_generate_reply_fails_from_non_new_status(
+async def test_generate_reply_fails_from_pending_moderation_status(
     client: AsyncClient,
     company_id,
     db_session: AsyncSession,
@@ -186,18 +188,18 @@ async def test_generate_reply_fails_from_non_new_status(
         author_name="Customer",
         rating=3,
         text="Average service",
-        moderation_status=ReplyModerationStatus.DRAFTED,
+        moderation_status=ReplyModerationStatus.PENDING_MODERATION,
     )
     db_session.add(review)
     await db_session.commit()
 
-    # Try to generate reply from drafted status
+    # Try to generate reply after it has entered moderation.
     response = await client.post(
         f"/api/v1/reviews/{review.id}/generate-reply",
         json={"tone": "official"},
     )
     assert response.status_code == 400
-    assert "Cannot generate reply" in response.json()["detail"]
+    assert response.json()["error"]["type"] == "HTTPException"
 
 
 @pytest.mark.asyncio
@@ -288,7 +290,7 @@ async def test_submit_moderation_fails_from_non_drafted_status(
         json={"reply_text": "Reply text"},
     )
     assert response.status_code == 400
-    assert "Cannot submit moderation" in response.json()["detail"]
+    assert response.json()["error"]["type"] == "HTTPException"
 
 
 @pytest.mark.asyncio

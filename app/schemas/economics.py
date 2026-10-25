@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ReviewStatus(str, Enum):
@@ -106,6 +106,12 @@ class SubmitModerationRequest(BaseModel):
     reply_text: str | None = Field(None, max_length=4000)
     text: str | None = Field(None, max_length=4000)
     tone: str | None = Field(None)
+
+    @model_validator(mode="after")
+    def validate_reply_text(self) -> "SubmitModerationRequest":
+        if not any(value and value.strip() for value in (self.reply_text, self.text)):
+            raise ValueError("Текст ответа обязателен")
+        return self
 
     @property
     def resolved_text(self) -> str:

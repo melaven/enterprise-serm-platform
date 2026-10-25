@@ -203,7 +203,6 @@ class Review(Base):
 
     __table_args__ = (
         Index("ix_reviews_company_id", "company_id"),
-        Index("ix_reviews_branch_id", "branch_id"),
         Index("idx_reviews_tenant_branch", "company_id", "branch_id"),
         Index("ix_reviews_platform_company", "platform_id", "company_id"),
         Index("ix_reviews_status_company", "status", "company_id"),

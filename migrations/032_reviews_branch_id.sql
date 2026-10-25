@@ -16,7 +16,7 @@ UPDATE public.reviews r
 SET branch_id = (
     -- Extract UUID from platform_url using regex pattern
     -- Pattern matches standard UUID format in URL path
-    (regexp_matches[1])::uuid
+    (regexp_match(p.platform_url, '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'))[1]::uuid
 )
 FROM public.platforms p
 WHERE r.platform_id = p.id

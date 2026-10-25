@@ -207,7 +207,9 @@ jobs:
 
       - name: Test docker-compose build
         env:
+          POSTGRES_USER: test_user
           POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: test_db
           APP_TENANT_PASSWORD: test_tenant
           REDIS_PASSWORD: test_redis_pass
           JWT_SECRET_KEY: test_secret_key_for_ci_docker

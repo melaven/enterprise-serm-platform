@@ -48,6 +48,9 @@ MIGRATIONS: Final = (
     "030_review_data_minimization.sql",
     "031_authorized_local_si.sql",
     "031_enforce_rls_all_tables.sql",
+    "032_reviews_branch_id.sql",
+    "033_reply_moderation_status.sql",
+    "034_review_analysis_payload.sql",
 )
 _DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _TRANSACTION_COMMANDS = {"BEGIN", "COMMIT", "ROLLBACK"}

@@ -5,15 +5,174 @@ ARQ Worker настройки для SERM с enterprise-логированием
 import os
 from datetime import timezone
 from typing import Any
+from uuid import UUID
 
 from arq import create_pool, cron
+from sqlalchemy import select
 
+from ...core.database import AsyncSessionLocal
 from ...core.logger import configure_logging, get_logger
 from ...core.redis import get_redis_settings
+from ...core.review_privacy import safe_review_summary
+from ...core.security import decrypt_token
+from ...core.tenant_session import get_tenant_session
+from ...models.economics import Review
+from ...models.review_analysis_payload import ReviewAnalysisPayload
+from ...services.fsm import ReviewFSM, ReviewState
+from ...services.openai_review_analyzer import create_openai_analyzer
 from .api_key_usage import flush_api_key_usage
 from .digest import enqueue_weekly_digests, send_company_weekly_digest
 
 logger = get_logger(__name__)
+
+
+async def process_review_task(
+    ctx: dict[str, Any], review_id: str | UUID, tenant_id: str | UUID
+) -> dict[str, str]:
+    """Analyze a tenant review locally, then discard its encrypted source text."""
+    review_uuid = UUID(str(review_id))
+    tenant_uuid = UUID(str(tenant_id))
+
+    session = await get_tenant_session(AsyncSessionLocal, tenant_uuid)
+    try:
+        result = await session.execute(
+            select(Review)
+            .where(
+                Review.id == review_uuid,
+                Review.company_id == tenant_uuid,
+            )
+            .with_for_update()
+        )
+        review = result.scalar_one_or_none()
+        if review is None:
+            await session.rollback()
+            logger.warning(
+                "review_task_skipped_not_found",
+                review_id=str(review_uuid),
+                tenant_id=str(tenant_uuid),
+            )
+            return {"review_id": str(review_uuid), "state": "not_found"}
+
+        if review.state not in {ReviewState.NEW, ReviewState.ANALYZING}:
+            state = review.state.value
+            await session.rollback()
+            logger.info(
+                "review_task_skipped_wrong_state",
+                review_id=str(review_uuid),
+                state=state,
+            )
+            return {"review_id": str(review_uuid), "state": state}
+
+        payload = await session.scalar(
+            select(ReviewAnalysisPayload).where(
+                ReviewAnalysisPayload.review_id == review_uuid,
+                ReviewAnalysisPayload.company_id == tenant_uuid,
+            )
+        )
+        if payload is None:
+            await session.rollback()
+            logger.error(
+                "review_analysis_payload_missing",
+                review_id=str(review_uuid),
+                tenant_id=str(tenant_uuid),
+            )
+            raise RuntimeError(
+                f"Encrypted analysis payload missing for review {review_uuid}"
+            )
+
+        review_text = decrypt_token(payload.encrypted_text)
+        rating = review.rating
+        if review.state == ReviewState.NEW:
+            ReviewFSM.start_analysis(review)
+            await session.commit()
+    finally:
+        await session.close()
+
+    # Use OpenAI LLM for analysis
+    analyzer = create_openai_analyzer()
+    try:
+        analysis = await analyzer.analyze_review(
+            review_text,
+            rating=rating,
+            platform=None,
+        )
+    finally:
+        await analyzer.close()
+
+    session = await get_tenant_session(AsyncSessionLocal, tenant_uuid)
+    try:
+        result = await session.execute(
+            select(Review)
+            .where(
+                Review.id == review_uuid,
+                Review.company_id == tenant_uuid,
+            )
+            .with_for_update()
+        )
+        review = result.scalar_one_or_none()
+        if review is None:
+            await session.rollback()
+            logger.warning(
+                "review_disappeared_during_analysis",
+                review_id=str(review_uuid),
+                tenant_id=str(tenant_uuid),
+            )
+            return {"review_id": str(review_uuid), "state": "not_found"}
+        if review.state != ReviewState.ANALYZING:
+            state = review.state.value
+            await session.rollback()
+            return {"review_id": str(review_uuid), "state": state}
+
+        payload = await session.scalar(
+            select(ReviewAnalysisPayload).where(
+                ReviewAnalysisPayload.review_id == review_uuid,
+                ReviewAnalysisPayload.company_id == tenant_uuid,
+            )
+        )
+        if payload is None:
+            await session.rollback()
+            logger.error(
+                "review_analysis_payload_missing_at_completion",
+                review_id=str(review_uuid),
+                tenant_id=str(tenant_uuid),
+            )
+            raise RuntimeError(
+                f"Encrypted analysis payload missing for review {review_uuid}"
+            )
+
+        summary_sentiment = analysis.sentiment
+        review.text = safe_review_summary(rating, summary_sentiment)
+        review.sentiment = analysis.sentiment
+        review.threat_level = analysis.threat_level
+        review.is_critical = analysis.threat_level >= 7  # Critical if threat >= 7
+        review.is_analyzed = True
+        review.tags = analysis.tags
+        review.suggested_reply = analysis.suggested_reply
+
+        # FSM transitions based on threat_level
+        if analysis.threat_level >= 7:
+            # Critical threat: escalate to management
+            ReviewFSM.escalate_threat(review)
+        elif analysis.sentiment == "POSITIVE":
+            # Positive sentiment: auto-approve
+            ReviewFSM.approve_auto(review)
+        elif analysis.threat_level >= 4:
+            # Medium threat: require human draft
+            ReviewFSM.require_human_draft(review)
+        else:
+            # Low threat: ignore
+            ReviewFSM.ignore(review)
+
+        await session.delete(payload)
+        await session.commit()
+        logger.info(
+            "review_analysis_completed",
+            review_id=str(review_uuid),
+            state=review.state.value,
+        )
+        return {"review_id": str(review_uuid), "state": review.state.value}
+    finally:
+        await session.close()
 
 
 class WorkerSettings:
@@ -27,6 +186,7 @@ class WorkerSettings:
 
     # Задачи для выполнения
     functions = [
+        process_review_task,
         send_company_weekly_digest,
         enqueue_weekly_digests,
         flush_api_key_usage,

@@ -119,6 +119,17 @@ def test_rls_enforcement_migration_covers_public_tables_and_tenants() -> None:
     assert "current_setting('request.jwt.claims', true)" in sql
 
 
+def test_review_analysis_payload_migration_is_registered_and_tenant_isolated() -> None:
+    filename = "034_review_analysis_payload.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS public.review_analysis_payloads" in sql
+    assert "encrypted_text text NOT NULL" in sql
+    assert "ALTER TABLE public.review_analysis_payloads FORCE ROW LEVEL SECURITY" in sql
+    assert "company_id = app.current_company_id()" in sql
+
+
 def test_admin_quota_migration_restricts_direct_limit_updates() -> None:
     sql = (MIGRATIONS_DIR / "016_admin_quota_updates.sql").read_text(encoding="utf-8")
     statements = migration_statements(sql)

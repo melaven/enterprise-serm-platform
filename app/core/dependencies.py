@@ -34,6 +34,22 @@ logger = logging.getLogger(__name__)
 # === TENANT-AWARE DATABASE DEPENDENCIES ===
 
 
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Простая зависимость для получения сессии БД без авторизации и RLS.
+    Используется для тестирования FSM без Supabase auth.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
 async def get_tenant_db(
     tenant_id: UUID = Depends(get_current_tenant),
     payload: JWTPayload = Depends(get_jwt_payload),

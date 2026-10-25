@@ -70,13 +70,6 @@ class ReviewBase(BaseModel):
     si_response: str | None = Field(None, description="Ответ, сгенерированный SI-ядром")
 
 
-class ReviewResponse(ReviewBase):
-    id: UUID
-    created_at: datetime
-    auto_reply: str | None = Field(None, description="Ответ, предложенный AI")
-    ai_pending: bool = False
-
-
 # Assistant schemas
 class AssistantReviewSchema(BaseModel):
     """Схема для списка отзывов в рабочем месте ассистента."""

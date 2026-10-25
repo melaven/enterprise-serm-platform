@@ -25,11 +25,11 @@ const staggerContainer = {
 
 const cardHover = {
   y: -8,
-  transition: { type: 'spring', stiffness: 300, damping: 20 },
+  transition: { type: 'spring' as const, stiffness: 300, damping: 20 },
 };
 
 const buttonSpring = {
-  type: 'spring',
+  type: 'spring' as const,
   stiffness: 400,
   damping: 25,
 };
@@ -82,7 +82,7 @@ export function LandingPage() {
           >
             <motion.h1
               variants={fadeInUp}
-              transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+              transition={{ type: 'spring' as const, stiffness: 100, damping: 20 }}
               className="text-5xl md:text-7xl font-bold tracking-tight text-white"
             >
               Manage Your Online Reputation
@@ -93,7 +93,7 @@ export function LandingPage() {
             
             <motion.p
               variants={fadeInUp}
-              transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+              transition={{ type: 'spring' as const, stiffness: 100, damping: 20 }}
               className="mx-auto mt-8 max-w-2xl text-lg md:text-xl leading-8 text-gray-400"
             >
               Aggregate reviews from multiple platforms, analyze sentiment automatically, 
@@ -102,7 +102,7 @@ export function LandingPage() {
             
             <motion.div
               variants={fadeInUp}
-              transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+              transition={{ type: 'spring' as const, stiffness: 100, damping: 20 }}
               className="mt-12 flex items-center justify-center gap-4"
             >
               <motion.a
@@ -188,7 +188,7 @@ export function LandingPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true, margin: '-100px' }}
                   transition={{
-                    type: 'spring',
+                    type: 'spring' as const,
                     stiffness: 100,
                     damping: 20,
                     delay: idx * 0.1,
@@ -232,7 +232,7 @@ export function LandingPage() {
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-100px' }}
-              transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+              transition={{ type: 'spring' as const, stiffness: 100, damping: 20 }}
               whileHover={cardHover}
               className="rounded-lg border border-gray-800 bg-[#0B0C10] p-8 hover:border-gray-700 transition-colors"
             >
@@ -273,7 +273,7 @@ export function LandingPage() {
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, margin: '-100px' }}
-              transition={{ type: 'spring', stiffness: 100, damping: 20, delay: 0.1 }}
+              transition={{ type: 'spring' as const, stiffness: 100, damping: 20, delay: 0.1 }}
               whileHover={cardHover}
               className="relative rounded-lg border-2 border-[#C5FF4A] bg-[#0B0C10] p-8 shadow-lg shadow-[#C5FF4A]/10"
             >
@@ -327,7 +327,7 @@ export function LandingPage() {
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-100px' }}
-            transition={{ type: 'spring', stiffness: 100, damping: 20 }}
+            transition={{ type: 'spring' as const, stiffness: 100, damping: 20 }}
             whileHover={{ y: -4 }}
             className="rounded-lg border border-gray-800 bg-[#13151A] px-8 py-16 text-center hover:border-gray-700 transition-colors"
           >

@@ -21,7 +21,6 @@ Guidelines:
 - Maintain a neutral, professional tone
 
 The response should be in the same language as the review.""",
-
     "friendly": """You are a friendly and approachable customer service representative. Your task is to write a warm, personable response to a customer review.
 
 Guidelines:
@@ -35,7 +34,6 @@ Guidelines:
 - Maintain a welcoming, approachable tone
 
 The response should be in the same language as the review.""",
-
     "crisis": """You are a crisis communication specialist for a business. Your task is to write a careful, measured response to a critical or severe customer review.
 
 Guidelines:
@@ -49,36 +47,40 @@ Guidelines:
 - Do not expose personal information
 - Maintain a tone of accountability and professionalism
 
-The response should be in the same language as the review."""
+The response should be in the same language as the review.""",
 }
 
 
 def get_system_prompt(tone: Literal["official", "friendly", "crisis"]) -> str:
     """
     Get the system prompt for a given tone.
-    
+
     Args:
         tone: The tone identifier (official | friendly | crisis)
-    
+
     Returns:
         The system prompt string
-    
+
     Raises:
         ValueError: If tone is not valid
     """
     if tone not in SYSTEM_PROMPTS:
-        raise ValueError(f"Invalid tone: {tone}. Must be one of: {list(SYSTEM_PROMPTS.keys())}")
+        raise ValueError(
+            f"Invalid tone: {tone}. Must be one of: {list(SYSTEM_PROMPTS.keys())}"
+        )
     return SYSTEM_PROMPTS[tone]
 
 
-def build_assistant_prompt(review_text: str, tone: Literal["official", "friendly", "crisis"]) -> str:
+def build_assistant_prompt(
+    review_text: str, tone: Literal["official", "friendly", "crisis"]
+) -> str:
     """
     Build the full prompt for LLM reply generation.
-    
+
     Args:
         review_text: The customer review text
         tone: The desired tone for the response
-    
+
     Returns:
         The complete prompt for the LLM
     """

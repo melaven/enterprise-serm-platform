@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CircleAlert, MessageSquareText, MessagesSquare, Sparkles, TrendingUp, TrendingDown } from 'lucide-react';
+import { CircleAlert, Download, MessageSquareText, MessagesSquare, Sparkles, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 
 import * as api from '@/api/services';
@@ -7,6 +7,7 @@ import * as demoApi from '@/api/demoService';
 import { ApiError } from '@/api/client';
 import { AsyncView } from '@/components/ui/async-view';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { Skeleton } from '@/components/ui/skeleton';

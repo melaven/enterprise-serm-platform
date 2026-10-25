@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.url import get_database_url
 from app.models.base import Base
-from app.models.review import Review  # noqa: F401  (импорт регистрирует таблицу reviews в Base.metadata)
+from app.models.review import (
+    Review,  # noqa: F401  (импорт регистрирует таблицу reviews в Base.metadata)
+)
 
 config = context.config
 if config.config_file_name is not None:

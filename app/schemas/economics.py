@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,7 @@ class ReviewStatus(str, Enum):
 
 class ReplyModerationStatus(str, Enum):
     """FSM статусы модерации ответа на отзыв."""
+
     NEW = "new"  # Новый отзыв без ответа
     DRAFTED = "drafted"  # Черновик ответа сгенерирован
     PENDING_MODERATION = "pending_moderation"  # Отправлен на модерацию
@@ -73,6 +75,7 @@ class ReviewBase(BaseModel):
 # Assistant schemas
 class AssistantReviewSchema(BaseModel):
     """Схема для списка отзывов в рабочем месте ассистента."""
+
     id: UUID
     platform: str | None
     text: str
@@ -80,21 +83,26 @@ class AssistantReviewSchema(BaseModel):
     created_at: datetime
     sentiment: str | None
     status: ReplyModerationStatus
-    has_reply: bool = Field(default=False, description="Есть ли черновик или опубликованный ответ")
+    has_reply: bool = Field(
+        default=False, description="Есть ли черновик или опубликованный ответ"
+    )
 
 
 class GenerateReplyRequest(BaseModel):
     """Запрос на генерацию ответа."""
-    tone: str = Field(..., pattern="^(official|friendly|crisis)$")
+
+    tone: Literal["official", "friendly", "crisis"]
 
 
 class GenerateReplyResponse(BaseModel):
     """Ответ с сгенерированным черновиком."""
+
     draft_text: str
 
 
 class SubmitModerationRequest(BaseModel):
     """Запрос на отправку на модерацию."""
+
     reply_text: str | None = Field(None, max_length=4000)
     text: str | None = Field(None, max_length=4000)
     tone: str | None = Field(None)

@@ -1,9 +1,11 @@
 """
 OpenAI-based Review Analyzer with Structured Outputs
 Production-grade async LLM integration for SERM
+Compatible with Groq API via OpenAI SDK
 """
 
 import asyncio
+import os
 from dataclasses import dataclass
 from enum import Enum
 
@@ -17,7 +19,7 @@ from ..core.exceptions import LLMServiceError
 logger = structlog.get_logger(__name__)
 
 # Configuration
-DEFAULT_MODEL = "gpt-4o-mini"  # Cost-effective for production
+DEFAULT_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 DEFAULT_TIMEOUT = 30.0  # seconds
 MAX_RETRIES = 3
 MAX_REVIEW_CHARS = 4000
@@ -144,11 +146,16 @@ class OpenAIReviewAnalyzer:
 
         self.model = model
         self.timeout = timeout
-        self.client = AsyncClient(api_key=self.api_key)
+        self.base_url = os.getenv("OPENAI_BASE_URL")  # Groq API URL or None for OpenAI
+        self.client = AsyncClient(
+            api_key=self.api_key,
+            base_url=self.base_url,
+        )
 
         logger.info(
             "openai_analyzer_initialized",
             model=self.model,
+            base_url=self.base_url,
             timeout=self.timeout,
         )
 

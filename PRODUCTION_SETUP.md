@@ -199,7 +199,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your_service_role_key>
 
 # Gemini AI
-GEMINI_API_KEY=<your_gemini_api_key>
+GROQ_API_KEY=<your_groq_api_key>
 
 # JWT
 JWT_SECRET_KEY=<generate_with_openssl_rand_hex_32>

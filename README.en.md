@@ -162,8 +162,8 @@ SUPABASE_SERVICE_KEY=your-service-role-key
 SUPABASE_JWT_SECRET=your-jwt-secret
 
 # SI provider (optional, for Sentiment Intelligence features)
-GEMINI_API_KEY=your-gemini-api-key
-GEMINI_MODEL=gemini-1.5-flash
+GROQ_API_KEY=your-groq-api-key
+LLM_MODEL=openai/gpt-oss-20b
 
 # Redis (optional, for background workers)
 REDIS_URL=redis://localhost:6379/0

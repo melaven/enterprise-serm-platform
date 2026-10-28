@@ -42,8 +42,8 @@ FRONTEND_PORT=80
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your_service_role_key>
 
-# Gemini AI
-GEMINI_API_KEY=<your_gemini_api_key>
+# Groq LLM
+GROQ_API_KEY=<your_groq_api_key>
 
 # JWT Secret
 JWT_SECRET_KEY=<generate_with_openssl_rand_hex_32>

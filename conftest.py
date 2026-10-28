@@ -19,7 +19,6 @@ if str(project_root) not in sys.path:
 # These legacy scripts require a live API or modules that are no longer part of
 # the application; they were moved into tests/ but are not runnable pytest tests.
 collect_ignore = [
-    "tests/test_ai_retry.py",
     "tests/test_auth_endpoints.py",
     "tests/test_dashboard_api.py",
     "tests/test_economics_service.py",

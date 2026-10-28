@@ -28,7 +28,6 @@ def test_imports():
         from app.core.dependencies import (
             get_company_repository,  # noqa: F401
             get_economics_service,  # noqa: F401
-            get_llm_service,  # noqa: F401
             get_platform_repository,  # noqa: F401
             get_review_repository,  # noqa: F401
             get_tenant_db,  # noqa: F401

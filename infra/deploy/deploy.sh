@@ -12,9 +12,8 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Configuration
-DEPLOY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_ROOT="$DEPLOY_DIR"
-DEPLOY_DIR="$PROJECT_ROOT/deploy"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DEPLOY_DIR="$PROJECT_ROOT/infra/deploy"
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Tenable SERM Production Deployment${NC}"

@@ -54,13 +54,13 @@ services:
   # FastAPI Backend
   backend:
     build:
-      context: ..
+      context: ../..
       dockerfile: backend.Dockerfile
       args:
         PYTHON_VERSION: "3.12"
     image: tenable-serm-backend:latest
     env_file:
-      - ../.env
+      - ../../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
       TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-serm}
@@ -105,13 +105,13 @@ services:
   # ARQ Worker
   worker:
     build:
-      context: ..
+      context: ../..
       dockerfile: worker.Dockerfile
       args:
         PYTHON_VERSION: "3.12"
     image: tenable-serm-worker:latest
     env_file:
-      - ../.env
+      - ../../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
       TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-serm}
@@ -154,7 +154,7 @@ services:
   # React Frontend with Nginx
   frontend:
     build:
-      context: ..
+      context: ../..
       dockerfile: frontend.Dockerfile
     image: tenable-serm-frontend:latest
     restart: unless-stopped

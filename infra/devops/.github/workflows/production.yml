@@ -156,7 +156,7 @@ jobs:
           HOST: ${{ secrets.DEPLOY_HOST }}
           ENV_FILE: ${{ secrets.PROD_ENV_FILE }}     # весь .env одним секретом
         run: |
-          scp -o StrictHostKeyChecking=yes deploy/docker-compose.prod.yml deploy/Caddyfile deploy/deploy.sh "deploy@${HOST}:/opt/tenable/"
+          scp -o StrictHostKeyChecking=yes infra/devops/deploy/docker-compose.prod.yml infra/devops/deploy/Caddyfile infra/devops/deploy/deploy.sh "deploy@${HOST}:/opt/tenable/"
           printf '%s\n' "$ENV_FILE" "DOMAIN=${{ vars.DOMAIN }}" | ssh -o StrictHostKeyChecking=yes "deploy@${HOST}" 'umask 077; cat > /opt/tenable/.env'
       - name: Deploy (auto-rollback on failed healthcheck)
         run: |

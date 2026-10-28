@@ -14,11 +14,18 @@ python scripts/migrate.py
 python scripts/seed_db.py
 ```
 
-Review text awaiting background analysis is stored only in the
-Fernet-encrypted `review_analysis_payloads` table and deleted after successful
-processing. Configure `ENCRYPTION_KEY` in `.env` using a Fernet key and keep it
-stable while encrypted payloads exist; without it, review creation fails
-explicitly rather than storing plaintext.
+Review source text is stored only in the Fernet-encrypted
+`review_analysis_payloads` table. It remains available for on-demand reply
+generation and is deleted when its parent review is deleted. Configure
+`ENCRYPTION_KEY` in `.env` using a Fernet key and keep it stable while encrypted
+payloads exist; without it, review creation fails explicitly rather than
+storing plaintext.
+
+Moderated reply text is stored separately in the tenant-isolated
+`review_replies` table. `reviews.moderation_status` tracks the workflow while
+the privacy-constrained reply fields on `reviews` remain `NULL`. Approval only
+marks the reply as approved; publishing it to an external platform remains a
+separate, disabled operation.
 
 `scripts/migrate.py` applies the ordered SQL chain transactionally, serializes
 concurrent runners with a PostgreSQL advisory lock, and records successful

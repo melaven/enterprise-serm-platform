@@ -109,7 +109,7 @@ El diagrama representa el flujo previsto. Las políticas RLS limitan el acceso a
 - [`README.md`](README.md) — versión principal en inglés.
 - [`frontend/README.md`](frontend/README.md) — documentación específica del frontend.
 - [`migrations/README.md`](migrations/README.md) — guía de migraciones de base de datos.
-- [`devops/README.md`](devops/README.md) — documentación de DevOps y despliegue.
+- [`infra/devops/README.md`](infra/devops/README.md) — documentación de DevOps y despliegue.
 
 ## Licencia
 

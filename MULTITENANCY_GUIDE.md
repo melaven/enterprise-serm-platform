@@ -1,58 +1,58 @@
-# Руководство по мультитенантности SERM API
+# SERM API Multitenancy Guide
 
-## Обзор
+## Overview
 
-SERM API поддерживает мультитенантность через Row Level Security (RLS) в PostgreSQL. Каждая компания является отдельным tenant и видит только свои данные.
+SERM API supports multitenancy through Row Level Security (RLS) in PostgreSQL. Each company is a separate tenant and sees only its own data.
 
-## Архитектура мультитенантности
+## Multitenancy Architecture
 
-### Основные компоненты
+### Core Components
 
-1. **JWT аутентификация** - токен содержит `company_id` (tenant ID)
-2. **Row Level Security (RLS)** - автоматическая фильтрация данных на уровне БД
-3. **Tenant Session** - сессия с установленным контекстом `app.company_id`
-4. **Изолированные роли** - `postgres` (админ) и `app_tenant` (runtime)
+1. **JWT authentication** - token contains `company_id` (tenant ID)
+2. **Row Level Security (RLS)** - automatic data filtering at database level
+3. **Tenant Session** - session with established `app.company_id` context
+4. **Isolated roles** - `postgres` (admin) and `app_tenant` (runtime)
 
-### Поток аутентификации
+### Authentication Flow
 
 ```
-1. Клиент → JWT Token → FastAPI
-2. JWT проверка → AuthContext (user_id, company_id)
-3. Установка app.company_id → RLS фильтрация
-4. Запросы видят только данные своего tenant
+1. Client → JWT Token → FastAPI
+2. JWT verification → AuthContext (user_id, company_id)
+3. Set app.company_id → RLS filtering
+4. Queries see only their tenant's data
 ```
 
-## Установка и настройка
+## Setup and Configuration
 
-> Для локальной разработки используйте PostgreSQL 16 + pgvector из
-> `docker-compose.yml` и выполняйте только `python scripts/migrate.py` из
-> корня репозитория. Он ведёт журнал версий и сам задаёт пароль `app_tenant`
-> из `APP_TENANT_PASSWORD`. Инструкции ниже про ручной пароль и SQL-бэкфилл
-> относятся к старым установкам и не являются частью локального Docker-пути.
+> For local development, use PostgreSQL 16 + pgvector from `docker-compose.yml`
+> and only run `python scripts/migrate.py` from the repository root. It maintains
+> the version log and sets the `app_tenant` password from `APP_TENANT_PASSWORD`
+> automatically. The manual password and SQL backfill instructions below apply to
+> legacy installations and are not part of the local Docker workflow.
 
-### 1. Установка зависимостей
+### 1. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Настройка переменных окружения
+### 2. Configure Environment Variables
 
-Скопируйте `.env.example` в `.env` и настройте:
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-# Роль postgres для миграций
+# postgres role for migrations
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/serm_db
 
-# Роль app_tenant для runtime  
+# app_tenant role for runtime  
 TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:tenant_password@localhost:5432/serm_db
 
-# JWT настройки
+# JWT settings
 AUTH_JWT_ALGORITHM=RS256
 AUTH_JWKS_URL=https://your-project.supabase.co/auth/v1/jwks
 ```
 
-### 3. Применение миграций
+### 3. Apply Migrations
 
 ```bash
 docker compose up -d postgres
@@ -60,26 +60,26 @@ python scripts/migrate.py
 python scripts/seed_db.py
 ```
 
-### 4. Дополнительная настройка
+### 4. Additional Setup
 
-После миграций:
+After migrations:
 
-1. **Установите пароль для app_tenant**:
+1. **Set app_tenant password**:
 ```sql
 ALTER ROLE app_tenant PASSWORD 'secure_password';
 ```
 
-2. **Включите Custom Access Token Hook** в Supabase Dashboard:
+2. **Enable Custom Access Token Hook** in Supabase Dashboard:
    - Authentication → Hooks → Custom Access Token
 
-3. **Заполните таблицу company_members**:
+3. **Populate company_members table**:
 ```sql
 INSERT INTO company_members (user_id, company_id, role) VALUES 
 ('user-uuid-1', 'company-uuid-1', 'owner'),
 ('user-uuid-2', 'company-uuid-1', 'member');
 ```
 
-4. **Выполните бэкфилл company_id в reviews**:
+4. **Backfill company_id in reviews**:
 ```sql
 UPDATE reviews SET company_id = (
     SELECT company_id FROM platforms 
@@ -87,34 +87,34 @@ UPDATE reviews SET company_id = (
 ) WHERE company_id IS NULL;
 ```
 
-## Использование в коде
+## Usage in Code
 
-### JWT аутентификация
+### JWT Authentication
 
 ```python
 from uuid import UUID
 from fastapi import Depends
 from app.core.auth import get_current_tenant
 
-# В роутере
+# In router
 async def my_endpoint(
     tenant_id: UUID = Depends(get_current_tenant)
 ):
-    # Tenant ID извлекается и проверяется по JWT.
+    # Tenant ID extracted and verified from JWT.
     company_id = tenant_id
 ```
 
-### Tenant-aware репозитории
+### Tenant-aware Repositories
 
 ```python
 from app.core.dependencies import get_review_repository
 from app.repositories import ReviewRepository
 
-# Репозиторий автоматически изолирован по tenant
+# Repository is automatically tenant-isolated
 async def get_reviews(
     review_repo: ReviewRepository = Depends(get_review_repository)
 ):
-    # Видит только отзывы своей компании благодаря RLS
+    # Sees only own company's reviews thanks to RLS
     reviews = await review_repo.get_all()
 ```
 
@@ -130,47 +130,47 @@ async def list_reviews(db: AsyncSession = Depends(get_tenant_db)):
     ...
 ```
 
-## Безопасность
+## Security
 
 ### Row Level Security (RLS)
 
-Политики RLS применяются автоматически:
+RLS policies are applied automatically:
 
 ```sql
--- Компании видят только свои записи
+-- Companies see only their own records
 CREATE POLICY companies_policy ON companies
 FOR ALL TO app_tenant
 USING (id = current_setting('app.company_id')::uuid);
 
--- Платформы фильтруются по company_id  
+-- Platforms filtered by company_id  
 CREATE POLICY platforms_policy ON platforms
 FOR ALL TO app_tenant
 USING (company_id = current_setting('app.company_id')::uuid);
 
--- Отзывы изолированы по company_id
+-- Reviews isolated by company_id
 CREATE POLICY reviews_policy ON reviews  
 FOR ALL TO app_tenant
 USING (company_id = current_setting('app.company_id')::uuid);
 ```
 
-### Изоляция ролей
+### Role Isolation
 
-- **`postgres`** - полные права, только для миграций и админки
-- **`app_tenant`** - ограниченные права, не может обходить RLS
+- **`postgres`** - full privileges, migrations and admin only
+- **`app_tenant`** - restricted privileges, cannot bypass RLS
 
 ### JWT Security
 
-- Поддержка RS256 с JWKS (рекомендуется)
-- Legacy HS256 для разработки
-- Проверка подписи и срока действия токена
-- Извлечение `company_id` из различных claims
+- RS256 with JWKS support (recommended)
+- Legacy HS256 for development
+- Token signature and expiration verification
+- Extract `company_id` from various claims
 
-## Тестирование изоляции
+## Testing Isolation
 
 ### Smoke Test
 
 ```bash
-# Проверка что RLS работает
+# Verify RLS is working
 cd app
 python -c "
 import asyncio
@@ -191,9 +191,9 @@ asyncio.run(test())
 "
 ```
 
-Должен вернуть 0 для обоих случаев.
+Should return 0 for both cases.
 
-### Unit тесты
+### Unit Tests
 
 ```python
 import pytest
@@ -203,7 +203,7 @@ from app.core.jwt_handler import JWTHandler
 async def test_jwt_verification():
     handler = JWTHandler()
     
-    # Тест с валидным токеном
+    # Test with valid token
     token = "valid.jwt.token"
     context = await handler.verify_token(token)
     
@@ -212,59 +212,59 @@ async def test_jwt_verification():
 
 @pytest.mark.asyncio  
 async def test_tenant_isolation(tenant_db_session):
-    # Данные должны быть изолированы по tenant
+    # Data must be tenant-isolated
     reviews = await review_repo.get_all()
     
-    # Все отзывы должны принадлежать одной компании
+    # All reviews must belong to one company
     company_ids = {r.company_id for r in reviews}
     assert len(company_ids) <= 1
 ```
 
 ## Troubleshooting
 
-### Проблемы с RLS
+### RLS Issues
 
-**Симптом**: Запросы возвращают 0 строк
+**Symptom**: Queries return 0 rows
 
-**Решение**:
-1. Проверьте что установлен `app.company_id`:
+**Solution**:
+1. Check that `app.company_id` is set:
 ```sql
 SELECT current_setting('app.company_id', true);
 ```
 
-2. Проверьте что RLS включен:
+2. Check that RLS is enabled:
 ```sql
 SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public';
 ```
 
-3. Проверьте политики:
+3. Check policies:
 ```sql
 SELECT * FROM pg_policies WHERE schemaname = 'public';
 ```
 
-### Проблемы с JWT
+### JWT Issues
 
-**Симптом**: 401 Unauthorized
+**Symptom**: 401 Unauthorized
 
-**Решение**:
-1. Проверьте формат токена: `Authorization: Bearer <token>`
-2. Проверьте JWKS URL доступность
-3. Проверьте что токен содержит `company_id`
+**Solution**:
+1. Check token format: `Authorization: Bearer <token>`
+2. Verify JWKS URL availability
+3. Verify token contains `company_id`
 
-### Проблемы с ролями
+### Role Issues
 
-**Симптом**: Permission denied
+**Symptom**: Permission denied
 
-**Решение**:
-1. Проверьте что используете `TENANT_DATABASE_URL`
-2. Убедитесь что роль `app_tenant` существует
-3. Проверьте права доступа к таблицам
+**Solution**:
+1. Check that you're using `TENANT_DATABASE_URL`
+2. Ensure `app_tenant` role exists
+3. Check table access permissions
 
-## Мониторинг
+## Monitoring
 
-### Логирование
+### Logging
 
-Все операции логируются с tenant context:
+All operations are logged with tenant context:
 
 ```
 INFO - User authenticated: user-id-123, company: company-id-456
@@ -272,13 +272,13 @@ DEBUG - Tenant context set: company_id=company-id-456
 DEBUG - Tenant session closed: company_id=company-id-456
 ```
 
-### Метрики
+### Metrics
 
-Отслеживайте:
-- Количество запросов по tenant
-- Время установки tenant context
-- Ошибки аутентификации по tenant
-- Нарушения изоляции (должно быть 0)
+Track:
+- Request count per tenant
+- Tenant context setup time
+- Authentication errors per tenant
+- Isolation violations (should be 0)
 
 ### Health Checks
 
@@ -286,27 +286,27 @@ DEBUG - Tenant session closed: company_id=company-id-456
 GET /health
 ```
 
-Проверяет:
-- ✅ Подключение к БД (tenant роль)
-- ✅ JWT Handler (JWKS доступность)  
-- ✅ LLM сервис
-- ✅ Конфигурацию мультитенантности
+Checks:
+- ✅ Database connection (tenant role)
+- ✅ JWT Handler (JWKS availability)  
+- ✅ LLM service
+- ✅ Multitenancy configuration
 
-## Производительность
+## Performance
 
-### Оптимизация RLS
+### RLS Optimization
 
-1. **Индексы по company_id** - созданы автоматически
-2. **Партиционирование** - рассмотрите для больших таблиц
-3. **Connection pooling** - NullPool для Supabase
+1. **Indexes on company_id** - created automatically
+2. **Partitioning** - consider for large tables
+3. **Connection pooling** - NullPool for Supabase
 
-### Кэширование
+### Caching
 
-- JWT claims кэшируются до истечения токена
-- JWKS кэшируется на 1 час
-- Singleton сервисы переиспользуются
+- JWT claims cached until token expiration
+- JWKS cached for 1 hour
+- Singleton services reused
 
-## Развертывание
+## Deployment
 
 ### Environment Variables
 
@@ -317,22 +317,22 @@ AUTH_JWT_ALGORITHM=RS256
 SQL_ECHO=false
 
 # Development  
-USE_TENANT_ROLE=false  # Для отладки без RLS
-SQL_ECHO=true         # Для просмотра SQL запросов
+USE_TENANT_ROLE=false  # For debugging without RLS
+SQL_ECHO=true         # To view SQL queries
 ```
 
 ### CI/CD
 
-1. Миграции выполняются под `postgres` ролью
-2. Runtime использует `app_tenant` роль  
-3. Smoke tests проверяют изоляцию
-4. Health checks проверяют все компоненты
+1. Migrations run under `postgres` role
+2. Runtime uses `app_tenant` role  
+3. Smoke tests verify isolation
+4. Health checks verify all components
 
 ## Best Practices
 
-1. **Всегда используйте tenant-aware dependencies**
-2. **Не используйте `session.commit()` в middleware**  
-3. **Тестируйте изоляцию для каждой новой таблицы**
-4. **Логируйте все операции с tenant context**
-5. **Мониторьте нарушения безопасности**
-6. **Регулярно ротируйте JWT секреты**
+1. **Always use tenant-aware dependencies**
+2. **Don't use `session.commit()` in middleware**  
+3. **Test isolation for every new table**
+4. **Log all operations with tenant context**
+5. **Monitor security violations**
+6. **Regularly rotate JWT secrets**

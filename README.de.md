@@ -109,7 +109,7 @@ Das Diagramm zeigt den vorgesehenen Verarbeitungsablauf. RLS-Richtlinien begrenz
 - [`README.md`](README.md) — Hauptversion auf Englisch.
 - [`frontend/README.md`](frontend/README.md) — Dokumentation zum Frontend.
 - [`migrations/README.md`](migrations/README.md) — Anleitung zu Datenbankmigrationen.
-- [`devops/README.md`](devops/README.md) — DevOps- und Bereitstellungsdokumentation.
+- [`infra/devops/README.md`](infra/devops/README.md) — DevOps- und Bereitstellungsdokumentation.
 
 ## Lizenz
 

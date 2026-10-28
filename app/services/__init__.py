@@ -7,6 +7,7 @@ from .economics import EconomicsService
 from .llm import LLMService
 from .parser import ParserService
 from .review_processor import ReviewProcessorService
+from .review_service import ReviewApplicationService
 from .sentiment import SentimentService
 
 __all__ = [
@@ -14,5 +15,6 @@ __all__ = [
     "LLMService",
     "ParserService",
     "ReviewProcessorService",
+    "ReviewApplicationService",
     "SentimentService",
 ]

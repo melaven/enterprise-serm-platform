@@ -40,15 +40,9 @@ dist/
 .env
 .env.*
 !.env.example
-!.env.local.example
-!.env.docker.example
-!.env.prod.example
 **/.env
 **/.env.*
 !**/.env.example
-!**/.env.local.example
-!**/.env.docker.example
-!**/.env.prod.example
 
 # Frontend env
 frontend/.env
@@ -62,7 +56,7 @@ frontend/.env.*
 *.pfx
 *.crt
 *.cer
-nginx/ssl/
+infra/nginx/ssl/
 
 # Editors
 .vscode/

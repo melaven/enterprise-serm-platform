@@ -215,6 +215,7 @@ class Review(Base):
             "text",
             unique=True,
         ),
+        UniqueConstraint("id", "company_id", name="uq_reviews_id_company_id"),
         ForeignKeyConstraint(
             ["platform_id", "company_id"],
             ["platforms.id", "platforms.company_id"],

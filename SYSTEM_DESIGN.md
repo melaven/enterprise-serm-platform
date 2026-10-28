@@ -1,26 +1,26 @@
 # System Design: Tenable SERM
 
-Документ для технического интервью и due diligence. Формат: цели → архитектура → инварианты → безопасность → отказы → компромиссы.
-Условные обозначения статуса: **[impl]** реализовано в коде, **[draft]** написано, но не подключено/не запускалось, **[plan]** спроектировано.
+Technical interview and due diligence document. Format: goals → architecture → invariants → security → failures → tradeoffs.
+Status notation: **[impl]** implemented in code, **[draft]** written but not connected/not run, **[plan]** designed.
 
 ---
 
-## 1. Цели и нефункциональные требования
+## 1. Goals and Non-Functional Requirements
 
-| Требование | Что это значит технически |
+| Requirement | Technical Meaning |
 |---|---|
-| Строгая изоляция арендаторов | Ни один запрос, ни одна ошибка приложения не должны раскрыть чужие отзывы/логи парсинга. Защита на уровне СУБД (RLS) |
-| Деньги и квоты не врут | Квота не превышается при любой параллельности; платёжное событие применяется ровно один раз |
-| Тяжёлая работа вне запроса | Скрапинг и LLM — в очереди; API отвечает за миллисекунды (`202`) |
-| Устойчивость к сбоям внешнего мира | Площадки, LLM и Stripe падают, отдают мусор и повторяют доставки: система деградирует, а не теряет данные |
-| Диагностируемость | Любой запрос прослеживается от браузера до воркера одним ID |
-| Безопасность по умолчанию | Zero Trust: каждая граница проверяет своё, компрометация одного слоя не открывает остальные |
+| Strict tenant isolation | No request, no application error should reveal other tenants' reviews/parsing logs. Database-level protection (RLS) |
+| Money and quotas don't lie | Quota not exceeded at any concurrency level; payment event applied exactly once |
+| Heavy work outside request | Scraping and LLM in queue; API responds in milliseconds (`202`) |
+| Resilience to external failures | Platforms, LLM and Stripe fail, return garbage and retry deliveries: system degrades but doesn't lose data |
+| Diagnosability | Any request traceable from browser to worker with single ID |
+| Security by default | Zero Trust: each boundary checks itself, compromise of one layer doesn't open others |
 
-**Не цели (пока):** мультирегион, собственный парсинг-кластер с ротацией IP, real-time аналитика на потоках.
+**Not goals (yet):** multiregion, own parsing cluster with IP rotation, real-time streaming analytics.
 
 ---
 
-## 2. Архитектура
+## 2. Architecture
 
 ```
                                      INTERNET
@@ -67,11 +67,11 @@
    +----------------------+
 ```
 
-Принципы раскладки: **API без состояния** (масштабируется репликами), **вся тяжёлая работа за очередью**, **паук и воркеры в отдельных сетях** без доступа друг к другу, **единственный источник истины — PostgreSQL**.
+Layout principles: **stateless API** (scales with replicas), **all heavy work behind queue**, **spider and workers in separate networks** without access to each other, **single source of truth — PostgreSQL**.
 
 ---
 
-## 3. Жизненный цикл запроса на парсинг
+## 3. Parsing Request Lifecycle
 
 ```
 Client            API                      Redis/ARQ         Worker                 PostgreSQL
@@ -93,100 +93,100 @@ Client            API                      Redis/ARQ         Worker             
   |<== event: done {success} =================|<-- result ------|                        |
 ```
 
-`X-Correlation-ID` присутствует на каждой стрелке: клиент → API → payload задачи → воркер → JSON-логи.
+`X-Correlation-ID` present on every arrow: client → API → task payload → worker → JSON logs.
 
 ---
 
-## 4. Модель данных и мультиарендность **[impl]**
+## 4. Data Model and Multitenancy **[impl]**
 
-- Каждая tenant-таблица содержит `company_id`/`tenant_id` и включённый RLS.
-- Транзакция запроса начинается с `set_config('app.current_tenant_id', :company, true)` (локально для транзакции). Политики сверяют строку с этим значением.
-- `company_id` приходит **только** из подписанного JWT: custom access token hook Supabase кладёт его в claims; `user_metadata` не используется (его меняет сам пользователь).
-- Привилегированные операции (изменение лимитов, плана) — только через `SECURITY DEFINER`-функции с `search_path = ''`; прямых `INSERT/UPDATE` у роли приложения нет.
-- Роли: `app_tenant` (запросы), `billing_service` (вебхук, только `app.billing_*`), владелец (миграции).
+- Each tenant table contains `company_id`/`tenant_id` and enabled RLS.
+- Request transaction starts with `set_config('app.current_tenant_id', :company, true)` (transaction-local). Policies compare row with this value.
+- `company_id` comes **only** from signed JWT: Supabase custom access token hook puts it in claims; `user_metadata` not used (user can modify it themselves).
+- Privileged operations (quota/plan changes) — only through `SECURITY DEFINER` functions with `search_path = ''`; application role has no direct `INSERT/UPDATE`.
+- Roles: `app_tenant` (requests), `billing_service` (webhook, `app.billing_*` only), owner (migrations).
 
-Ключевые таблицы: `reviews` (нейтральная выжимка и аналитика; дедуп по tenant, площадке, дате, рейтингу и выжимке), `tenant_quotas` (used/limit/reset_date), `plans`, `subscriptions`, `stripe_events`.
+Key tables: `reviews` (neutral summary and analytics; dedup by tenant, platform, date, rating and summary), `tenant_quotas` (used/limit/reset_date), `plans`, `subscriptions`, `stripe_events`.
 
-**Сознательное ограничение:** внутри запроса нельзя вызывать `session.commit()` — следующая транзакция потеряет tenant-контекст. Используется `flush()`, коммит — на выходе из контекста.
+**Deliberate limitation:** can't call `session.commit()` inside request — next transaction loses tenant context. Use `flush()`, commit on context exit.
 
 ---
 
-## 5. Конкурентность и идемпотентность **[impl]**
+## 5. Concurrency and Idempotency **[impl]**
 
-Главное решение: **инварианты выражены атомарными SQL-инструкциями и ограничениями, а не блокировками.**
+Main approach: **invariants expressed by atomic SQL statements and constraints, not locks.**
 
-| Гонка | Защита | Почему этого достаточно |
+| Race | Protection | Why This Is Sufficient |
 |---|---|---|
-| Два воркера одновременно списывают квоту | `UPDATE tenant_quotas SET used = used + :n WHERE used + :n <= limit RETURNING …` | Блокировка строки и проверка условия — одна инструкция; при READ COMMITTED проигравший перепроверяет условие по свежей строке |
-| Двойной клик «Запустить парсинг» | Детерминированный `job_id` (company + platform + sha256(url)) в ARQ | Второй `enqueue` возвращает `None` → `409`; завершённая задача с висящим результатом перезапускается корректно (`enqueue_unique`) |
-| Совпадение отзыва по разрешенным аналитическим полям | `UNIQUE` + `ON CONFLICT DO NOTHING` по tenant, площадке, дате, рейтингу и выжимке | Не требуется постоянный ID источника или автора |
-| Повторная доставка вебхука Stripe | `stripe_events(event_id PRIMARY KEY)`, запись и применение в **одной** транзакции | Конкурентный дубль ждёт коммита первого и получает `false` — применение ровно один раз |
-| Событие пришло не по порядку | `period_paid` возвращает `false` для неизвестной подписки → `500` → Stripe повторит | Порядок доставки Stripe не гарантирует; повтор безопаснее, чем угадывание |
-| Запоздалое удаление старой подписки | `billing_cancel` срабатывает только для **текущей** `stripe_subscription_id` | Старое событие не обнулит новый Pro |
-| Два воркера берут одни `ai_pending` строки | `FOR UPDATE SKIP LOCKED` + lease с токеном | Нет ожидания и двойной обработки; упавший воркер теряет lease по таймауту |
-| Квота резервируется, а работа падает | Reserve-before-scrape, `release` излишка в `finally`, `consume` с ретраем на гонку | Худший случай — временно «занятая» квота до возврата, но не превышение |
+| Two workers deduct quota simultaneously | `UPDATE tenant_quotas SET used = used + :n WHERE used + :n <= limit RETURNING …` | Row lock and condition check in one statement; with READ COMMITTED loser rechecks condition on fresh row |
+| Double-click "Start parsing" | Deterministic `job_id` (company + platform + sha256(url)) in ARQ | Second `enqueue` returns `None` → `409`; completed task with hanging result restarts correctly (`enqueue_unique`) |
+| Review match on permitted analytical fields | `UNIQUE` + `ON CONFLICT DO NOTHING` by tenant, platform, date, rating and summary | No persistent source ID or author required |
+| Stripe webhook redelivery | `stripe_events(event_id PRIMARY KEY)`, record and apply in **single** transaction | Concurrent duplicate waits for first commit and gets `false` — exactly-once apply |
+| Event arrived out of order | `period_paid` returns `false` for unknown subscription → `500` → Stripe retries | Stripe doesn't guarantee delivery order; retry safer than guessing |
+| Delayed deletion of old subscription | `billing_cancel` only fires for **current** `stripe_subscription_id` | Old event doesn't zero new Pro |
+| Two workers take same `ai_pending` rows | `FOR UPDATE SKIP LOCKED` + lease with token | No waiting and double processing; failed worker loses lease on timeout |
+| Quota reserved but work fails | Reserve-before-scrape, `release` excess in `finally`, `consume` with race retry | Worst case — temporarily "busy" quota until return, but no exceeding |
 
-**Почему не advisory locks.** Session-level `pg_advisory_lock` небезопасен за пулером в transaction-режиме (Supavisor/PgBouncer): блокировка привязана к соединению, а запросы клиента могут уходить в разные соединения — блокировка «протекает» или не снимается. Transaction-level (`pg_advisory_xact_lock`) работает, но удерживает соединение и сериализует то, что атомарный `UPDATE` делает без ожидания. Мы используем блокировки строк, которые СУБД и так берёт, и уникальные ограничения — они переживают рестарты, не требуют очистки и проверяются тестом.
+**Why not advisory locks.** Session-level `pg_advisory_lock` unsafe behind pooler in transaction mode (Supavisor/PgBouncer): lock tied to connection, client requests can go to different connections — lock "leaks" or doesn't release. Transaction-level (`pg_advisory_xact_lock`) works but holds connection and serializes what atomic `UPDATE` does without waiting. We use row locks that DBMS takes anyway, and unique constraints — they survive restarts, need no cleanup and are verified by test.
 
-**Пул соединений.** API: `pool_size=10, max_overflow=5, pool_timeout=10 с` — при исчерпании запрос быстро получает отказ, а не копит очередь. Воркер: `pool_size = max_jobs, max_overflow=0` — число параллельных задач не превышает число соединений.
-
----
-
-## 6. Асинхронный пайплайн **[impl]**
-
-- **ARQ** (Redis, AOF, пароль, без публикации порта): `keep_result` ограничивает живучесть результата; `@traced_task` переносит `correlation_id` в контекст логирования воркера.
-- **Скрапинг:** адаптеры площадок (Google, Яндекс, 2GIS, Otzovik); HTTP-слой с проверкой хоста по allowlist и **каждого редиректа**.
-- **AI-обогащение:** пакеты по N отзывов, strict `json_schema`; «ядовитый» отзыв изолируется **бисекцией** пачки; **circuit breaker** прекращает отправку при каскадных ошибках провайдера; отзыв без разметки получает `ai_pending=true`.
-- **Фоновый ретрай:** cron берёт `ai_pending` с lease; сбой провайдера не сжигает попытки отзывов (refund) и останавливает прогон; исчерпавший попытки закрывается как `gave_up:*`.
-- **Безопасность очереди:** ARQ сериализует аргументы через pickle → Redis доступен только во внутренней сети и с паролем (иначе запись в очередь = RCE).
+**Connection pool.** API: `pool_size=10, max_overflow=5, pool_timeout=10 s` — on exhaustion request quickly gets refusal, not queuing. Worker: `pool_size = max_jobs, max_overflow=0` — parallel tasks don't exceed connections.
 
 ---
 
-## 7. Реалтайм: SSE **[impl]**
+## 6. Async Pipeline **[impl]**
 
-Прогресс задачи парсинга доставляется браузеру потоком `text/event-stream`; реализация нативная, в `app/routers/parser.py`.
-
-- **Зачем SSE, а не WebSocket или опрос:** поток односторонний (сервер → клиент), идёт по обычному HTTP без апгрейда протокола, браузер сам переподключается, клиенту не нужно слать повторные запросы к API.
-- **Авторизация:** HttpOnly-cookie — EventSource отправляет cookie, но не умеет ставить `Authorization`; это один из доводов за cookie-сессии (раздел 8). Доступ к статусу задачи должен быть ограничен компанией-владельцем (в `job_id` зашит `company_id`).
-- **Edge:** для потоков на прокси отключается буферизация (`proxy_buffering off` в Nginx, `flush_interval -1` в Caddy) и увеличивается read-timeout; конфиги в `hardening/nginx/` и `devops/deploy/` нужно привести в соответствие с фактическим путём SSE-эндпоинта.
-- **Фолбэк:** клиентский `waitForJob` (опрос с abort, до 3 транзитных 5xx, дедлайн 10 мин) остаётся рабочим на случай корпоративных прокси, режущих потоки.
-
-**Масштабирование SSE:** каждое открытое соединение держит корутину и обращения к Redis за статусом. Для тысяч одновременных потоков следующий шаг — Redis Pub/Sub или Streams вместо опроса статуса (**[plan]**).
+- **ARQ** (Redis, AOF, password, no published port): `keep_result` limits result lifetime; `@traced_task` carries `correlation_id` to worker logging context.
+- **Scraping:** platform adapters (Google, Yandex, 2GIS, Otzovik); HTTP layer with host allowlist check and **every redirect**.
+- **AI enrichment:** batches of N reviews, strict `json_schema`; "poisonous" review isolated by **batch bisection**; **circuit breaker** stops sending on provider cascade failures; unmarked review gets `ai_pending=true`.
+- **Background retry:** cron takes `ai_pending` with lease; provider failure doesn't burn review attempts (refund) and stops run; exhausted attempts closed as `gave_up:*`.
+- **Queue security:** ARQ serializes arguments via pickle → Redis accessible only on internal network with password (otherwise write to queue = RCE).
 
 ---
 
-## 8. Безопасность (Zero Trust)
+## 7. Realtime: SSE **[impl]**
 
-Модель: каждая граница проверяет самостоятельно, доверие не наследуется.
+Parsing task progress delivered to browser via `text/event-stream`; native implementation in `app/routers/parser.py`.
 
-| Слой | Решение | Статус |
+- **Why SSE not WebSocket or polling:** one-way stream (server → client), goes over regular HTTP without protocol upgrade, browser auto-reconnects, client doesn't need repeated API requests.
+- **Authorization:** HttpOnly cookie — EventSource sends cookies but can't set `Authorization`; this is one argument for cookie sessions (section 8). Task status access must be restricted to owning company (`job_id` contains `company_id`).
+- **Edge:** for streams proxy disables buffering (`proxy_buffering off` in Nginx, `flush_interval -1` in Caddy) and increases read-timeout; configs in `infra/hardening/nginx/` and `infra/devops/deploy/` need alignment with actual SSE endpoint path.
+- **Fallback:** client `waitForJob` (polling with abort, up to 3 transient 5xx, 10 min deadline) remains working for corporate proxies cutting streams.
+
+**SSE scaling:** each open connection holds coroutine and Redis status checks. For thousands of concurrent streams next step — Redis Pub/Sub or Streams instead of polling status (**[plan]**).
+
+---
+
+## 8. Security (Zero Trust)
+
+Model: each boundary checks independently, trust not inherited.
+
+| Layer | Solution | Status |
 |---|---|---|
-| Идентичность | JWT (ES256 через JWKS), `aud`/`iss`/`exp` обязательны; сбой JWKS → `503`, не `401` | impl (503-патч — draft) |
-| Сессия в браузере | `__Host-` HttpOnly Secure cookie, `SameSite`, подписанный double-submit CSRF + проверка `Origin`; токены недоступны JS | draft (`hardening/`) |
-| Данные | RLS на всех tenant-таблицах, DEFINER-функции, минимальные гранты | impl |
-| Заголовки | CSP (API: `default-src 'none'`), HSTS, nosniff, X-Frame-Options, COOP/CORP, `no-store` | draft |
-| Edge | `limit_req` (api/auth/expensive), `limit_conn`, таймауты против slowloris, блок сканеров | draft |
-| SSRF | allowlist хостов площадок, проверка каждого редиректа, запрет не-глобальных IP и числовых форм; DNS-резолвер-гард и egress-политика против ребиндинга | impl (хопы) / draft (резолвер) |
-| Отзывы | Исходный текст анализируется в памяти; в БД сохраняются только нейтральная выжимка по рейтингу/фиксированным категориям и аналитические метрики. Имя автора — общая метка; внешние ID и свободные ответы не сохраняются | impl |
-| Платежи | подпись вебхука по сырым байтам, окно 5 мин, fail-closed без секрета, отдельная роль БД | impl |
-| Контейнеры | non-root, `read_only`, `cap_drop: ALL`, `no-new-privileges`, лимиты ресурсов, раздельные сети | draft |
-| Цепочка поставки | Trivy-гейт до публикации образа, SBOM + provenance, подпись cosign, gitleaks, pip-audit | draft |
+| Identity | JWT (ES256 via JWKS), `aud`/`iss`/`exp` mandatory; JWKS failure → `503`, not `401` | impl (503 patch — draft) |
+| Browser session | `__Host-` HttpOnly Secure cookie, `SameSite`, signed double-submit CSRF + `Origin` check; tokens unavailable to JS | draft (`infra/hardening/`) |
+| Data | RLS on all tenant tables, DEFINER functions, minimal grants | impl |
+| Headers | CSP (API: `default-src 'none'`), HSTS, nosniff, X-Frame-Options, COOP/CORP, `no-store` | draft |
+| Edge | `limit_req` (api/auth/expensive), `limit_conn`, timeouts against slowloris, scanner blocking | draft |
+| SSRF | platform host allowlist, every redirect checked, non-global IP and numeric forms blocked; DNS resolver guard and egress policy against rebinding | impl (hops) / draft (resolver) |
+| Reviews | Original text analyzed in memory; only neutral summary by rating/fixed categories and analytical metrics saved to DB. Author name — generic label; external IDs and free responses not saved | impl |
+| Payments | webhook signature on raw bytes, 5 min window, fail-closed without secret, separate DB role | impl |
+| Containers | non-root, `read_only`, `cap_drop: ALL`, `no-new-privileges`, resource limits, separate networks | draft |
+| Supply chain | Trivy gate before image publish, SBOM + provenance, cosign signature, gitleaks, pip-audit | draft |
 
-### Модель угроз (кратко)
+### Threat Model (Brief)
 
-| Актор / вектор | Атака | Контр-мера |
+| Actor / Vector | Attack | Countermeasure |
 |---|---|---|
-| Злоумышленник с XSS | Кража токена | Токен в HttpOnly-cookie; строгий CSP; нет inline-скриптов |
-| Чужой арендатор | Чтение/изменение данных другой компании | RLS + `company_id` только из JWT; 404 вместо 403 для чужих ресурсов |
-| Подделка платежа | Фейковый вебхук «оплачено» | Подпись Stripe, replay-окно, `CHECK pro_requires_stripe`, привязка customer UNIQUE |
-| Пользователь платформы | SSRF через URL парсинга | Allowlist + проверка хопов + резолвер + egress |
-| Брутфорс/скан | Подбор паролей, сканеры | `limit_req` auth-зона, единый ответ об ошибке, блок сканеров |
-| Компрометация воркера | Горизонтальное движение | Отдельная роль БД без BYPASSRLS, сеть без доступа к пауку и биллингу, read-only FS |
-| Prompt injection через отзывы/чаты | Подмена решений LLM | LLM не имеет инструментов и секретов; инварианты (score, intent, is_lead) перепроверяет код |
+| Attacker with XSS | Token theft | Token in HttpOnly cookie; strict CSP; no inline scripts |
+| Other tenant | Read/modify another company's data | RLS + `company_id` only from JWT; 404 instead of 403 for others' resources |
+| Payment forgery | Fake webhook "paid" | Stripe signature, replay window, `CHECK pro_requires_stripe`, customer UNIQUE binding |
+| Platform user | SSRF via parsing URL | Allowlist + hop checks + resolver + egress |
+| Brute force/scan | Password guessing, scanners | `limit_req` auth zone, uniform error response, scanner blocking |
+| Worker compromise | Lateral movement | Separate DB role without BYPASSRLS, network without spider and billing access, read-only FS |
+| Prompt injection via reviews/chats | LLM decision hijacking | LLM has no tools and secrets; invariants (score, intent, is_lead) rechecked by code |
 
 ---
 
-## 9. Биллинг (Stripe) **[impl]**
+## 9. Billing (Stripe) **[impl]**
 
 ```
         checkout.session.completed (paid)
@@ -197,103 +197,103 @@ Client            API                      Redis/ARQ         Worker             
   +----------------------------------------------+---+
 ```
 
-- Привязка оплаты к компании: `client_reference_id = company_id` из проверенного JWT при создании checkout; последующие события находят компанию **только** по `stripe_subscription_id` в БД.
-- `plan -> limits`: `plans` определяет лимиты, `tenant_quotas` — единственный счётчик, поэтому воркерный резерв и биллинг не расходятся.
-- Период квоты совпадает с расчётным периодом Stripe.
-- `402` содержит `plan`, `requests_used`, `max_requests`, `reset_date`, `upgrade_available` — данных достаточно для paywall без второго запроса.
+- Payment to company binding: `client_reference_id = company_id` from verified JWT on checkout creation; subsequent events find company **only** by `stripe_subscription_id` in DB.
+- `plan -> limits`: `plans` defines limits, `tenant_quotas` — single counter, so worker reserve and billing don't diverge.
+- Quota period matches Stripe billing period.
+- `402` contains `plan`, `requests_used`, `max_requests`, `reset_date`, `upgrade_available` — enough data for paywall without second request.
 
-Не реализовано: Customer Portal, возвраты и споры, налоги, пробный период, `invoice.payment_failed` (рекомендуется добавить).
+Not implemented: Customer Portal, refunds and disputes, taxes, trial period, `invoice.payment_failed` (recommended to add).
 
 ---
 
-## 10. Telegram-паук лидов **[draft]**
+## 10. Telegram Lead Spider **[draft]**
 
-Назначение: найти компании, которые публично просят помощь с отзывами/репутацией, и передать человеку.
+Purpose: find companies publicly requesting review/reputation help, pass to human.
 
 ```
-Telegram event -> prefilter (regex: длина, тема, интент, стоп-слова)
-   -> dedupe (chat+msg, hash текста 48ч, cooldown автора)
+Telegram event -> prefilter (regex: length, topic, intent, stopwords)
+   -> dedupe (chat+msg, text hash 48h, author cooldown)
    -> LLM classify (JSON, temperature 0) -> invariants in code
-   -> score >= 70 & public @username -> SQLite (TTL 30д) -> Bot API card
-   -> owner presses [Беру]/[Отправлено]/[Стоп] -> status machine
+   -> score >= 70 & public @username -> SQLite (TTL 30d) -> Bot API card
+   -> owner presses [Take]/[Sent]/[Stop] -> status machine
 ```
 
-- **Read-only**: не вступает в чаты, не пишет первым; первое сообщение отправляет человек (≤ 15/день), «Стоп» = вечный opt-out.
-- Двухступенчатый фильтр экономит LLM-вызовы: regex отсекает основную массу, модель получает только кандидатов.
-- Инварианты применяет код, а не модель: запросы на накрутку отзывов принудительно получают `is_lead=false`.
-- **Изоляция:** собственный контейнер/сеть, без доступа к основной БД; `StringSession` — в секретах; отдельный Telegram-аккаунт с 2FA; 1 аккаунт = 1 sticky-прокси.
-- Правовой статус обработки публичных данных (152-ФЗ/GDPR) требует заключения юриста до масштабирования; это инженерные меры, не юридическая консультация.
+- **Read-only**: doesn't join chats, doesn't message first; human sends first message (≤ 15/day), "Stop" = permanent opt-out.
+- Two-stage filter saves LLM calls: regex filters bulk, model gets only candidates.
+- Code applies invariants not model: review manipulation requests forcibly get `is_lead=false`.
+- **Isolation:** own container/network, no core DB access; `StringSession` in secrets; separate Telegram account with 2FA; 1 account = 1 sticky proxy.
+- Legal status of public data processing (152-FZ/GDPR) requires lawyer opinion before scaling; these are engineering measures, not legal advice.
 
 ---
 
-## 11. Наблюдаемость
+## 11. Observability
 
-- Структурные JSON-логи (structlog), `correlation_id` через `ContextVar`, чистый ASGI-middleware (не ломает стриминг и SSE).
-- Событийные логи ключевых переходов: `parser_enqueued`, `stripe_event` (outcome), `billing_pro_activated`, `billing_downgraded_to_free`.
-- Клиент показывает «ID запроса» в ошибках; поддержка ищет цепочку одним значением.
-- **[plan]** метрики (RED по роутам, глубина очереди ARQ, возраст самой старой задачи, занятость пула, доля `ai_pending`), алерты на `stripe_event_failed`, FloodWait паука, рост 5xx.
+- Structured JSON logs (structlog), `correlation_id` via `ContextVar`, pure ASGI middleware (doesn't break streaming and SSE).
+- Event logs of key transitions: `parser_enqueued`, `stripe_event` (outcome), `billing_pro_activated`, `billing_downgraded_to_free`.
+- Client shows "Request ID" in errors; support searches chain with single value.
+- **[plan]** metrics (RED by routes, ARQ queue depth, oldest task age, pool utilization, `ai_pending` ratio), alerts on `stripe_event_failed`, spider FloodWait, 5xx growth.
 
 ---
 
-## 12. Масштабирование и узкие места
+## 12. Scaling and Bottlenecks
 
-| Компонент | Как масштабируется | Первое узкое место | Что делать |
+| Component | How It Scales | First Bottleneck | What To Do |
 |---|---|---|---|
-| API | горизонтально (stateless) | пул соединений БД (`10+5` на процесс) | pgbouncer/Supavisor лимиты, `WEB_CONCURRENCY`, read-replica для чтения |
-| Воркеры | горизонтально, `max_jobs` на реплику | исходящие запросы к площадкам (rate limit/блокировки), LLM-квоты | per-domain throttle, очередь по приоритетам, батчинг LLM |
-| Redis | вертикально, затем Cluster/Sentinel | один инстанс = SPOF очереди | управляемый Redis с репликой; AOF уже включён |
-| PostgreSQL | вертикально, партиционирование `reviews` по `company_id`/времени | горячая строка `tenant_quotas` у одного арендатора | пачковый резерв (reserve n), а не по одному |
-| SSE | горизонтально | опрос Redis на каждое соединение | Pub/Sub вместо опроса |
+| API | horizontally (stateless) | DB connection pool (`10+5` per process) | pgbouncer/Supavisor limits, `WEB_CONCURRENCY`, read-replica for reads |
+| Workers | horizontally, `max_jobs` per replica | outbound requests to platforms (rate limit/blocks), LLM quotas | per-domain throttle, priority queue, LLM batching |
+| Redis | vertically, then Cluster/Sentinel | single instance = queue SPOF | managed Redis with replica; AOF already enabled |
+| PostgreSQL | vertically, `reviews` partitioning by `company_id`/time | hot `tenant_quotas` row for one tenant | batch reserve (reserve n), not one-by-one |
+| SSE | horizontally | Redis polling per connection | Pub/Sub instead of polling |
 
-**Горячая строка квоты:** атомарный `UPDATE` сериализует конкурентные списания одного арендатора. Это сознательный компромисс: корректность важнее пропускной способности на одну компанию; резерв пачкой (`reserve_reviews` берёт `min(n, остаток)` за один вызов) снижает число обращений.
+**Hot quota row:** atomic `UPDATE` serializes concurrent deductions for one tenant. This is deliberate tradeoff: correctness over single-company throughput; batch reserve (`reserve_reviews` takes `min(n, remaining)` in one call) reduces calls.
 
-**Нагрузочные цифры:** отсутствуют. Сценарий `devops/loadtest/k6-tenable.js` проверяет инварианты (дедуп, квота, пул, изоляция) при 1000 VU; результаты будут добавлены после прогона на staging. До этого мы не заявляем RPS/p95.
+**Load numbers:** absent. Scenario `infra/devops/loadtest/k6-tenable.js` verifies invariants (dedup, quota, pool, isolation) at 1000 VU; results will be added after staging run. Until then we don't claim RPS/p95.
 
 ---
 
-## 13. Режимы отказа
+## 13. Failure Modes
 
-| Отказ | Поведение | Восстановление |
+| Failure | Behavior | Recovery |
 |---|---|---|
-| LLM недоступен/медленный | Circuit breaker, отзывы сохраняются с `ai_pending` | Cron дообрабатывает по lease |
-| Площадка блокирует/меняет вёрстку | Ошибка адаптера, квота возвращается (`release`) | Алерт, правка адаптера; throttle по домену |
-| Redis недоступен | API отдаёт ошибку на постановку; уже сохранённые данные целы | AOF; перезапуск; задачи из очереди сохраняются |
-| Падение воркера посреди задачи | Задача возвращается в очередь (ARQ), lease истекает | Идемпотентные записи — повтор безопасен |
-| JWKS недоступен | `503` (не `401`): клиент не разлогинивает пользователя | Кэш JWKS 10 мин |
-| Stripe шлёт дубль/не по порядку | `duplicate` / `500` и повтор | Идемпотентный журнал событий |
-| Исчерпан пул соединений | Быстрый отказ через `pool_timeout`, без каскада | Масштабирование/лимиты |
-| FloodWait/бан аккаунта паука | Пауза, автостоп после повторных, алерт | Прогрев нового аккаунта; основной бизнес не затронут |
+| LLM unavailable/slow | Circuit breaker, reviews saved with `ai_pending` | Cron processes with lease |
+| Platform blocks/changes markup | Adapter error, quota returned (`release`) | Alert, adapter fix; domain throttle |
+| Redis unavailable | API returns error on enqueue; saved data intact | AOF; restart; queue tasks preserved |
+| Worker crash mid-task | Task returns to queue (ARQ), lease expires | Idempotent writes — retry safe |
+| JWKS unavailable | `503` (not `401`): client doesn't log out user | JWKS cache 10 min |
+| Stripe sends duplicate/out of order | `duplicate` / `500` and retry | Idempotent event log |
+| Connection pool exhausted | Fast refusal via `pool_timeout`, no cascade | Scaling/limits |
+| FloodWait/spider account ban | Pause, auto-stop after repeats, alert | Warm up new account; core business unaffected |
 
 ---
 
-## 14. Архитектурные решения (ADR, кратко)
+## 14. Architectural Decisions (ADR, Brief)
 
-1. **RLS вместо фильтрации в приложении** — ошибка в коде не превращается в утечку; цена: дисциплина с транзакциями и `set_config`.
-2. **Атомарный SQL вместо advisory locks** — проще, не зависит от пулера, проверяемо; цена: сериализация по строке арендатора.
-3. **ARQ вместо Celery** — нативный asyncio, меньше движущихся частей; цена: меньше экосистемы, pickle-сериализация требует закрытого Redis.
-4. **SSE вместо WebSocket** — поток односторонний, нет апгрейда протокола, работает с cookie-авторизацией и обычными прокси.
-5. **Cookie-сессии (BFF) вместо токенов в localStorage** — защита от кражи токена через XSS; цена: CSRF-защита и CORS с credentials.
-6. **Отдельная роль и DEFINER-функции для биллинга** — компрометация вебхука не даёт читать данные арендаторов.
-7. **Паук как изолированный read-only сервис с человеком в контуре** — снижает риск бана и юридические риски, не жертвуя ценностью лидов.
-8. **SQLite для паука** — единый файл, нулевая эксплуатация при десятках лидов в день; миграция в Postgres — при росте.
+1. **RLS instead of application filtering** — code bug doesn't become leak; cost: transaction discipline and `set_config`.
+2. **Atomic SQL instead of advisory locks** — simpler, pooler-independent, testable; cost: per-tenant row serialization.
+3. **ARQ instead of Celery** — native asyncio, fewer moving parts; cost: less ecosystem, pickle serialization requires closed Redis.
+4. **SSE instead of WebSocket** — one-way stream, no protocol upgrade, works with cookie auth and regular proxies.
+5. **Cookie sessions (BFF) instead of localStorage tokens** — XSS token theft protection; cost: CSRF protection and CORS with credentials.
+6. **Separate role and DEFINER functions for billing** — webhook compromise doesn't give tenant data read.
+7. **Spider as isolated read-only service with human in loop** — reduces ban risk and legal risks without sacrificing lead value.
+8. **SQLite for spider** — single file, zero operations at dozens leads/day; migrate to Postgres on growth.
 
 ---
 
-## 15. Матрица проверки
+## 15. Verification Matrix
 
-| Что утверждаем | Чем подтверждено | Чего не хватает |
+| What We Claim | Evidence | What's Missing |
 |---|---|---|
-| Квота не превышается | Атомарный `UPDATE` в 008; k6-проверка `used ≤ limit` | Результаты прогона k6 |
-| Вебхук применяется один раз | 5 параллельных вставок `event_id` на PG16 → одна `true`; тесты логики | Интеграционный тест с настоящим Stripe CLI |
-| Подпись Stripe отсекает подделку | Тест на реальном SDK (подделка, изменённое тело, replay) | Запуск в окружении со `stripe` |
-| Изоляция арендаторов | RLS-политики, смоук-тест SQL | Автоматический тест «A не читает B» в CI |
-| SSE работает | Нативная реализация в `app/routers/parser.py` | Автоматизированные тесты потока (смена статуса, разрыв клиента) и интеграционный тест с настоящим Redis |
-| Корреляция сквозная | Тесты `tests/core/test_tracing.py` (API → воркер) | — |
+| Quota not exceeded | Atomic `UPDATE` in 008; k6 check `used ≤ limit` | k6 run results |
+| Webhook applied once | 5 parallel `event_id` inserts on PG16 → one `true`; logic tests | Integration test with real Stripe CLI |
+| Stripe signature rejects forgery | Test on real SDK (forgery, modified body, replay) | Run in environment with `stripe` |
+| Tenant isolation | RLS policies, SQL smoke test | Automated "A doesn't read B" test in CI |
+| SSE works | Native implementation in `app/routers/parser.py` | Automated stream tests (status change, client disconnect) and integration test with real Redis |
+| End-to-end correlation | Tests `tests/core/test_tracing.py` (API → worker) | — |
 
-## 16. Дорожная карта до «боевого» состояния
+## 16. Roadmap to Production Ready
 
-1. Подключить к `main.py` SecurityMiddleware и cookie-auth (CSRF-исключение для вебхука Stripe), если они ещё не включены.
-2. CI: прогнать `ruff`, `pytest`, Trivy; добавить тест межарендной изоляции.
-3. Staging на Hetzner через Terraform; прогон k6; опубликовать цифры.
-4. Метрики и алерты (очередь, пул, 5xx, `stripe_event_failed`).
-5. Внешний пентест и юридическая проверка обработки PII.
+1. Connect SecurityMiddleware and cookie-auth to `main.py` (CSRF exception for Stripe webhook), if not already enabled.
+2. CI: run `ruff`, `pytest`, Trivy; add inter-tenant isolation test.
+3. Staging on Hetzner via Terraform; k6 run; publish numbers.
+4. Metrics and alerts (queue, pool, 5xx, `stripe_event_failed`).
+5. External pentest and legal PII processing review.

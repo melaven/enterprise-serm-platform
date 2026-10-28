@@ -13,7 +13,7 @@ set -Eeuo pipefail
 
 COMPOSE_FILE="docker-compose.prod.yml"
 ENV_FILE=".env"
-ENV_TEMPLATE=".env.prod.example"
+ENV_TEMPLATE=".env.example"
 WAIT_TIMEOUT=180
 # Без этих значений стек не стартует (совпадает с ${VAR:?} в compose + DATABASE_URL приложения).
 REQUIRED_VARS=(SERVER_NAME TLS_CERT_DIR REDIS_PASSWORD POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB DATABASE_URL SUPABASE_URL BROWSERLESS_TOKEN)
@@ -90,7 +90,7 @@ done
 
 cert_dir="$(env_get TLS_CERT_DIR)"
 for f in fullchain.pem privkey.pem; do
-  [[ -r "$cert_dir/$f" ]] || fail "Нет $cert_dir/$f: без сертификата nginx не стартует (выпусти через certbot --webroot -w ./nginx/acme)."
+  [[ -r "$cert_dir/$f" ]] || fail "Нет $cert_dir/$f: без сертификата nginx не стартует (выпусти через certbot --webroot -w ./infra/nginx/acme)."
 done
 ok "Окружение проверено"
 

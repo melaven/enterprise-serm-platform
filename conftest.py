@@ -160,7 +160,12 @@ async def client(
             join_transaction_mode="create_savepoint",
             expire_on_commit=False,
         ) as session:
-            yield session
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
 
     previous_tenant = app.dependency_overrides.get(get_current_tenant)
     previous_database = app.dependency_overrides.get(get_tenant_db)

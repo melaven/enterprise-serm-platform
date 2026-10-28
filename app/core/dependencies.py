@@ -8,7 +8,7 @@ from collections.abc import AsyncGenerator
 from functools import lru_cache
 from uuid import UUID
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..repositories import (
@@ -22,6 +22,7 @@ from ..services import (
     EconomicsService,
     LLMService,
     ParserService,
+    ReviewApplicationService,
     ReviewProcessorService,
     SentimentService,
 )
@@ -176,6 +177,19 @@ async def get_review_processor_service(
         economics_service,
         sentiment_service,
         tenant_id,  # Передаем tenant_id для автозаполнения company_id
+    )
+
+
+async def get_review_application_service(
+    request: Request,
+    db: AsyncSession = Depends(get_tenant_db),
+    tenant_id: UUID = Depends(get_current_tenant),
+) -> ReviewApplicationService:
+    """Create the tenant-scoped application service for review use cases."""
+    return ReviewApplicationService(
+        db=db,
+        tenant_id=tenant_id,
+        arq_pool=getattr(request.app.state, "arq_pool", None),
     )
 
 

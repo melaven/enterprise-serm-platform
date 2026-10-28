@@ -26,13 +26,13 @@ This guide covers setting up a local development environment for Tenable SERM wi
    - VS Code (recommended) with Python extension
    - Or PyCharm Community Edition
 
-### Optional Software
-
-1. **PostgreSQL** (if you don't want to use SQLite)
+4. **PostgreSQL** (required; use Supabase or a local PostgreSQL instance)
    - Download from https://www.postgresql.org/download/windows/
    - Or use Docker for PostgreSQL only (when disk space allows)
 
-2. **Redis** (if you need Redis features locally)
+### Optional Software
+
+1. **Redis** (if you need background task processing locally)
    - Download from https://redis.io/download
    - Or use Memurai for Windows
 
@@ -47,7 +47,7 @@ This guide covers setting up a local development environment for Tenable SERM wi
 .\setup_env.ps1
 
 # 2. Configure environment
-copy .env.local.example .env
+copy .env.example .env
 # Edit .env with your settings
 
 # 3. Start backend
@@ -62,7 +62,7 @@ chmod +x setup_env.sh
 ./setup_env.sh
 
 # 2. Configure environment
-cp .env.local.example .env
+cp .env.example .env
 # Edit .env with your settings
 
 # 3. Start backend
@@ -73,25 +73,24 @@ cp .env.local.example .env
 
 ## Environment Configuration
 
-### .env.local.example
+### .env.example
 
-Copy `.env.local.example` to `.env` and configure:
+Copy `.env.example` to `.env` and configure:
 
 **Critical Settings:**
 ```bash
-# Database (SQLite for easiest local dev)
-DATABASE_URL=sqlite+aiosqlite:///./serm_local.db
+# PostgreSQL (Supabase or a provisioned local PostgreSQL instance)
+DATABASE_URL=postgresql+asyncpg://...
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_JWT_SECRET=...
 
-# JWT Secret (generate one)
-JWT_SECRET_KEY=your_generated_secret_here
-
-# OpenAI API (required for LLM features)
-OPENAI_API_KEY=your_openai_api_key_here
+# Groq or another configured LLM provider
+GROQ_API_KEY=...
 ```
 
 **Optional Settings:**
 ```bash
-# Disable Redis for local dev
+# Disable ARQ queueing for local development
 REDIS_URL=dummy://skip
 
 # Disable rate limiting

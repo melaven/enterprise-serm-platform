@@ -10,6 +10,7 @@ from app.models.economics import (
 )
 from app.models.review import ReviewState
 from app.models.review_analysis_payload import ReviewAnalysisPayload
+from app.models.review_reply import ReviewReply
 
 __all__ = [
     "APIKey",
@@ -20,6 +21,7 @@ __all__ = [
     "PlatformStatistic",
     "Review",
     "ReviewAnalysisPayload",
+    "ReviewReply",
     "ReviewState",
     "WebhookEndpoint",
 ]

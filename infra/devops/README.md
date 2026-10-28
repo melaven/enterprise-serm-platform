@@ -11,7 +11,7 @@ loadtest/          k6-tenable.js
 ## Запуск «одной командой»
 ```bash
 export TF_VAR_hcloud_token=...                 # Hetzner Cloud API
-cd infra/terraform && cp terraform.tfvars.example terraform.tfvars   # заполнить
+cd infra/devops/infra/terraform && cp terraform.tfvars.example terraform.tfvars   # заполнить
 terraform init && terraform apply              # создаёт сервер; затем A-запись DOMAIN -> output server_ipv4
 ssh-keyscan -t ed25519 <ip>                    # -> GitHub Secret DEPLOY_KNOWN_HOSTS
 git push origin main                           # CI: тесты -> образ -> Trivy -> апрув -> деплой
@@ -22,4 +22,4 @@ GitHub Secrets: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `PROD_ENV
 1. `requirements.txt` (Dockerfile и CI его используют) — в дереве только `requirements-dev.txt`/`-bot.txt`.
 2. `app/main.py` (`app.main:app`) и эндпоинт `GET /health` (healthcheck compose, Caddy, smoke).
 3. `ruff format --check` упадёт на неотформатированном коде: один раз прогнать `ruff format .`.
-4. Postgres: прод — Supabase (sql/001,002 зависят от схемы `auth`). Профиль `selfhosted-db` — только для стендов и требует shim схемы `auth`.
+4. Postgres: прод — Supabase (migrations/001,002 зависят от схемы `auth`). Профиль `selfhosted-db` — только для стендов и требует shim схемы `auth`.

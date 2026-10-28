@@ -34,19 +34,6 @@ class MockReviewSink:
         return len(items)
 
 
-class MockLLMService:
-    """Заглушка для LLM анализатора (заменить на реальную реализацию)."""
-
-    async def analyze_safe(
-        self, text: str, *, rating: int | None = None, platform: str | None = None
-    ) -> Any:
-        """Анализирует отзыв через LLM."""
-        # Здесь должна быть реальная логика LLM анализа
-        from ..llm_analyzer import AnalysisOutcome, fallback_result
-
-        return AnalysisOutcome(fallback_result(rating), is_fallback=len(text) < 10)
-
-
 async def startup_with_dlq(ctx: dict[str, Any]) -> None:
     """Startup функция с инициализацией Supabase service role клиента для DLQ
     и зависимостей боевых парсеров."""
@@ -125,18 +112,13 @@ async def startup_with_dlq(ctx: dict[str, Any]) -> None:
         review_sink = PostgresReviewSink()
         logger.info("✅ PostgresReviewSink initialized")
 
-        # 2. LLM Service (используем существующую заглушку до реальной реализации)
-        llm_service = MockLLMService()
-        logger.info("✅ LLM Service initialized (mock)")
-
-        # 3. QuotaService - будет инициализирован в задаче с DB session
+        # 2. QuotaService - будет инициализирован в задаче с DB session
         # Здесь только помечаем что он доступен
         ctx["quota_service_enabled"] = True
         logger.info("✅ QuotaService factory configured")
 
         # Прокидываем зависимости в контекст задач
         ctx["parser_deps"] = parser_deps
-        ctx["llm"] = llm_service
         ctx["review_sink"] = review_sink
         ctx["http_client"] = http_client  # Для правильного закрытия
 

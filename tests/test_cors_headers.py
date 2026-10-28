@@ -8,7 +8,6 @@ from fastapi.testclient import TestClient
 from app.core.auth import JWTPayload, get_current_tenant, get_jwt_payload
 from app.core.rate_limit import RateLimitExceeded, check_parser_limits
 from app.main import app
-from app.routers.parser import get_parser_queue
 
 TENANT_ID = UUID("11111111-1111-1111-1111-111111111111")
 
@@ -21,9 +20,6 @@ def cors_client() -> Iterator[TestClient]:
     async def jwt_payload() -> JWTPayload:
         return JWTPayload(sub=str(TENANT_ID), tenant_id=TENANT_ID, role="user")
 
-    async def parser_queue() -> None:
-        return None
-
     async def rate_limit() -> None:
         raise RateLimitExceeded(limit=1, window=60, retry_after=23, tenant_id=TENANT_ID)
 
@@ -34,7 +30,6 @@ def cors_client() -> Iterator[TestClient]:
     dependencies = {
         get_current_tenant: tenant_id,
         get_jwt_payload: jwt_payload,
-        get_parser_queue: parser_queue,
         check_parser_limits: rate_limit,
     }
 

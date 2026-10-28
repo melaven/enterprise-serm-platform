@@ -19,8 +19,6 @@ class Settings(BaseSettings):
     # Только для legacy-проектов с HS256. Пусто -> проверка подписи через JWKS.
     supabase_jwt_secret: str | None = None
     jwt_audience: str = "authenticated"
-    gemini_api_key: str | None = None
-    gemini_model: str = "gemini-1.5-flash"
     google_oauth_client_id: str | None = None
     google_oauth_client_secret: SecretStr | None = None
     yandex_oauth_client_id: str | None = None

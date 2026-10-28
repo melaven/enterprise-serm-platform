@@ -20,7 +20,6 @@ from ..repositories import (
 from ..schemas.auth import JWTPayload
 from ..services import (
     EconomicsService,
-    LLMService,
     ParserService,
     ReviewApplicationService,
     ReviewProcessorService,
@@ -131,17 +130,6 @@ async def get_economics_service(
 
 
 @lru_cache
-def get_llm_service_singleton() -> LLMService:
-    """Синглтон для LLMService (переиспользуем Gemini клиент)"""
-    return LLMService()
-
-
-async def get_llm_service() -> LLMService:
-    """Фабрика для LLMService"""
-    return get_llm_service_singleton()
-
-
-@lru_cache
 def get_sentiment_service_singleton() -> SentimentService:
     """Синглтон для SentimentService (без состояния)"""
     return SentimentService()
@@ -232,33 +220,30 @@ class ServiceBundle:
     def __init__(
         self,
         economics: EconomicsService,
-        llm: LLMService,
         sentiment: SentimentService,
         review_processor: ReviewProcessorService,
         tenant_id: UUID,
     ):
         self.economics = economics
-        self.llm = llm
         self.sentiment = sentiment
         self.review_processor = review_processor
         self.tenant_id = tenant_id
 
     def get_all(
         self,
-    ) -> tuple[EconomicsService, LLMService, SentimentService, ReviewProcessorService]:
+    ) -> tuple[EconomicsService, SentimentService, ReviewProcessorService]:
         """Получить все сервисы как кортеж"""
-        return self.economics, self.llm, self.sentiment, self.review_processor
+        return self.economics, self.sentiment, self.review_processor
 
 
 async def get_service_bundle(
     economics: EconomicsService = Depends(get_economics_service),
-    llm: LLMService = Depends(get_llm_service),
     sentiment: SentimentService = Depends(get_sentiment_service),
     review_processor: ReviewProcessorService = Depends(get_review_processor_service),
     tenant_id: UUID = Depends(get_current_tenant),
 ) -> ServiceBundle:
     """Получить все сервисы одним вызовом с tenant context"""
-    return ServiceBundle(economics, llm, sentiment, review_processor, tenant_id)
+    return ServiceBundle(economics, sentiment, review_processor, tenant_id)
 
 
 # === HEALTH CHECK DEPENDENCIES ===
@@ -281,21 +266,6 @@ class HealthChecker:
             logger.error(f"Database health check failed: {e}")
             return False
 
-    async def check_llm_service(self) -> bool | None:
-        """Проверка доступности LLM сервиса"""
-        from .config import get_settings
-
-        if not get_settings().gemini_api_key:
-            logger.info("LLM health check skipped: GEMINI_API_KEY is not configured")
-            return None
-
-        try:
-            llm = await get_llm_service()
-            return llm is not None
-        except Exception as e:
-            logger.error(f"LLM service health check failed: {e}")
-            return False
-
     async def check_auth_config(self) -> bool:
         """Проверка настроек аутентификации"""
         try:
@@ -316,14 +286,6 @@ class HealthChecker:
         except Exception as e:
             logger.error(f"Database check error: {e}")
             results["database"] = False
-
-        try:
-            llm_result = await self.check_llm_service()
-            if llm_result is not None:
-                results["llm_service"] = llm_result
-        except Exception as e:
-            logger.error(f"LLM service check error: {e}")
-            results["llm_service"] = False
 
         try:
             results["auth_config"] = await self.check_auth_config()
@@ -350,10 +312,6 @@ class AppConfig:
 
         # Database
         self.database_url = os.getenv("DATABASE_URL")
-
-        # Google Gemini API
-        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
-        self.gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
         # Authentication
         self.supabase_jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
@@ -409,7 +367,6 @@ async def cleanup_dependencies():
     """Очистка ресурсов при завершении приложения"""
     try:
         # Очищаем кэш синглтонов
-        get_llm_service_singleton.cache_clear()
         get_sentiment_service_singleton.cache_clear()
         get_app_config.cache_clear()
 
@@ -424,8 +381,8 @@ def log_dependency_graph():
     logger.info("Authentication: JWT -> JWTPayload -> tenant_id")
     logger.info("Database: get_tenant_db -> RLS Context -> AsyncSession")
     logger.info("Repositories: Company, Platform, Review, Parser (with RLS)")
-    logger.info("Services: Economics, LLM, Sentiment, ReviewProcessor, Parser")
-    logger.info("Singletons: LLMService, SentimentService, AppConfig")
+    logger.info("Services: Economics, Sentiment, ReviewProcessor, Parser")
+    logger.info("Singletons: SentimentService, AppConfig")
     logger.info("Bundles: RepositoryBundle, ServiceBundle (with tenant_id)")
-    logger.info("Health: HealthChecker + Auth + LLM + Database")
+    logger.info("Health: HealthChecker + Auth + Database")
     logger.info("===============================================")

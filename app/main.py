@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import cast
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.security import HTTPBearer
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse

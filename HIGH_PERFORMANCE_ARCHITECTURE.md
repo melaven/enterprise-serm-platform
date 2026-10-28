@@ -44,29 +44,8 @@ PostgreSQL
 - ✅ WebSocket support для real-time updates
 - ✅ Rate limiting per tenant (1000 задач максимум)
 
-**Пример использования:**
-
-```python
-from app.services.parser_queue import get_parser_queue_service, JobPriority
-
-queue_service = get_parser_queue_service()
-await queue_service.initialize()
-
-# Submit job (non-blocking)
-result = await queue_service.submit_job(
-    platform_url="https://maps.google.com/place/...",
-    company_id=tenant_id,
-    tenant_id=tenant_id,
-    priority=JobPriority.HIGH
-)
-
-# Returns immediately with job_id
-# {
-#   "job_id": "uuid",
-#   "status": "accepted",
-#   "estimated_completion": "2026-10-13T10:30:00Z"
-# }
-```
+Публичный скрейпинг отключён; устаревший пример очереди удалён. Эндпоинты парсинга
+оставлены для совместимости и возвращают HTTP 410.
 
 **Circuit Breaker:**
 

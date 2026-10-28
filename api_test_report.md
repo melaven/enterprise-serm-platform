@@ -80,7 +80,7 @@ I've created a comprehensive Postman collection (`serm_api_collection.json`) wit
 ```bash
 DATABASE_URL=postgresql+asyncpg://app_tenant.<ref>:<pwd>@<host>:6543/postgres
 SUPABASE_JWT_SECRET=<your-jwt-secret>
-GEMINI_API_KEY=<your-gemini-api-key>
+GROQ_API_KEY=<your-groq-api-key>
 JWT_AUDIENCE=authenticated
 ```
 

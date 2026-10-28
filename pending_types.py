@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from app.schemas.ai import EnrichedReview
 from app.schemas.parser import RawReview
-from app.services.ai_processor import EnrichedReview
 
 
 @dataclass(frozen=True, slots=True)

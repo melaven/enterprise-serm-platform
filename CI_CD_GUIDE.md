@@ -122,7 +122,7 @@ DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_d
 REDIS_URL: redis://localhost:6379/0
 SUPABASE_URL: https://test.supabase.co
 SUPABASE_SERVICE_ROLE_KEY: test_key
-GEMINI_API_KEY: test_key
+GROQ_API_KEY: test_key
 JWT_SECRET_KEY: test_secret_key_for_ci
 ENVIRONMENT: testing
 TEST_DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db

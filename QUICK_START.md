@@ -86,7 +86,7 @@ SUPABASE_SERVICE_ROLE_KEY=<your-key>
 DATABASE_URL=<your-postgres-url>
 STRIPE_SECRET_KEY=<your-stripe-key>
 STRIPE_WEBHOOK_SECRET=<your-webhook-secret>
-GEMINI_API_KEY=<your-gemini-key>
+GROQ_API_KEY=<your-groq-key>
 ```
 
 Frontend (`.env`):

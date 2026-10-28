@@ -13,8 +13,8 @@ from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
+from app.schemas.ai import EnrichedReview
 from app.schemas.parser import Platform
-from app.services.ai_processor import EnrichedReview
 
 
 class ReviewSink(Protocol):

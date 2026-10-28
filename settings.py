@@ -22,8 +22,8 @@ import structlog
 from arq.worker import Retry
 
 from app.core.config import Settings, get_settings
+from app.schemas.ai import EnrichedReview
 from app.schemas.parser import ParseResult, Platform, host_allowed
-from app.services.ai_processor import EnrichedReview
 from app.services.scraping import (
     PermanentScrapeError,
     RawReview,

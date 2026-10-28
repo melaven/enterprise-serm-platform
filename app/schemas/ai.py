@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .parser import RawReview
 
 MAX_TAGS: Final = 5
 MAX_REPLY_LEN: Final = 600
@@ -21,6 +24,17 @@ class Sentiment(str, Enum):
     POSITIVE = "POSITIVE"
     NEUTRAL = "NEUTRAL"
     NEGATIVE = "NEGATIVE"
+
+
+@dataclass(frozen=True, slots=True)
+class EnrichedReview:
+    review: RawReview
+    sentiment: Sentiment | None
+    tags: tuple[str, ...]
+    reply: str | None
+    is_critical: bool
+    ai_pending: bool
+    ai_error: str | None = None
 
 
 class LLMReviewAnalysisResult(BaseModel):

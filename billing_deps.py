@@ -1,6 +1,6 @@
 """Проверка квоты организации перед тяжёлыми эндпоинтами (FastAPI Dependency).
 
-Предполагаемая схема (см. sql/009_billing_seed.sql):
+Предполагаемая схема (см. migrations/009_billing_seed.sql):
 
     organization_quotas(organization_id, plan_id, requests_used, max_requests, is_active)
 

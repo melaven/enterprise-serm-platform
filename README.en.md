@@ -106,8 +106,8 @@ We don't call the system "load-ready" without numbers. Below is what's actually 
 | Stripe: schema, signed webhook, checkout, 402 gate | Implemented | SQL verified on PG16; event logic — 14 tests; signature test with real SDK written, awaits `stripe` environment |
 | React client: design tokens, dashboard, 401/402/429 interceptors, polling fallback | Implemented | Vitest tests for API layer |
 | SSRF: platform allowlist + every redirect checked in scraper | Implemented | `tests/services/scrapers/test_ssrf.py` |
-| Zero Trust (cookie/CSRF, headers, PII hashing, DNS resolver SSRF, nginx) | Written, **not connected** | `hardening/`; PII/SSRF/OpSec run, middleware and cookie-auth require integration test |
-| IaC and CI/CD (Terraform, GitHub Actions, Trivy, k6) | Written, **not run** | `devops/`; needs `terraform validate` and pipeline run |
+| Zero Trust (cookie/CSRF, headers, PII hashing, DNS resolver SSRF, nginx) | Written, **not connected** | `infra/hardening/`; PII/SSRF/OpSec run, middleware and cookie-auth require integration test |
+| IaC and CI/CD (Terraform, GitHub Actions, Trivy, k6) | Written, **not run** | `infra/devops/`; needs `terraform validate` and pipeline run |
 | Load numbers (RPS, p95, pool capacity) | **No data** | k6 scenario ready; results will appear after staging run |
 
 Known gaps (not hiding): several directories (`billing/`, `billing_v2/`, `parsers/`, `dlq/`, `llm/`, `obs/`, `tenant/`, `analytics_api/`) are module iterations being consolidated into `app/` and `parser_worker/`.
@@ -119,10 +119,10 @@ Known gaps (not hiding): several directories (`billing/`, `billing_v2/`, `parser
 ```
 app/               FastAPI: main.py, routers (parser, reviews, billing, webhooks), core (security, tracing), db, services
 parser_worker/     ARQ worker: scraping, SI enrichment, retries, quota integration
-sql/               migrations: RLS, quota functions, hardening, 013 Stripe
+migrations/         SQL migrations: RLS, quota functions, hardening, Stripe
 redesign/          React + TypeScript + Tailwind: client, design system
-hardening/         Zero Trust: cookie-auth, CSRF, headers, PII, SSRF, nginx, isolation
-devops/            Terraform (Hetzner), docker-compose.prod, GitHub Actions, k6
+infra/hardening/   Zero Trust: cookie-auth, CSRF, headers, PII, SSRF, nginx, isolation
+infra/devops/      Terraform (Hetzner), docker-compose.prod, GitHub Actions, k6
 tests/             pytest
 SYSTEM_DESIGN.md   architecture, invariants, threat model, ADR
 TRACING.md         end-to-end tracing
@@ -246,7 +246,7 @@ cd frontend && npm run lint  # TypeScript
 
 ## Load Testing: What We Will Prove and How
 
-`devops/loadtest/k6-tenable.js` — 1000 virtual users and four invariants: exactly one `202` for duplicate URL, `used ≤ limit` after quota race, no `5xx` on connection pool exhaustion, no data leakage between tenants. Thresholds are initial hypotheses; results will be published here after staging run.
+`infra/devops/loadtest/k6-tenable.js` — 1000 virtual users and four invariants: exactly one `202` for duplicate URL, `used ≤ limit` after quota race, no `5xx` on connection pool exhaustion, no data leakage between tenants. Thresholds are initial hypotheses; results will be published here after staging run.
 
 ## License and Contacts
 

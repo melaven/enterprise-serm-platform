@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import cast
 
 from fastapi import Depends, FastAPI, Request
+from fastapi.security import HTTPBearer
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -174,7 +175,38 @@ app = FastAPI(
     docs_url="/docs" if __debug__ else None,
     redoc_url="/redoc" if __debug__ else None,
 )
+
 app.state.redis_pool = None
+
+
+# Настройка OpenAPI схемы безопасности для Swagger UI (Bearer Token)
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    # Добавляем схему безопасности Bearer Token
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT Bearer Token (e.g., 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...')",
+        }
+    }
+    # Применяем схему безопасности ко всем роутам (глобально)
+    openapi_schema["security"] = [{"BearerAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 
 # Enterprise Middleware Stack (порядок важен!)

@@ -34,7 +34,7 @@ class ReviewRepository:
         """Идемпотентная пакетная вставка: повтор задачи не плодит дубли.
 
         Нужен уникальный индекс (company_id, platform, external_id), см.
-        sql/004_reviews_dedup.sql. company_id не передаём: его проставит
+        migrations/004_reviews_dedup.sql. company_id не передаём: его проставит
         DEFAULT app.current_company_id(), а WITH CHECK не даст подменить.
         """
         if not rows:

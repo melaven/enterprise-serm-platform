@@ -1,84 +1,84 @@
-# Архитектура SERM API
+# SERM API Architecture
 
-## Обзор
+## Overview
 
-SERM (Service & Economy Reputation Management) API построен по трехслойной архитектуре с централизованной обработкой ошибок и dependency injection.
+SERM (Service & Economy Reputation Management) API is built on a three-layer architecture with centralized error handling and dependency injection.
 
-## Архитектурные слои
+## Architecture Layers
 
-### 1. Слой маршрутизации (Routers/API)
+### 1. Routing Layer (Routers/API)
 
-**Расположение**: `app/routers/`
+**Location**: `app/routers/`
 
-**Ответственность**:
-- Прием HTTP-запросов
-- Валидация входящих данных через Pydantic
-- Возврат стандартизированных ответов
-- **НЕ содержит бизнес-логику**
+**Responsibilities**:
+- Receive HTTP requests
+- Validate incoming data via Pydantic
+- Return standardized responses
+- **Does NOT contain business logic**
 
-**Файлы**:
-- `economics.py` - экономические операции и симуляции
-- `reviews.py` - управление отзывами и webhook
-- `companies.py` - CRUD операции с компаниями  
-- `platforms.py` - управление платформами размещения
-- `system.py` - системные endpoints (тестирование, диагностика)
+**Files**:
+- `economics.py` - economic operations and simulations
+- `reviews.py` - review management and webhooks
+- `companies.py` - company CRUD operations
+- `platforms.py` - platform management
+- `system.py` - system endpoints (testing, diagnostics)
 
-### 2. Слой бизнес-логики (Services)
+### 2. Business Logic Layer (Services)
 
-**Расположение**: `app/services/`
+**Location**: `app/services/`
 
-**Ответственность**:
-- Вся математика SERM (расчет LTV, оценка влияния негатива)
-- Координация между репозиториями
-- Бизнес-правила и валидация
-- Интеграция с внешними API (OpenAI)
+**Responsibilities**:
+- All SERM mathematics (LTV calculation, negative impact assessment)
+- Coordination between repositories
+- Business rules and validation
+- External API integration (OpenAI)
 
-**Файлы**:
-- `economics.py` - расчеты финансового влияния, ROI, рисков
-- `llm.py` - генерация ответов на отзывы через OpenAI
-- `sentiment.py` - анализ тональности и приоритизация
-- `review_processor.py` - центральный координатор обработки отзывов
+**Files**:
+- `economics.py` - financial impact calculations, ROI, risk assessment
+- `llm.py` - review response generation via OpenAI
+- `sentiment.py` - sentiment analysis and prioritization
+- `review_processor.py` - central review processing coordinator
 
-### 3. Слой данных (Repositories/DAL)
+### 3. Data Layer (Repositories/DAL)
 
-**Расположение**: `app/repositories/`
+**Location**: `app/repositories/`
 
-**Ответственность**:
-- Абстракция доступа к данным
-- CRUD операции
-- Сложные запросы и агрегация
-- Изоляция от изменений в схеме БД
+**Responsibilities**:
+- Data access abstraction
+- CRUD operations
+- Complex queries and aggregation
+- Isolation from database schema changes
 
-**Файлы**:
-- `base.py` - базовый репозиторий с общими операциями
-- `company.py` - операции с компаниями
-- `platform.py` - управление платформами
-- `review.py` - работа с отзывами и аналитика
+**Files**:
+- `base.py` - base repository with common operations
+- `company.py` - company operations
+- `platform.py` - platform management
+- `review.py` - review operations and analytics
 
-## Централизованная обработка ошибок
+## Centralized Error Handling
 
-**Файлы**:
-- `exceptions.py` - кастомные исключения для разных типов ошибок
-- `handlers.py` - глобальные обработчики с стандартизированным JSON
+**Files**:
+- `exceptions.py` - custom exceptions for different error types
+- `handlers.py` - global handlers with standardized JSON
 
-**Типы ошибок**:
-- `NotFoundError` (404) - ресурс не найден
-- `AccessDeniedError` (403) - нехватка прав доступа  
-- `DatabaseError` (500/503) - ошибки БД и таймауты
-- `LLMServiceError` (502) - проблемы с OpenAI API
-- `EconomicsCalculationError` (400) - ошибки в расчетах
+**Error Types**:
+- `NotFoundError` (404) - resource not found
+- `AccessDeniedError` (403) - insufficient access rights
+- `DatabaseError` (500/503) - database errors and timeouts
+- `LLMServiceError` (502) - OpenAI API issues
+- `EconomicsCalculationError` (400) - calculation errors
 
 ## Dependency Injection
 
-**Файл**: `app/dependencies.py`
+**File**: `app/dependencies.py`
 
-**Принципы**:
-- Фабричные функции для создания экземпляров
-- Синглтоны для stateless сервисов (LLM, Sentiment)
-- Бандлы для группировки зависимостей
-- Health check для мониторинга состояния
+**Principles**:
+- Factory functions for instance creation
+- Singletons for stateless services (LLM, Sentiment)
+- Bundles for grouping dependencies
+- Health checks for state monitoring
 
-**Граф зависимостей**:
+**Dependency Graph**:
 ```
 FastAPI Router
     ↓
@@ -89,18 +89,18 @@ Repository Layer (Data Access)
 Database (PostgreSQL/Supabase)
 ```
 
-## Модели данных
+## Data Models
 
-**Файлы**:
-- `models/economics.py` - SQLAlchemy модели
-- `schemas/economics.py` - Pydantic схемы для API
+**Files**:
+- `models/economics.py` - SQLAlchemy models
+- `schemas/economics.py` - Pydantic schemas for API
 
-**Основные сущности**:
-- `Company` - компания с экономическими показателями
-- `Platform` - платформа размещения отзывов (Google Maps, 2GIS)
-- `Review` - отзыв с анализом влияния и статусом обработки
+**Core Entities**:
+- `Company` - company with economic indicators
+- `Platform` - review platform (Google Maps, 2GIS)
+- `Review` - review with impact analysis and processing status
 
-## Конфигурация
+## Configuration
 
 **Environment Variables**:
 ```bash
@@ -114,177 +114,177 @@ LOG_LEVEL=INFO
 ## API Endpoints
 
 ### Economics (`/api/v1/economics/`)
-- `POST /simulate` - симуляция влияния отзыва
-- `POST /process` - полная обработка отзыва с сохранением
-- `POST /bulk-process` - массовая обработка
-- `GET /platform/{id}/roi` - ROI платформы
-- `GET /platform/{id}/risk-assessment` - оценка рисков
+- `POST /simulate` - simulate review impact
+- `POST /process` - full review processing with persistence
+- `POST /bulk-process` - bulk processing
+- `GET /platform/{id}/roi` - platform ROI
+- `GET /platform/{id}/risk-assessment` - risk assessment
 
 ### Reviews (`/api/v1/reviews/`)
-- `POST /webhook` - прием отзывов от внешних систем
-- `GET /{id}` - получение отзыва по ID
-- `GET /platform/{id}/reviews` - отзывы платформы
-- `PUT /{id}/status` - обновление статуса
-- `GET /search` - поиск по содержимому
+- `POST /webhook` - receive reviews from external systems
+- `GET /{id}` - get review by ID
+- `GET /platform/{id}/reviews` - platform reviews
+- `PUT /{id}/status` - update status
+- `GET /search` - content search
 
 ### Companies (`/api/v1/companies/`)
-- `POST /` - создание компании
-- `GET /{id}` - информация о компании
-- `PUT /{id}/economics` - обновление показателей
-- `GET /{id}/dashboard` - сводная аналитика
+- `POST /` - create company
+- `GET /{id}` - company information
+- `PUT /{id}/economics` - update metrics
+- `GET /{id}/dashboard` - summary analytics
 
 ### Platforms (`/api/v1/platforms/`)
-- `POST /` - создание платформы
-- `GET /company/{id}/platforms` - платформы компании
-- `PUT /{id}/metrics` - обновление метрик
-- `GET /stats` - статистика платформ
+- `POST /` - create platform
+- `GET /company/{id}/platforms` - company platforms
+- `PUT /{id}/metrics` - update metrics
+- `GET /stats` - platform statistics
 
 ### Parsers (`/api/v1/parsers/`)
-- `POST /start` - проверка квоты и постановка задачи парсинга в очередь
-- `GET /status/{job_id}` - получение статуса задачи
+- `POST /start` - check quota and enqueue parsing task
+- `GET /status/{job_id}` - get task status
 
-Перед постановкой задачи `POST /start` атомарно списывает запрос одним
-`UPDATE ... FROM ... RETURNING`: активность организации и лимит тарифа
-проверяются в том же SQL-запросе, что и обновление счётчика. Если списание
-невозможно, endpoint возвращает HTTP 402 и задача не отправляется в очередь.
+Before enqueuing a task, `POST /start` atomically deducts the request with a single
+`UPDATE ... FROM ... RETURNING`: organization activity and plan limit are checked
+in the same SQL query as the counter update. If deduction is impossible, the endpoint
+returns HTTP 402 and the task is not sent to the queue.
 
-## Безопасность
+## Security
 
-- Валидация всех входных данных через Pydantic
-- Параметризированные SQL-запросы (защита от инъекций)
-- Централизованная обработка ошибок (не показываем внутренние детали)
-- CORS настройки
-- Request ID для трассировки
+- All input data validation via Pydantic
+- Parameterized SQL queries (SQL injection protection)
+- Centralized error handling (no internal details exposed)
+- CORS configuration
+- Request ID for tracing
 
 ## Monitoring & Observability
 
-- Структурированное логирование
+- Structured logging
 - Health checks (`/health`)
-- Request tracing с уникальными ID
-- Метрики производительности
-- Граф зависимостей в debug режиме
+- Request tracing with unique IDs
+- Performance metrics
+- Dependency graph in debug mode
 
-## Порядок чтения проекта для нового разработчика
+## Reading Order for New Developers
 
-Если открыть репозиторий “с нуля”, читать стоит в этом порядке, чтобы не потеряться в структуре.
+If opening the repository from scratch, read in this order to navigate the structure effectively.
 
-### 1. Входные документы
-- [README.md](README.md) — общее описание проекта, стек, запуск, основные сценарии
-- [ARCHITECTURE.md](ARCHITECTURE.md) — архитектурная карта и базовые принципы
-- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) — более техническая карта backend
-- [frontend/FRONTEND_ARCHITECTURE.md](frontend/FRONTEND_ARCHITECTURE.md) — фронтенд-структура и модульность
+### 1. Entry Documents
+- [README.md](README.md) — general project description, stack, startup, main scenarios
+- [ARCHITECTURE.md](ARCHITECTURE.md) — architecture map and core principles
+- [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) — more technical backend map
+- [frontend/FRONTEND_ARCHITECTURE.md](frontend/FRONTEND_ARCHITECTURE.md) — frontend structure and modularity
 
-### 2. Точки входа в приложение
-- [app/main.py](app/main.py) — главный entrypoint FastAPI
-- [app/core/dependencies.py](app/core/dependencies.py) — DI и фабрики сервисов/репозиториев
-- [app/core/database.py](app/core/database.py) — БД и сессии
-- [app/core/auth.py](app/core/auth.py) — аутентификация и авторизация
+### 2. Application Entry Points
+- [app/main.py](app/main.py) — main FastAPI entrypoint
+- [app/core/dependencies.py](app/core/dependencies.py) — DI and service/repository factories
+- [app/core/database.py](app/core/database.py) — database and sessions
+- [app/core/auth.py](app/core/auth.py) — authentication and authorization
 - [app/core/tenant.py](app/core/tenant.py) — tenant context
 
-### 3. HTTP-уровень
+### 3. HTTP Layer
 - [app/routers](app/routers) — API endpoints
-  - `auth.py` — логин/регистрация/токены
-  - `reviews.py` — отзывы
-  - `companies.py` — компании
-  - `platforms.py` — платформы
-  - `economics.py` — экономика и расчёты
-  - `analytics.py` — аналитика
-  - `parser.py` — запуск и статус парсинга
-  - `reputation.py` — репутация и сводные метрики
+  - `auth.py` — login/registration/tokens
+  - `reviews.py` — reviews
+  - `companies.py` — companies
+  - `platforms.py` — platforms
+  - `economics.py` — economics and calculations
+  - `analytics.py` — analytics
+  - `parser.py` — parsing start and status
+  - `reputation.py` — reputation and summary metrics
 
-### 4. Бизнес-логика
-- [app/services](app/services) — доменная логика
-  - `economics.py` — финансовые и экономические расчёты
-  - `review_processor.py` — основной workflow обработки отзывов
-  - `llm.py` / `llm_analyzer.py` — AI-логика и анализ текста
-  - `sentiment.py` — скоринг тональности
-  - `parser.py` — парсинг данных
-  - `billing.py` — квоты и биллинг
-  - `analytics.py` — аналитические агрегаты
-  - `worker/` — фоновые задачи и ARQ worker
+### 4. Business Logic
+- [app/services](app/services) — domain logic
+  - `economics.py` — financial and economic calculations
+  - `review_processor.py` — main review processing workflow
+  - `llm.py` / `llm_analyzer.py` — AI logic and text analysis
+  - `sentiment.py` — sentiment scoring
+  - `parser.py` — data parsing
+  - `billing.py` — quotas and billing
+  - `analytics.py` — analytical aggregates
+  - `worker/` — background tasks and ARQ worker
 
-### 5. Данные и доступ к БД
-- [app/repositories](app/repositories) — репозитории
+### 5. Data and Database Access
+- [app/repositories](app/repositories) — repositories
   - `company.py`, `platform.py`, `review.py`
   - `analytics_repo.py`
   - `dlq.py`
   - `parser.py`
-- [app/models](app/models) — SQLAlchemy модели
-- [app/schemas](app/schemas) — Pydantic контракты API и доменных объектов
+- [app/models](app/models) — SQLAlchemy models
+- [app/schemas](app/schemas) — Pydantic API and domain object contracts
 
-### 6. Интеграции и инфраструктура
-- [migrations](migrations) — миграции БД
-- [scripts](scripts) — утилиты миграций и seed
-- [docker-compose.yml](docker-compose.yml) — локальная инфраструктура
-- [docker-compose.prod.yml](docker-compose.prod.yml) — продовая конфигурация
-- [run.py](run.py) — запуск backend
-- [worker.py](worker.py) — отдельный worker entrypoint
+### 6. Integrations and Infrastructure
+- [migrations](migrations) — database migrations
+- [scripts](scripts) — migration and seed utilities
+- [docker-compose.yml](docker-compose.yml) — local infrastructure
+- [docker-compose.prod.yml](docker-compose.prod.yml) — production configuration
+- [run.py](run.py) — backend startup
+- [worker.py](worker.py) — separate worker entrypoint
 
 ### 7. Frontend
-- [frontend](frontend) — React/Vite приложение
-  - [frontend/src](frontend/src) — основной код UI
-  - `api/` — HTTP клиент и интеграции
-  - `features/` — feature-модули
-  - `pages/` — маршруты
-  - `components/` — UI-компоненты
+- [frontend](frontend) — React/Vite application
+  - [frontend/src](frontend/src) — main UI code
+  - `api/` — HTTP client and integrations
+  - `features/` — feature modules
+  - `pages/` — routes
+  - `components/` — UI components
 
-### 8. Тесты и качества
+### 8. Tests and Quality
 - [tests](tests) — backend tests
-- `*.test.ts` / `*.test.py` — проверка контрактов и логики
-- `pytest.ini` и configuration files — настройки тестового окружения
+- `*.test.ts` / `*.test.py` — contract and logic validation
+- `pytest.ini` and configuration files — test environment settings
 
-## Карта ответственности проекта
+## Project Responsibility Map
 
 ```text
 frontend/
-  ├─ pages/              -> маршруты и экраны
-  ├─ features/           -> бизнес-фичи
-  ├─ components/         -> переиспользуемые UI-компоненты
-  └─ api/                -> HTTP-контракты и запросы
+  ├─ pages/              -> routes and screens
+  ├─ features/           -> business features
+  ├─ components/         -> reusable UI components
+  └─ api/                -> HTTP contracts and requests
 
 app/
   ├─ routers/            -> HTTP API
-  ├─ services/           -> бизнес-логика
-  ├─ repositories/       -> доступ к данным
-  ├─ models/             -> сущности БД
-  ├─ schemas/            -> вход/выход контракты
+  ├─ services/           -> business logic
+  ├─ repositories/       -> data access
+  ├─ models/             -> database entities
+  ├─ schemas/            -> input/output contracts
   ├─ core/               -> auth, tenant, middleware, config, DI
-  └─ main.py             -> сборка приложения
+  └─ main.py             -> application composition
 
 worker/
-  ├─ parsing tasks       -> фоновые задачи
-  ├─ queue/ARQ           -> асинхронная очередь
-  └─ DLQ / retries       -> надежность обработчика
+  ├─ parsing tasks       -> background tasks
+  ├─ queue/ARQ           -> async queue
+  └─ DLQ / retries       -> handler reliability
 
 migrations/
-  └─ database schema     -> схема и эволюция БД
+  └─ database schema     -> schema and database evolution
 ```
 
-## Быстрый маршрут для нового участника
+## Quick Route for New Contributors
 
-Если нужно быстро войти в проект и понять, где что лежит:
+If you need to quickly understand the project and locate components:
 
-1. Открыть [README.md](README.md)
-2. Прочитать [ARCHITECTURE.md](ARCHITECTURE.md)
-3. Открыть [app/main.py](app/main.py)
-4. Посмотреть [app/core/dependencies.py](app/core/dependencies.py)
-5. Далее идти по роутерам в [app/routers](app/routers)
-6. Затем в сервисы в [app/services](app/services)
-7. Потом в репозитории в [app/repositories](app/repositories)
-8. И только после этого смотреть frontend в [frontend](frontend)
+1. Open [README.md](README.md)
+2. Read [ARCHITECTURE.md](ARCHITECTURE.md)
+3. Open [app/main.py](app/main.py)
+4. Review [app/core/dependencies.py](app/core/dependencies.py)
+5. Navigate through routers in [app/routers](app/routers)
+6. Then services in [app/services](app/services)
+7. Then repositories in [app/repositories](app/repositories)
+8. Only after that review frontend in [frontend](frontend)
 
-Это даёт “горизонтальный” путь по архитектуре без хаоса и повторных поисков по папкам.
+This provides a "horizontal" path through the architecture without chaos or repeated folder searches.
 
-## Масштабирование
+## Scaling
 
-**Текущая архитектура поддерживает**:
-- Горизонтальное масштабирование (stateless сервисы)
-- Кэширование на уровне dependency injection
-- Connection pooling для БД (NullPool для Supabase)
-- Асинхронная обработка запросов
+**Current architecture supports**:
+- Horizontal scaling (stateless services)
+- Caching at dependency injection level
+- Connection pooling for database (NullPool for Supabase)
+- Asynchronous request processing
 
-**Возможные улучшения**:
-- Redis для кэширования расчетов
-- Message queues для асинхронной обработки
-- Микросервисная декомпозиция по доменам
-- Event sourcing для аудита изменений
+**Possible improvements**:
+- Redis for calculation caching
+- Message queues for async processing
+- Microservice decomposition by domain
+- Event sourcing for change auditing

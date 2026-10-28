@@ -56,4 +56,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE
     ON public.review_analysis_payloads TO app_tenant;
 
 COMMENT ON TABLE public.review_analysis_payloads IS
-    'Short-lived Fernet-encrypted review text for local asynchronous analysis.';
+    'Fernet-encrypted review source text for analysis and on-demand reply generation; deleted with its parent review.';

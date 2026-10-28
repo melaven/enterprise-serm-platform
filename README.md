@@ -109,7 +109,7 @@ The diagram shows the intended processing flow. RLS policies enforce tenant-scop
 - [`README.en.md`](README.en.md) — English project overview and implementation notes.
 - [`frontend/README.md`](frontend/README.md) — frontend-specific documentation.
 - [`migrations/README.md`](migrations/README.md) — database migration guidance.
-- [`devops/README.md`](devops/README.md) — DevOps and deployment documentation.
+- [`infra/devops/README.md`](infra/devops/README.md) — DevOps and deployment documentation.
 
 ## License
 

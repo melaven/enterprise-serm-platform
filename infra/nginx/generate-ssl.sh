@@ -4,7 +4,8 @@
 
 set -e
 
-SSL_DIR="./nginx/ssl"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SSL_DIR="$SCRIPT_DIR/ssl"
 CERT_FILE="$SSL_DIR/cert.pem"
 KEY_FILE="$SSL_DIR/key.pem"
 
@@ -27,5 +28,5 @@ echo "⚠️  ВНИМАНИЕ: Это самоподписанные серти
 echo "   Для продакшена используйте Let's Encrypt или другой CA."
 echo ""
 echo "📝 После генерации:"
-echo "   1. Раскомментируйте HTTPS server block в nginx/nginx.conf"
+echo "   1. Раскомментируйте HTTPS server block в infra/nginx/nginx.conf"
 echo "   2. Перезапустите docker-compose: docker-compose -f docker-compose.prod.yml restart nginx"

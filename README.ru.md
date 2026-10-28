@@ -109,7 +109,7 @@ flowchart LR
 - [`README.md`](README.md) — основная версия на английском языке.
 - [`frontend/README.md`](frontend/README.md) — документация frontend.
 - [`migrations/README.md`](migrations/README.md) — руководство по миграциям базы данных.
-- [`devops/README.md`](devops/README.md) — документация DevOps и развёртывания.
+- [`infra/devops/README.md`](infra/devops/README.md) — документация DevOps и развёртывания.
 
 ## Лицензия
 

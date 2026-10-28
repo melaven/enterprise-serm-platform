@@ -9,9 +9,9 @@
 .\install_frontend.bat
 
 # 2. Configure .env
-copy .env.local.example .env
+copy .env.example .env
 copy frontend\.env.example frontend\.env
-# Edit .env with your settings (JWT_SECRET_KEY, OPENAI_API_KEY)
+# Edit .env with your database, Supabase, and provider settings
 
 # 3. Start everything (backend + frontend)
 .\start_all.bat
@@ -25,7 +25,7 @@ chmod +x setup_env.sh install_frontend.sh start_all.sh stop_all.sh
 ./install_frontend.sh
 
 # 2. Configure .env
-cp .env.local.example .env
+cp .env.example .env
 cp frontend/.env.example frontend/.env
 # Edit .env with your settings
 

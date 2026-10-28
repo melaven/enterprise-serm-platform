@@ -1,6 +1,5 @@
 from datetime import datetime
 from enum import Enum
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -84,20 +83,18 @@ class AssistantReviewSchema(BaseModel):
     sentiment: str | None
     status: ReplyModerationStatus
     has_reply: bool = Field(
-        default=False, description="Есть ли черновик или опубликованный ответ"
+        default=False, description="Сохранен ли текст ответа вне таблицы reviews"
+    )
+    reply_text: str | None = Field(
+        default=None, description="Сохраненный ответ на отзыв"
     )
 
 
-class GenerateReplyRequest(BaseModel):
-    """Запрос на генерацию ответа."""
-
-    tone: Literal["official", "friendly", "crisis"]
-
-
 class GenerateReplyResponse(BaseModel):
-    """Ответ с сгенерированным черновиком."""
+    """Generated review reply returned without persistence."""
 
-    draft_text: str
+    review_id: UUID
+    suggested_reply: str
 
 
 class SubmitModerationRequest(BaseModel):

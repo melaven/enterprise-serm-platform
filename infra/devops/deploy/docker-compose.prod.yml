@@ -51,7 +51,7 @@ services:
     networks: [backend]
 
   # Self-hosted Postgres — ТОЛЬКО для staging/нагрузочных стендов: `--profile selfhosted-db`.
-  # Прод сейчас живёт на Supabase (JWKS-авторизация и custom access token hook в sql/002 зависят от схемы auth).
+  # Прод сейчас живёт на Supabase (JWKS-авторизация и custom access token hook в migrations/002 зависят от схемы auth).
   postgres:
     profiles: [selfhosted-db]
     image: postgres:16-alpine

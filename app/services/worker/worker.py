@@ -2,10 +2,17 @@
 ARQ Worker настройки для SERM с enterprise-логированием и DLQ
 """
 
+# Environment must load before application imports initialize settings.
+# ruff: noqa: E402
 import os
 from datetime import timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID
+
+from dotenv import load_dotenv
+
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from arq import create_pool, cron
 from sqlalchemy import select
@@ -19,7 +26,10 @@ from ...core.tenant_session import get_tenant_session
 from ...models.economics import Review
 from ...models.review_analysis_payload import ReviewAnalysisPayload
 from ...services.fsm import ReviewFSM, ReviewState
-from ...services.openai_review_analyzer import create_openai_analyzer
+from ...services.openai_review_analyzer import (
+    clamp_threat_level,
+    create_openai_analyzer,
+)
 from .api_key_usage import flush_api_key_usage
 from .digest import enqueue_weekly_digests, send_company_weekly_digest
 
@@ -29,7 +39,7 @@ logger = get_logger(__name__)
 async def process_review_task(
     ctx: dict[str, Any], review_id: str | UUID, tenant_id: str | UUID
 ) -> dict[str, str]:
-    """Analyze a tenant review locally, then discard its encrypted source text."""
+    """Analyze a tenant review while retaining its encrypted source for replies."""
     review_uuid = UUID(str(review_id))
     tenant_uuid = UUID(str(tenant_id))
 
@@ -141,29 +151,31 @@ async def process_review_task(
             )
 
         summary_sentiment = analysis.sentiment
+        threat_level = clamp_threat_level(analysis.threat_level)
         review.text = safe_review_summary(rating, summary_sentiment)
         review.sentiment = analysis.sentiment
-        review.threat_level = analysis.threat_level
-        review.is_critical = analysis.threat_level >= 7  # Critical if threat >= 7
+        review.threat_level = threat_level
+        review.is_critical = threat_level >= 5
         review.is_analyzed = True
         review.tags = analysis.tags
-        review.suggested_reply = analysis.suggested_reply
+        review.suggested_reply = None
+        review.ai_error = None
+        review.dlq_reason = None
 
         # FSM transitions based on threat_level
-        if analysis.threat_level >= 7:
+        if threat_level >= 5:
             # Critical threat: escalate to management
             ReviewFSM.escalate_threat(review)
         elif analysis.sentiment == "POSITIVE":
             # Positive sentiment: auto-approve
             ReviewFSM.approve_auto(review)
-        elif analysis.threat_level >= 4:
+        elif threat_level >= 4:
             # Medium threat: require human draft
             ReviewFSM.require_human_draft(review)
         else:
             # Low threat: ignore
             ReviewFSM.ignore(review)
 
-        await session.delete(payload)
         await session.commit()
         logger.info(
             "review_analysis_completed",
@@ -231,11 +243,6 @@ async def startup(ctx):
     )
 
     try:
-        # Загружаем переменные окружения
-        from dotenv import load_dotenv
-
-        load_dotenv()
-
         # КРИТИЧЕСКАЯ ПРОВЕРКА: Если подключение не удалось с app_tenant ролью -
         # это может означать что используется fallback на суперюзера
         # В этом случае ЖЁСТКО падаем

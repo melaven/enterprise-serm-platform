@@ -2,7 +2,7 @@
 
 ## Overview
 
-Проект использует GitHub Actions для автоматизации тестирования, линтинга и сборки Docker образов. Пайплайн настроен для защиты от сломанного кода и обеспечения надежности перед деплоем.
+The project uses GitHub Actions to automate testing, linting, and Docker image builds. The pipeline is configured to protect against broken code and ensure reliability before deployment.
 
 ## Pipeline Structure
 
@@ -44,46 +44,46 @@
 
 ### 1. Lint Job
 
-**Цель:** Проверка качества кода перед тестированием
+**Purpose:** Code quality check before testing
 
-**Инструменты:**
-- **Ruff** - линтер и форматировщик кода
-- **MyPy** - статическая типизация (strict mode)
+**Tools:**
+- **Ruff** - linter and code formatter
+- **MyPy** - static type checking (strict mode)
 
-**Команды:**
+**Commands:**
 ```bash
 ruff check app/ tests/
 ruff format --check app/ tests/
 mypy app/ --strict
 ```
 
-**Причины падения:**
-- Некорректный синтаксис
-- Нарушение PEP8
-- Ошибки типизации
-- Несоответствие форматированию
+**Failure Reasons:**
+- Incorrect syntax
+- PEP8 violations
+- Type errors
+- Formatting mismatches
 
 ### 2. Test Job (Matrix Strategy)
 
-**Цель:** Комплексное тестирование в 4 параллельных потоках
+**Purpose:** Comprehensive testing in 4 parallel streams
 
 #### 2.1 Unit Tests
-- Запуск быстрых тестов без внешних зависимостей
-- Покрытие кода (coverage)
-- Генерация XML отчетов
+- Run fast tests without external dependencies
+- Code coverage generation
+- XML reports generation
 
 #### 2.2 Integration Tests
-- Тестирование интеграции с PostgreSQL и Redis
-- Проверка миграций базы данных
-- Тестирование API endpoints
+- PostgreSQL and Redis integration testing
+- Database migration verification
+- API endpoint testing
 
 #### 2.3 Tenant Isolation (RLS) Tests
-**КРИТИЧЕСКИ ВАЖНО для мультитенантности:**
-- Проверка Row Level Security
-- Тестирование изоляции арендаторов
-- Проверка, что Tenant A не видит данные Tenant B
+**CRITICAL for multitenancy:**
+- Row Level Security verification
+- Tenant isolation testing
+- Verify Tenant A cannot see Tenant B data
 
-**Запускаемые тесты:**
+**Test commands:**
 ```bash
 pytest tests/test_reviews_api.py -v -k "tenant"
 pytest tests/test_billing.py -v -k "tenant"
@@ -91,11 +91,11 @@ pytest tests/test_auth_session.py -v -k "tenant"
 ```
 
 #### 2.4 Security Tests
-- Проверка JWT аутентификации
-- Тестирование квот и billing
-- Проверка авторизации на всех эндпоинтах
+- JWT authentication verification
+- Quota and billing testing
+- Authorization checks on all endpoints
 
-**Запускаемые тесты:**
+**Test commands:**
 ```bash
 pytest tests/test_auth_session.py -v
 pytest tests/test_billing_deps.py -v
@@ -103,16 +103,16 @@ pytest tests/test_billing_deps.py -v
 
 ### 3. Build Job
 
-**Цель:** Сборка Docker образов и проверка безопасности
+**Purpose:** Docker image build and security scanning
 
-**Шаги:**
+**Steps:**
 1. Build backend.Dockerfile
 2. Build worker.Dockerfile
 3. Build frontend.Dockerfile
 4. Test docker-compose build
-5. **Security Scan (Trivy)** - проверка уязвимостей
+5. **Security Scan (Trivy)** - vulnerability check
 6. Upload security results to GitHub Security
-7. Push images to Docker Hub (только для main ветки)
+7. Push images to Docker Hub (main branch only)
 
 ## Environment Variables
 
@@ -129,103 +129,103 @@ TEST_DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/t
 ```
 
 ### Required GitHub Secrets
-- `DOCKER_USERNAME` - Docker Hub username для пуша образов
+- `DOCKER_USERNAME` - Docker Hub username for pushing images
 - `DOCKER_PASSWORD` - Docker Hub password/token
 
 ## Tenant Isolation Testing
 
-### Что проверяется:
+### What is verified:
 
 1. **RLS Policies**
-   - Отзывы Tenant A недоступны Tenant B
-   - Платформы изолированы по company_id
-   - Квоты работают корректно для каждого tenant
+   - Tenant A reviews are inaccessible to Tenant B
+   - Platforms isolated by company_id
+   - Quotas work correctly for each tenant
 
 2. **JWT Claims**
-   - `tenant_id` корректно извлекается из токена
-   - `company_id` устанавливается в БД контексте
-   - Несуществующий tenant_id отклоняется
+   - `tenant_id` correctly extracted from token
+   - `company_id` set in database context
+   - Non-existent tenant_id rejected
 
 3. **Cross-Tenant Data Leakage**
-   - Tenant A не может получить данные Tenant B через API
-   - SQL инъекции не обходят RLS
-   - Прямые SQL запросы с неверным tenant_id блокируются
+   - Tenant A cannot access Tenant B data via API
+   - SQL injections don't bypass RLS
+   - Direct SQL queries with incorrect tenant_id blocked
 
-### Пример теста:
+### Example test:
 
 ```python
 async def test_tenant_isolation():
-    # Tenant A создает отзыв
+    # Tenant A creates review
     review_a = await create_review(tenant_id=tenant_a, text="Good")
 
-    # Tenant B пытается получить отзыв Tenant A
+    # Tenant B tries to access Tenant A's review
     response = await client.get(f"/reviews/{review_a.id}",
                                 headers={"X-Tenant-ID": str(tenant_b)})
 
-    # Должен вернуть 404 или 403
+    # Should return 404 or 403
     assert response.status_code in [404, 403]
 ```
 
 ## Security Testing
 
-### Что проверяется:
+### What is verified:
 
 1. **JWT Authentication**
-   - Недействительные токены отклоняются
-   - Истекшие токены отклоняются
-   - Отсутствие токена возвращает 401
+   - Invalid tokens rejected
+   - Expired tokens rejected
+   - Missing token returns 401
 
 2. **Authorization**
-   - Анонимный доступ запрещен
-   - Неверные роли отклоняются
-   - Права доступа проверяются на каждом endpoint
+   - Anonymous access forbidden
+   - Incorrect roles rejected
+   - Access rights checked on every endpoint
 
 3. **Quota Enforcement**
-   - Превышение лимитов блокируется
-   - Квоты изолированы по tenant
-   - Billing проверки работают корректно
+   - Limit exceeded blocked
+   - Quotas isolated per tenant
+   - Billing checks work correctly
 
 ## Database Migrations in CI
 
-**Шаги:**
-1. Запуск Python миграций (multitenancy)
-2. Запуск Python миграций (additional)
-3. Применение SQL миграций через psql:
-   - `001_multitenancy_rls.sql` - RLS политики
+**Steps:**
+1. Run Python migrations (multitenancy)
+2. Run Python migrations (additional)
+3. Apply SQL migrations via psql:
+   - `001_multitenancy_rls.sql` - RLS policies
    - `002_custom_access_token_hook.sql` - Supabase hooks
 
-**Отказоустойчивость:**
-- Все миграции запускаются с `|| true`
-- Если миграция уже применена, она пропускается
-- Ошибка в одной миграции не останавливает пайплайн
+**Fault tolerance:**
+- All migrations run with `|| true`
+- If migration already applied, it's skipped
+- Error in one migration doesn't stop pipeline
 
 ## Docker Image Security
 
 ### Trivy Scan
-- Проверка уязвимостей в образах
-- Сканирование зависимостей
-- Отчет в SARIF формате для GitHub Security
+- Vulnerability check in images
+- Dependency scanning
+- SARIF format report for GitHub Security
 
 ### Results
-- Уязвимости high/critical блокируют деплой
-- Results загружаются в GitHub Security tab
-- Автоматическое создание issues для критических проблем
+- High/critical vulnerabilities block deployment
+- Results uploaded to GitHub Security tab
+- Automatic issue creation for critical problems
 
 ## Deployment Flow
 
 ### Trigger Conditions
 - Push to `main` branch
-- Все тесты прошли успешно
-- Build job завершен без ошибок
+- All tests passed successfully
+- Build job completed without errors
 
 ### Deployment Steps
-1. Тегирование образов с Git SHA
-2. Пуш в Docker Hub
-3. Создание deployment summary в GitHub
-4. Отображение тега и времени деплоя
+1. Tag images with Git SHA
+2. Push to Docker Hub
+3. Create deployment summary in GitHub
+4. Display tag and deployment time
 
 ### Manual Deployment
-Для ручного деплоя на сервер:
+For manual server deployment:
 ```bash
 docker pull your-username/tenable-serm-backend:latest
 docker pull your-username/tenable-serm-worker:latest
@@ -237,7 +237,7 @@ docker-compose up -d
 
 ### Lint Failures
 ```bash
-# Локальная проверка
+# Local check
 pip install -r requirements-dev.txt
 ruff check app/ tests/
 ruff format app/ tests/
@@ -246,7 +246,7 @@ mypy app/ --strict
 
 ### Test Failures
 ```bash
-# Локальный запуск с теми же переменными
+# Local run with same variables
 export DATABASE_URL="postgresql+asyncpg://test_user:test_password@localhost:5432/test_db"
 export REDIS_URL="redis://localhost:6379/0"
 pytest tests/ -v --asyncio-mode=auto
@@ -254,16 +254,16 @@ pytest tests/ -v --asyncio-mode=auto
 
 ### Tenant Isolation Failures
 ```bash
-# Запуск только tenant тестов
+# Run only tenant tests
 pytest tests/test_reviews_api.py -v -k "tenant"
 pytest tests/test_billing.py -v -k "tenant"
 ```
 
 ### Docker Build Failures
 ```bash
-# Локальная сборка
+# Local build
 docker-compose build
-# Отдельно
+# Separately
 docker build -f backend.Dockerfile -t test-backend .
 docker build -f worker.Dockerfile -t test-worker .
 docker build -f frontend.Dockerfile -t test-frontend .
@@ -272,21 +272,21 @@ docker build -f frontend.Dockerfile -t test-frontend .
 ## Best Practices
 
 ### 1. Pre-commit Hooks
-Установите pre-commit для локальной проверки:
+Install pre-commit for local checks:
 ```bash
 pip install pre-commit
 pre-commit install
 ```
 
 ### 2. Test Naming
-Используйте описательные имена тестов:
+Use descriptive test names:
 ```python
 async def test_tenant_a_cannot_access_tenant_b_reviews():
     # ...
 ```
 
 ### 3. Test Markers
-Используйте pytest markers для группировки:
+Use pytest markers for grouping:
 ```python
 @pytest.mark.integration
 async def test_api_integration():
@@ -298,54 +298,54 @@ async def test_tenant_isolation():
 ```
 
 ### 4. Coverage Goals
-- Минимальное покрытие: 80%
-- Целевое покрытие: 90%
-- Критические модули: 95%+
+- Minimum coverage: 80%
+- Target coverage: 90%
+- Critical modules: 95%+
 
 ## Monitoring
 
 ### GitHub Actions Status
-- Зеленый галочка = все хорошо
-- Красный крест = сломанный код, не деплоить
-- Желтый = warnings, требует внимания
+- Green checkmark = all good
+- Red cross = broken code, don't deploy
+- Yellow = warnings, requires attention
 
 ### Coverage Reports
-- Codecov автоматически загружает coverage
-- Проверьте % покрытия в PR
-- New code должен иметь покрытие > 80%
+- Codecov automatically uploads coverage
+- Check coverage % in PR
+- New code should have coverage > 80%
 
 ### Security Alerts
-- GitHub Security tab показывает уязвимости
-- Trivy findings в PR comments
-- Critical issues требуют немедленного исправления
+- GitHub Security tab shows vulnerabilities
+- Trivy findings in PR comments
+- Critical issues require immediate fix
 
 ## Future Enhancements
 
 ### Planned Additions
-- [ ] E2E tests с реальным браузером (Playwright)
+- [ ] E2E tests with real browser (Playwright)
 - [ ] Performance testing (Locust)
-- [ ] Load testing в CI
-- [ ] Automatic rollback при failed deployment
+- [ ] Load testing in CI
+- [ ] Automatic rollback on failed deployment
 - [ ] Canary deployments
 - [ ] Blue-green deployments
 
 ### Possible Integrations
-- [ ] SonarQube для code quality
-- [ ] Snyk для dependency scanning
-- [ ] OWASP ZAP для security testing
-- [ ] Datadog/APM для monitoring
+- [ ] SonarQube for code quality
+- [ ] Snyk for dependency scanning
+- [ ] OWASP ZAP for security testing
+- [ ] Datadog/APM for monitoring
 
 ## Support
 
-Если пайплайн падает:
-1. Проверьте logs в GitHub Actions
-2. Запустите failing tests локально
-3. Убедитесь, что .env локально настроен корректно
-4. Проверьте зависимости в requirements.txt
-5. Свяжитесь с DevOps командой
+If pipeline fails:
+1. Check logs in GitHub Actions
+2. Run failing tests locally
+3. Ensure .env configured correctly locally
+4. Check dependencies in requirements.txt
+5. Contact DevOps team
 
 ---
 
-**Версия:** 1.0
-**Последнее обновление:** 2026-10-13
-**Мейнтейнер:** Tenable SERM Team
+**Version:** 1.0  
+**Last Updated:** 2026-10-13  
+**Maintainer:** Tenable SERM Team

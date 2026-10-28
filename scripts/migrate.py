@@ -29,6 +29,7 @@ MIGRATIONS: Final = (
     "010_reviews_ai_fields.sql",
     "011_reputation_data.sql",
     "012_llm_cache.sql",
+    "013_stripe_billing.sql",
     "014_rename_quotas_table.sql",
     "015_quota_service_contract.sql",
     "016_admin_quota_updates.sql",
@@ -51,6 +52,7 @@ MIGRATIONS: Final = (
     "032_reviews_branch_id.sql",
     "033_reply_moderation_status.sql",
     "034_review_analysis_payload.sql",
+    "035_review_replies.sql",
 )
 _DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _TRANSACTION_COMMANDS = {"BEGIN", "COMMIT", "ROLLBACK"}

@@ -6,22 +6,20 @@ HTTP-обработка запросов, валидация, делегиров
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import and_, column, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.auth import get_current_tenant
 from ..core.dependencies import (
+    get_review_application_service,
     get_review_repository,
     get_sentiment_service,
     get_tenant_db,
 )
 from ..core.rate_limit import check_llm_limits
-from ..core.review_privacy import safe_review_summary
-from ..core.security import encrypt_token
-from ..models.economics import Platform, Review
-from ..models.review_analysis_payload import ReviewAnalysisPayload
+from ..models.economics import Review
 from ..repositories import ReviewRepository
 from ..repositories.analytics_repo import (
     get_dashboard_metrics,
@@ -29,7 +27,6 @@ from ..repositories.analytics_repo import (
 from ..repositories.analytics_repo import (
     get_reviews_list as fetch_dashboard_reviews,
 )
-from ..review_state import ReviewState
 from ..schemas.analytics import (
     DashboardMetrics,
     DashboardMetricsResponse,
@@ -39,7 +36,6 @@ from ..schemas.analytics import (
 )
 from ..schemas.economics import (
     AssistantReviewSchema,
-    GenerateReplyRequest,
     GenerateReplyResponse,
     ReviewBase,
     ReviewStatus,
@@ -47,77 +43,9 @@ from ..schemas.economics import (
 )
 from ..schemas.review import ReviewCreate, ReviewResponse
 from ..services import SentimentService
+from ..services.review_service import ReviewApplicationService
 
 router = APIRouter()
-
-
-async def _create_review_and_enqueue(
-    request: Request,
-    db: AsyncSession,
-    tenant_id: UUID,
-    platform_id: UUID,
-    rating: int,
-    text: str,
-    review_status: ReviewStatus = ReviewStatus.NEW,
-    financial_impact: float = 0.0,
-) -> Review:
-    arq_pool = getattr(request.app.state, "arq_pool", None)
-    if arq_pool is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Review processing queue is unavailable",
-        )
-    if not text.strip() or len(text) > 10000:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Review text must contain 1 to 10000 characters",
-        )
-
-    platform = await db.scalar(
-        select(Platform).where(
-            Platform.id == platform_id,
-            Platform.company_id == tenant_id,
-        )
-    )
-    if platform is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Platform not found",
-        )
-
-    initial_sentiment = (
-        "POSITIVE" if rating >= 4 else "NEUTRAL" if rating == 3 else "NEGATIVE"
-    )
-    review = Review(
-        company_id=tenant_id,
-        platform_id=platform_id,
-        author_name="Автор отзыва",
-        rating=rating,
-        text=safe_review_summary(rating, initial_sentiment),
-        status=review_status,
-        state=ReviewState.NEW,
-        financial_impact=financial_impact,
-    )
-    db.add(review)
-    await db.flush()
-    db.add(
-        ReviewAnalysisPayload(
-            review_id=review.id,
-            company_id=tenant_id,
-            encrypted_text=encrypt_token(text),
-        )
-    )
-    await db.flush()
-    await db.refresh(review)
-    await db.commit()
-
-    await arq_pool.enqueue_job(
-        "process_review_task",
-        str(review.id),
-        str(tenant_id),
-        _job_id=f"process-review-{review.id}",
-    )
-    return review
 
 
 @router.post(
@@ -129,15 +57,10 @@ async def _create_review_and_enqueue(
 )
 async def create_review(
     review_data: ReviewCreate,
-    request: Request,
-    tenant_id: UUID = Depends(get_current_tenant),
-    db: AsyncSession = Depends(get_tenant_db),
+    service: ReviewApplicationService = Depends(get_review_application_service),
 ) -> ReviewResponse:
     """Сохранить отзыв и поставить его анализ в ARQ без ожидания обработки."""
-    new_review = await _create_review_and_enqueue(
-        request=request,
-        db=db,
-        tenant_id=tenant_id,
+    new_review = await service.create_review(
         platform_id=review_data.platform_id,
         rating=review_data.rating,
         text=review_data.text,
@@ -182,15 +105,10 @@ async def approve_ai_response(
 )
 async def receive_review_webhook(
     review_data: ReviewBase,
-    request: Request,
-    tenant_id: UUID = Depends(get_current_tenant),
-    db: AsyncSession = Depends(get_tenant_db),
+    service: ReviewApplicationService = Depends(get_review_application_service),
 ) -> JSONResponse:
     """Принять отзыв и поставить его обработку в ARQ очередь."""
-    review = await _create_review_and_enqueue(
-        request=request,
-        db=db,
-        tenant_id=tenant_id,
+    review = await service.create_review(
         platform_id=review_data.platform_id,
         rating=review_data.rating,
         text=review_data.text,
@@ -353,17 +271,18 @@ async def update_review_status(
     review_id: UUID,
     new_status: ReviewStatus,
     si_response: str | None = None,
-    review_repo: ReviewRepository = Depends(get_review_repository),
+    service: ReviewApplicationService = Depends(get_review_application_service),
 ) -> JSONResponse:
     """
     Обновление статуса отзыва:
     - Смена статуса обработки
-    - Добавление ответа SI (опционально)
-    - Пересчет финансового влияния
+    - Сохранение ответа SI отдельно от privacy-constrained таблицы reviews
     """
 
-    updated_review = await review_repo.update_status_and_response(
-        review_id=review_id, status=new_status, si_response=si_response
+    updated_review, has_response = await service.update_status(
+        review_id=review_id,
+        new_status=new_status,
+        si_response=si_response,
     )
 
     return JSONResponse(
@@ -374,7 +293,7 @@ async def update_review_status(
             "data": {
                 "review_id": str(updated_review.id),
                 "new_status": updated_review.status.value,
-                "has_response": bool(updated_review.si_response),
+                "has_response": has_response,
             },
         },
     )
@@ -698,8 +617,7 @@ async def get_assistant_reviews(
     branch_id: UUID | None = Query(None, description="Фильтр по филиалу"),
     limit: int = Query(50, ge=1, le=100, description="Количество отзывов"),
     offset: int = Query(0, ge=0, description="Смещение для пагинации"),
-    tenant_id: UUID = Depends(get_current_tenant),
-    db: AsyncSession = Depends(get_tenant_db),
+    service: ReviewApplicationService = Depends(get_review_application_service),
 ) -> list[AssistantReviewSchema]:
     """
     Получить список отзывов для рабочего места ассистента.
@@ -719,115 +637,23 @@ async def get_assistant_reviews(
     - approved: одобрен модератором
     - published: ответ опубликован
     """
-    from ..schemas.economics import ReplyModerationStatus
-
-    # Базовый фильтр по tenant
-    filters = [Review.company_id == tenant_id]
-
-    # Фильтр по филиалу
-    if branch_id:
-        filters.append(Review.branch_id == branch_id)
-
-    # Фильтр по типу
-    if filter == "negative":
-        filters.append(Review.sentiment == "NEGATIVE")
-    elif filter == "unanswered":
-        filters.append(
-            Review.moderation_status.in_(
-                [ReplyModerationStatus.NEW, ReplyModerationStatus.DRAFTED]
-            )
-        )
-
-    query = (
-        select(Review)
-        .where(and_(*filters))
-        .order_by(Review.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-
-    result = await db.execute(query)
-    reviews = list(result.scalars().all())
-
-    # Преобразуем в AssistantReviewSchema
-    assistant_reviews = []
-    for review in reviews:
-        has_reply = review.suggested_reply is not None or review.auto_reply is not None
-        assistant_reviews.append(
-            AssistantReviewSchema(
-                id=review.id,
-                platform=review.platform,
-                text=review.text,
-                rating=review.rating,
-                created_at=review.created_at,
-                sentiment=review.sentiment,
-                status=review.moderation_status,
-                has_reply=has_reply,
-            )
-        )
-
-    return assistant_reviews
+    return await service.list_assistant_reviews(filter, branch_id, limit, offset)
 
 
 @router.post(
     "/{review_id}/generate-reply",
     response_model=GenerateReplyResponse,
-    summary="Сгенерировать черновик ответа",
-    description="Генерация ответа с использованием системного промпта для заданного тона",
+    summary="Сгенерировать ответ на отзыв",
+    description="Создать ответ из зашифрованного текста отзыва без сохранения ответа",
 )
 async def generate_reply(
     review_id: UUID,
-    request: GenerateReplyRequest,
-    tenant_id: UUID = Depends(get_current_tenant),
-    db: AsyncSession = Depends(get_tenant_db),
+    service: ReviewApplicationService = Depends(get_review_application_service),
 ) -> GenerateReplyResponse:
-    """
-    Сгенерировать черновик ответа на отзыв.
-
-    **FSM переход:** new -> drafted
-
-    **Безопасность:**
-    - Системные промпты хранятся на сервере (app.core.assistant_prompts)
-    - Клиент передает только идентификатор тона (official | friendly | crisis)
-    - Защита от prompt injection
-
-    **RLS изоляция:** Проверка прав доступа к отзыву через tenant_id.
-    """
-    from ..schemas.economics import ReplyModerationStatus
-
-    # Получаем отзыв с проверкой RLS
-    query = select(Review).where(
-        and_(Review.id == review_id, Review.company_id == tenant_id)
+    return GenerateReplyResponse(
+        review_id=review_id,
+        suggested_reply=await service.generate_reply(review_id),
     )
-    result = await db.execute(query)
-    review = result.scalar_one_or_none()
-
-    if not review:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Review not found or access denied",
-        )
-
-    # Проверяем FSM: можно генерировать из new или drafted (регенерация)
-    if review.moderation_status not in [
-        ReplyModerationStatus.NEW,
-        ReplyModerationStatus.DRAFTED,
-    ]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Генерация невозможна для отзывов на модерации или опубликованных",
-        )
-
-    # TODO: Интеграция с LLM для генерации ответа
-    # Для MVP возвращаем заглушку
-    draft_text = f"[Draft - {request.tone} tone] Спасибо за ваш отзыв. Мы рассмотрим его и свяжемся с вами для решения вопроса."
-
-    # Обновляем статус (FSM переход: new -> drafted)
-    review.moderation_status = ReplyModerationStatus.DRAFTED
-    review.suggested_reply = draft_text
-    await db.commit()
-
-    return GenerateReplyResponse(draft_text=draft_text)
 
 
 @router.post(
@@ -839,8 +665,7 @@ async def generate_reply(
 async def submit_moderation(
     review_id: UUID,
     request: SubmitModerationRequest,
-    tenant_id: UUID = Depends(get_current_tenant),
-    db: AsyncSession = Depends(get_tenant_db),
+    service: ReviewApplicationService = Depends(get_review_application_service),
 ) -> AssistantReviewSchema:
     """
     Отправить ответ на модерацию.
@@ -854,43 +679,18 @@ async def submit_moderation(
 
     **RLS изоляция:** Проверка прав доступа к отзыву через tenant_id.
     """
-    from ..schemas.economics import ReplyModerationStatus
+    return await service.submit_moderation(review_id, request.resolved_text)
 
-    # Получаем отзыв с проверкой RLS
-    query = select(Review).where(
-        and_(Review.id == review_id, Review.company_id == tenant_id)
-    )
-    result = await db.execute(query)
-    review = result.scalar_one_or_none()
 
-    if not review:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Review not found or access denied",
-        )
-
-    # Проверяем FSM: можно отправлять только из статуса drafted
-    if review.moderation_status != ReplyModerationStatus.DRAFTED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot submit moderation in status {review.moderation_status.value}. Current status must be 'drafted'.",
-        )
-
-    # Сохраняем ответ и обновляем статус
-    review.suggested_reply = request.resolved_text
-    review.moderation_status = ReplyModerationStatus.PENDING_MODERATION
-    await db.commit()
-    await db.refresh(review)
-
-    # Возвращаем обновленный отзыв
-    has_reply = review.suggested_reply is not None or review.auto_reply is not None
-    return AssistantReviewSchema(
-        id=review.id,
-        platform=review.platform,
-        text=review.text,
-        rating=review.rating,
-        created_at=review.created_at,
-        sentiment=review.sentiment,
-        status=review.moderation_status,
-        has_reply=has_reply,
-    )
+@router.post(
+    "/{review_id}/approve-moderation",
+    response_model=AssistantReviewSchema,
+    summary="Одобрить ответ на отзыв",
+    description="Одобрить модерируемый ответ без его публикации",
+)
+async def approve_moderation(
+    review_id: UUID,
+    service: ReviewApplicationService = Depends(get_review_application_service),
+) -> AssistantReviewSchema:
+    """Одобрить ответ, сохранив публикацию отдельным отключенным сценарием."""
+    return await service.approve_moderation(review_id)

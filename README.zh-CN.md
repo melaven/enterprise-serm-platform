@@ -109,7 +109,7 @@ flowchart LR
 - [`README.md`](README.md) — 英文主版本。
 - [`frontend/README.md`](frontend/README.md) — 前端专属文档。
 - [`migrations/README.md`](migrations/README.md) — 数据库迁移指南。
-- [`devops/README.md`](devops/README.md) — DevOps 与部署文档。
+- [`infra/devops/README.md`](infra/devops/README.md) — DevOps 与部署文档。
 
 ## 许可证
 

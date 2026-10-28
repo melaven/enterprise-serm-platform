@@ -1,14 +1,17 @@
 """
 Tests for SI Assistant API endpoints.
-Tests cover RLS validation and FSM status transitions.
+Tests cover tenant isolation, reply generation, and moderation status transitions.
 """
+
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.economics import Review
-from app.schemas.economics import ReplyModerationStatus
+from app.models.review_reply import ReviewReply
+from app.schemas.economics import ReplyModerationStatus, ReviewStatus
 
 
 @pytest.mark.asyncio
@@ -124,10 +127,17 @@ async def test_get_assistant_reviews_filter_unanswered(
         author_name="Customer",
         rating=4,
         text="Good",
-        suggested_reply="Thank you!",
         moderation_status=ReplyModerationStatus.DRAFTED,
     )
     db_session.add(review_answered)
+    await db_session.flush()
+    db_session.add(
+        ReviewReply(
+            review_id=review_answered.id,
+            company_id=company_id,
+            reply_text="Thank you!",
+        )
+    )
     await db_session.commit()
 
     # Filter by unanswered
@@ -141,46 +151,87 @@ async def test_get_assistant_reviews_filter_unanswered(
 
 
 @pytest.mark.asyncio
-async def test_generate_reply_fsm_transition_new_to_drafted(
+async def test_generate_reply_uses_encrypted_source_without_persisting_reply(
     client: AsyncClient,
     company_id,
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ):
-    """Test FSM transition: new -> drafted when generating reply."""
+    """Generate from encrypted source and mark a draft without storing its text."""
+    from app.models.review_analysis_payload import ReviewAnalysisPayload
+    from app.services import review_service
+
+    source_text = "Поддержка ответила быстро и помогла решить проблему."
     review = Review(
         company_id=company_id,
         platform_id=company_id,
         platform="google",
         author_name="Customer",
         rating=3,
-        text="Average service",
+        text="Нейтральный отзыв; оценка 3/5.",
+        tags=["SERVICE"],
+        is_analyzed=True,
         moderation_status=ReplyModerationStatus.NEW,
     )
     db_session.add(review)
+    await db_session.flush()
+    payload = ReviewAnalysisPayload(
+        review_id=review.id,
+        company_id=company_id,
+        encrypted_text="encrypted-review",
+    )
+    db_session.add(payload)
     await db_session.commit()
 
-    # Generate reply
-    response = await client.post(
-        f"/api/v1/reviews/{review.id}/generate-reply",
-        json={"tone": "official"},
-    )
+    class FakeAnalyzer:
+        def __init__(self) -> None:
+            self.arguments = None
+            self.closed = False
+
+        async def generate_reply(
+            self, review_text: str, tags: list[str], rating: int
+        ) -> str:
+            self.arguments = (review_text, tags, rating)
+            return "Благодарим за отзыв. Рады, что наша поддержка помогла решить вопрос."
+
+        async def close(self) -> None:
+            self.closed = True
+
+    analyzer = FakeAnalyzer()
+    monkeypatch.setattr(review_service, "decrypt_token", lambda encrypted: source_text)
+    monkeypatch.setattr(review_service, "create_openai_analyzer", lambda: analyzer)
+
+    response = await client.post(f"/api/v1/reviews/{review.id}/generate-reply")
+
     assert response.status_code == 200
     data = response.json()
-    assert "draft_text" in data
+    assert data == {
+        "review_id": str(review.id),
+        "suggested_reply": (
+            "Благодарим за отзыв. Рады, что наша поддержка помогла решить вопрос."
+        ),
+    }
+    assert analyzer.arguments == (source_text, ["SERVICE"], 3)
+    assert analyzer.closed
 
-    # Verify status transition
     await db_session.refresh(review)
     assert review.moderation_status == ReplyModerationStatus.DRAFTED
-    assert review.suggested_reply is not None
+    assert review.suggested_reply is None
+    assert review.text == "Нейтральный отзыв; оценка 3/5."
+    assert await db_session.get(ReviewAnalysisPayload, review.id) is not None
+    assert await db_session.get(ReviewReply, review.id) is None
 
 
 @pytest.mark.asyncio
-async def test_generate_reply_fails_from_pending_moderation_status(
+async def test_generate_reply_requires_retained_encrypted_source(
     client: AsyncClient,
     company_id,
     db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
 ):
-    """Test that generate reply fails from non-new status (FSM validation)."""
+    """Do not generate a low-quality response from the safe summary."""
+    from app.services import review_service
+
     review = Review(
         company_id=company_id,
         platform_id=company_id,
@@ -188,18 +239,22 @@ async def test_generate_reply_fails_from_pending_moderation_status(
         author_name="Customer",
         rating=3,
         text="Average service",
+        is_analyzed=True,
         moderation_status=ReplyModerationStatus.PENDING_MODERATION,
     )
     db_session.add(review)
     await db_session.commit()
 
-    # Try to generate reply after it has entered moderation.
-    response = await client.post(
-        f"/api/v1/reviews/{review.id}/generate-reply",
-        json={"tone": "official"},
+    monkeypatch.setattr(
+        review_service,
+        "create_openai_analyzer",
+        lambda: pytest.fail("Analyzer must not be initialized without source text"),
     )
-    assert response.status_code == 400
-    assert response.json()["error"]["type"] == "HTTPException"
+
+    response = await client.post(f"/api/v1/reviews/{review.id}/generate-reply")
+    assert response.status_code == 409
+    assert response.json()["error"]["status_code"] == 409
+    assert review.suggested_reply is None
 
 
 @pytest.mark.asyncio
@@ -222,12 +277,57 @@ async def test_generate_reply_rls_denies_access(
     db_session.add(review)
     await db_session.commit()
 
-    # Try to generate reply for other company's review
-    response = await client.post(
-        f"/api/v1/reviews/{review.id}/generate-reply",
-        json={"tone": "official"},
-    )
+    response = await client.post(f"/api/v1/reviews/{review.id}/generate-reply")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_review_encrypts_source_and_enqueues_analysis(
+    client: AsyncClient,
+    company_id,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.main import app
+    from app.models.review_analysis_payload import ReviewAnalysisPayload
+    from app.services import review_service
+
+    source_text = "A confidential customer review."
+    monkeypatch.setattr(
+        review_service, "encrypt_token", lambda text: "encrypted-source"
+    )
+
+    class FakeQueue:
+        def __init__(self) -> None:
+            self.job = None
+
+        async def enqueue_job(self, function_name: str, *args, **kwargs) -> None:
+            self.job = (function_name, args, kwargs)
+
+    queue = FakeQueue()
+    monkeypatch.setattr(app.state, "arq_pool", queue, raising=False)
+
+    response = await client.post(
+        "/api/v1/reviews/",
+        json={
+            "platform_id": str(company_id),
+            "rating": 2,
+            "text": source_text,
+            "author_name": "Customer",
+        },
+    )
+
+    assert response.status_code == 201
+    review_id = UUID(response.json()["id"])
+    stored_review = await db_session.get(Review, review_id)
+    assert stored_review is not None
+    assert source_text not in stored_review.text
+    payload = await db_session.get(ReviewAnalysisPayload, review_id)
+    assert payload is not None
+    assert payload.encrypted_text == "encrypted-source"
+    assert queue.job is not None
+    assert queue.job[0] == "process_review_task"
+    assert queue.job[1] == (str(review_id), str(company_id))
 
 
 @pytest.mark.asyncio
@@ -244,7 +344,6 @@ async def test_submit_moderation_fsm_transition_drafted_to_pending(
         author_name="Customer",
         rating=3,
         text="Average service",
-        suggested_reply="Draft reply",
         moderation_status=ReplyModerationStatus.DRAFTED,
     )
     db_session.add(review)
@@ -262,7 +361,85 @@ async def test_submit_moderation_fsm_transition_drafted_to_pending(
     # Verify status transition
     await db_session.refresh(review)
     assert review.moderation_status == ReplyModerationStatus.PENDING_MODERATION
-    assert review.suggested_reply == "Final reply text"
+    assert review.suggested_reply is None
+    saved_reply = await db_session.get(ReviewReply, review.id)
+    assert saved_reply is not None
+    assert saved_reply.reply_text == "Final reply text"
+    assert data["reply_text"] == "Final reply text"
+
+
+@pytest.mark.asyncio
+async def test_approve_moderation_updates_status_without_writing_to_review(
+    client: AsyncClient,
+    company_id,
+    db_session: AsyncSession,
+):
+    review = Review(
+        company_id=company_id,
+        platform_id=company_id,
+        platform="google",
+        author_name="Customer",
+        rating=3,
+        text="Average service",
+        moderation_status=ReplyModerationStatus.PENDING_MODERATION,
+    )
+    db_session.add(review)
+    await db_session.flush()
+    db_session.add(
+        ReviewReply(
+            review_id=review.id,
+            company_id=company_id,
+            reply_text="Thank you for your feedback.",
+        )
+    )
+    await db_session.commit()
+
+    response = await client.post(
+        f"/api/v1/reviews/{review.id}/approve-moderation"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == ReplyModerationStatus.APPROVED.value
+    assert response.json()["reply_text"] == "Thank you for your feedback."
+    await db_session.refresh(review)
+    assert review.moderation_status == ReplyModerationStatus.APPROVED
+    assert review.suggested_reply is None
+
+
+@pytest.mark.asyncio
+async def test_update_review_status_stores_response_outside_reviews(
+    client: AsyncClient,
+    company_id,
+    db_session: AsyncSession,
+):
+    review = Review(
+        company_id=company_id,
+        platform_id=company_id,
+        platform="google",
+        author_name="Customer",
+        rating=3,
+        text="Average service",
+        status=ReviewStatus.NEW,
+    )
+    db_session.add(review)
+    await db_session.commit()
+
+    response = await client.put(
+        f"/api/v1/reviews/{review.id}/status",
+        params={
+            "new_status": ReviewStatus.RESOLVED.value,
+            "si_response": "We have resolved the issue.",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["has_response"] is True
+    await db_session.refresh(review)
+    assert review.status == ReviewStatus.RESOLVED
+    assert review.si_response is None
+    saved_reply = await db_session.get(ReviewReply, review.id)
+    assert saved_reply is not None
+    assert saved_reply.reply_text == "We have resolved the issue."
 
 
 @pytest.mark.asyncio
@@ -290,7 +467,7 @@ async def test_submit_moderation_fails_from_non_drafted_status(
         json={"reply_text": "Reply text"},
     )
     assert response.status_code == 400
-    assert response.json()["error"]["type"] == "HTTPException"
+    assert response.json()["error"]["type"] == "BusinessLogicError"
 
 
 @pytest.mark.asyncio

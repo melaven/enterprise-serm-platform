@@ -47,7 +47,7 @@ Production конфигурация Docker Compose с:
 - ARQ Worker для фоновых задач
 - React Frontend с Nginx
 
-### 2. nginx/nginx.conf
+### 2. infra/nginx/nginx.conf
 Nginx конфигурация с:
 - Reverse Proxy для backend и frontend
 - X-Forwarded-For headers для реальных IP
@@ -56,7 +56,7 @@ Nginx конфигурация с:
 - Gzip compression
 - SSL готовая конфигурация (раскомментировать)
 
-### 3. nginx/generate-ssl.sh
+### 3. infra/nginx/generate-ssl.sh
 Скрипт для генерации самоподписанных SSL сертификатов (только для тестирования)
 
 ## Key Features
@@ -222,8 +222,8 @@ sudo apt-get install certbot
 sudo certbot certonly --standalone -d your-domain.com
 
 # Скопируйте сертификаты
-sudo cp /etc/letsencrypt/live/your-domain.com/fullchain.pem nginx/ssl/cert.pem
-sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem nginx/ssl/key.pem
+sudo cp /etc/letsencrypt/live/your-domain.com/fullchain.pem infra/nginx/ssl/cert.pem
+sudo cp /etc/letsencrypt/live/your-domain.com/privkey.pem infra/nginx/ssl/key.pem
 ```
 
 ### 3. Запуск production конфигурации
@@ -244,7 +244,7 @@ docker-compose -f docker-compose.prod.yml logs -f
 
 ### 4. Включение SSL (раскомментировать в nginx.conf)
 
-Откройте `nginx/nginx.conf` и:
+Откройте `infra/nginx/nginx.conf` и:
 1. Раскомментируйте `return 301 https://$host$request_uri;` в HTTP server
 2. Раскомментируйте весь HTTPS server block
 3. Замените `your-domain.com` на ваш домен

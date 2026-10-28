@@ -1,7 +1,7 @@
 name: tenable-serm
 
 # Запуск:  docker compose -f docker-compose.prod.yml --env-file .env up -d --build
-# Все секреты и адреса берутся ТОЛЬКО из .env (шаблон: .env.prod.example). Без обязательных переменных compose не стартует.
+# Все секреты и адреса берутся ТОЛЬКО из .env (шаблон: .env.example). Без обязательных переменных compose не стартует.
 
 x-app: &app
   build:
@@ -141,11 +141,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./default.conf.template:/etc/nginx/templates/default.conf.template:ro
       # Каталог с fullchain.pem и privkey.pem (например /etc/letsencrypt/live/<домен>)
       - ${TLS_CERT_DIR:?TLS_CERT_DIR (каталог с fullchain.pem и privkey.pem) не задан в .env}:/etc/nginx/certs:ro
-      - ${ACME_WEBROOT:-./nginx/acme}:/var/www/certbot:ro
+      - ${ACME_WEBROOT:-./infra/nginx/acme}:/var/www/certbot:ro
     read_only: true
     tmpfs:
       - /var/cache/nginx

@@ -1,4 +1,4 @@
-from app.services.local_review_si import analyze_review_locally
+from app.application.reviews.local_si import analyze_review_locally
 
 
 def test_local_si_returns_only_allowlisted_analytics() -> None:

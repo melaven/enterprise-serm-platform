@@ -3,8 +3,6 @@ import { CircleAlert, Download, MessageSquareText, MessagesSquare, Sparkles, Tre
 import { toast } from 'sonner';
 
 import * as api from '@/api/services';
-import * as demoApi from '@/api/demoService';
-import { ApiError } from '@/api/client';
 import { AsyncView } from '@/components/ui/async-view';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,14 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardLayout } from '@/features/dashboard/DashboardLayout';
-import { useAppStore } from '@/store/useAppStore';
+import { useReviews, useDashboard, useAppStore } from '@/store/useAppStore';
 
-// Demo Mode: выбор API
-const isDemoMode =
-  import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_USE_MOCKS === 'true';
-const apiClient = isDemoMode ? demoApi : api;
-
-type DashboardSummary = api.DashboardSummary;
 type Review = api.Review;
 
 interface DashboardMetric {
@@ -34,80 +26,11 @@ interface DashboardMetric {
   };
 }
 
-interface DashboardData {
-  summary: DashboardSummary;
-  reviews: Review[];
-}
-
-export function useDashboardData() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-
-  const loadDashboard = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const [summary, reviewsPage] = await Promise.all([
-        apiClient.getDashboardSummary(),
-        apiClient.getReviews({ page: 1, page_size: 5 }),
-      ]);
-
-      setData({ summary, reviews: reviewsPage.items });
-    } catch (caughtError: unknown) {
-      const error = caughtError instanceof Error
-        ? caughtError
-        : new Error('Не удалось загрузить данные дашборда');
-      
-      setError(error);
-      
-      // Show toast notification with specific error message
-      if (caughtError instanceof ApiError) {
-        if (caughtError.status === 0) {
-          toast.error('Нет подключения к серверу', {
-            description: 'Проверьте, запущен ли backend на http://127.0.0.1:8000',
-            duration: 5000,
-          });
-        } else if (caughtError.status >= 500) {
-          toast.error('Ошибка сервера базы данных', {
-            description: 'Попробуйте обновить страницу или повторите попытку позже',
-            duration: 5000,
-          });
-        } else {
-          toast.error(caughtError.message, {
-            description: `Код ошибки: ${caughtError.status}`,
-            duration: 5000,
-          });
-        }
-      } else {
-        toast.error('Ошибка загрузки данных', {
-          description: error.message,
-          duration: 5000,
-        });
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadDashboard();
-  }, []);
-
-  return { data, isLoading, error, retry: loadDashboard };
-}
-
 const reviewColumns: readonly DataTableColumn<Review>[] = [
   {
     key: 'platform',
-    header: 'Источник',
+    header: 'Платформа',
     cell: (review) => <span className="font-medium text-chrome-200">{review.platform || 'Не указан'}</span>,
-  },
-  {
-    key: 'summary',
-    header: 'Сводка SI',
-    cell: (review) => <span className="block max-w-lg truncate">{review.text}</span>,
   },
   {
     key: 'rating',
@@ -115,33 +38,37 @@ const reviewColumns: readonly DataTableColumn<Review>[] = [
     cell: (review) => <span className="font-medium tabular-nums">{review.rating} / 5</span>,
   },
   {
-    key: 'receivedAt',
-    header: 'Получен',
+    key: 'moderation_status',
+    header: 'Статус модерации',
+    cell: (review) => {
+      const statusLabels: Record<NonNullable<Review['moderation_status']>, string> = {
+        new: 'Новый',
+        drafted: 'Черновик',
+        pending_moderation: 'На модерации',
+        published: 'Опубликован',
+      };
+      const variant: BadgeProps['variant'] =
+        review.moderation_status === 'published'
+          ? 'success'
+          : review.moderation_status === 'pending_moderation'
+            ? 'default'
+            : 'secondary';
+
+      return (
+        <Badge variant={variant}>
+          {review.moderation_status ? statusLabels[review.moderation_status] : 'Не указан'}
+        </Badge>
+      );
+    },
+  },
+  {
+    key: 'created_at',
+    header: 'Дата',
     cell: (review) => (
       <span className="whitespace-nowrap text-chrome-400">
         {new Date(review.created_at).toLocaleString('ru-RU')}
       </span>
     ),
-  },
-  {
-    key: 'status',
-    header: 'Статус',
-    cell: (review) => {
-      const statusLabels: Record<Review['status'], string> = {
-        new: 'Новый',
-        si_processing: 'В работе',
-        resolved: 'Готово',
-        lost: 'Архив',
-      };
-      const variant: BadgeProps['variant'] =
-        review.status === 'resolved'
-          ? 'success'
-          : review.status === 'lost'
-            ? 'secondary'
-            : 'default';
-
-      return <Badge variant={variant}>{statusLabels[review.status]}</Badge>;
-    },
   },
 ];
 
@@ -163,7 +90,7 @@ function DashboardLoading() {
           </Card>
         ))}
       </div>
-      
+
       {/* Reviews Table Skeleton */}
       <Card className="border-2 border-chrome-600 bg-ink-900">
         <CardHeader className="border-b-2 border-chrome-600 bg-ink-950 px-6 py-4">
@@ -182,8 +109,15 @@ function DashboardLoading() {
 
 export default function Dashboard() {
   const { user, logout } = useAppStore();
-  const { data, isLoading, error, retry } = useDashboardData();
+  const { reviews, reviewsLoading, reviewsTotal, fetchReviews } = useReviews();
+  const { dashboard, dashboardLoading, fetchDashboard } = useDashboard();
   const [isExporting, setIsExporting] = useState(false);
+
+  // Load data on mount
+  useEffect(() => {
+    void fetchDashboard();
+    void fetchReviews({ page: 1, page_size: 5 });
+  }, [fetchDashboard, fetchReviews]);
 
   const handleExportCSV = async () => {
     setIsExporting(true);
@@ -207,13 +141,13 @@ export default function Dashboard() {
     }
   };
 
-  const metrics: DashboardMetric[] = data
+  const metrics: DashboardMetric[] = dashboard
     ? [
         {
           id: 'reviews',
           label: 'Всего отзывов',
-          value: data.summary.total_reviews.toLocaleString('ru-RU'),
-          detail: `${data.summary.sentiment.total.toLocaleString('ru-RU')} учтено в тональности`,
+          value: dashboard.total_reviews.toLocaleString('ru-RU'),
+          detail: `${dashboard.sentiment.total.toLocaleString('ru-RU')} учтено в тональности`,
           icon: MessagesSquare,
           trend: {
             value: 12.5,
@@ -223,8 +157,8 @@ export default function Dashboard() {
         {
           id: 'negative',
           label: 'Негативные',
-          value: data.summary.sentiment.negative.toLocaleString('ru-RU'),
-          detail: `${data.summary.sentiment.positive.toLocaleString('ru-RU')} положительных`,
+          value: dashboard.sentiment.negative.toLocaleString('ru-RU'),
+          detail: `${dashboard.sentiment.positive.toLocaleString('ru-RU')} положительных`,
           icon: MessageSquareText,
           trend: {
             value: 8.2,
@@ -234,7 +168,7 @@ export default function Dashboard() {
         {
           id: 'critical',
           label: 'Критические',
-          value: data.summary.critical_reviews.toLocaleString('ru-RU'),
+          value: dashboard.critical_reviews.toLocaleString('ru-RU'),
           detail: 'требуют внимания команды',
           icon: CircleAlert,
           trend: {
@@ -245,8 +179,8 @@ export default function Dashboard() {
         {
           id: 'si-pending',
           label: 'Без SI-оценки',
-          value: data.summary.ai_pending.toLocaleString('ru-RU'),
-          detail: `${data.summary.sentiment.unclassified.toLocaleString('ru-RU')} без тональности`,
+          value: dashboard.ai_pending.toLocaleString('ru-RU'),
+          detail: `${dashboard.sentiment.unclassified.toLocaleString('ru-RU')} без тональности`,
           icon: Sparkles,
         },
       ]
@@ -282,14 +216,12 @@ export default function Dashboard() {
         </header>
 
         <AsyncView
-          isLoading={isLoading}
-          error={error}
-          isEmpty={!isLoading && !error && !data}
+          isLoading={dashboardLoading || reviewsLoading}
+          isEmpty={!dashboardLoading && !reviewsLoading && !dashboard && reviews.length === 0}
           emptyMessage="Данные пока недоступны"
           loadingComponent={<DashboardLoading />}
-          onRetry={retry}
         >
-          {data && (
+          {dashboard && (
             <div className="space-y-6">
               <section aria-label="Ключевые показатели" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 {metrics.map((metric) => {
@@ -343,14 +275,14 @@ export default function Dashboard() {
                       </p>
                     </div>
                     <Badge variant="secondary" className="whitespace-nowrap">
-                      {data.reviews.length} записей
+                      {reviewsTotal} записей
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <DataTable
                     columns={reviewColumns}
-                    rows={data.reviews}
+                    rows={reviews}
                     getRowKey={(review) => review.id}
                     emptyMessage="Отзывы не найдены"
                   />

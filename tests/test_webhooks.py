@@ -12,11 +12,11 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
+from app.api.v1.routes import webhooks_config
 from app.core.auth import get_current_tenant
-from app.models.economics import WebhookEndpoint
-from app.routers import webhooks_config
-from app.services import webhooks_sender
-from app.services.worker import analysis_tasks
+from app.infrastructure.integrations import webhooks_sender
+from app.infrastructure.persistence.models.economics import WebhookEndpoint
+from app.infrastructure.queue.worker import analysis_tasks
 
 
 class FakeScalars:

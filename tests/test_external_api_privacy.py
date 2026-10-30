@@ -6,7 +6,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from app.routers import external_api
+from app.api.v1.routes import external_api
 
 
 class _ReviewSession:

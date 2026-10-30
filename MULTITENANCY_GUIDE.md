@@ -108,7 +108,7 @@ async def my_endpoint(
 
 ```python
 from app.core.dependencies import get_review_repository
-from app.repositories import ReviewRepository
+from app.infrastructure.persistence.repositories import ReviewRepository
 
 # Repository is automatically tenant-isolated
 async def get_reviews(
@@ -174,7 +174,7 @@ USING (company_id = current_setting('app.company_id')::uuid);
 cd app
 python -c "
 import asyncio
-from database import engine
+from app.core.database import engine
 from sqlalchemy import text
 
 async def test():

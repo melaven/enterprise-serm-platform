@@ -75,6 +75,31 @@ flowchart LR
 
 该图展示的是预期处理流程。RLS 策略在数据库层限制租户数据访问；每个部署环境还必须配置并验证应用及工作进程的行为。
 
+## 🖥️ 前端架构与客户端工程
+
+单页客户端基于 React 18、TypeScript 和 Vite 构建，源代码位于 `frontend/src/`：
+
+```text
+frontend/src/
+├── api/          # Axios 客户端、API 服务与错误处理
+├── components/   # 共享 UI 基础组件与全局错误边界
+├── features/     # 身份验证、仪表板、评价和计费功能模块
+├── hooks/        # 可复用的客户端 Hooks
+├── pages/        # 路由页面
+├── store/        # 使用 Zustand 管理并持久化应用状态
+├── types/        # 共享 TypeScript 类型
+├── App.tsx
+├── main.tsx      # React 入口与路由配置
+└── index.css     # 全局样式与 Tailwind CSS 基础样式
+```
+
+- **路由与访问控制：** React Router 定义公开和受保护的路由。`ProtectedRoute` 为受保护页面提供客户端路由保护，但授权仍必须由后端执行。
+- **状态管理（State Management）：** Zustand 管理共享应用状态并支持持久化。API 调用集中在 `api/`；Axios 客户端统一处理错误，并协调配额和速率限制。
+- **零信任客户端安全（Zero-Trust Client Security）：** 将浏览器视为不可信环境。客户端路由保护有助于改善导航体验，但不能替代后端授权或数据库级租户隔离；不得依赖客户端保护密钥或执行访问控制。
+- **组件驱动 UI（Component-Driven UI）：** 共享 UI 基础组件位于 `components/`，具体功能的页面和行为按模块组织在 `features/`。Tailwind CSS v3 和项目主题配置提供实用类与设计令牌。
+- **乐观 UI（Optimistic UI）：** 对适合且可撤销的交互，可在请求完成前先更新界面，再根据服务器响应进行同步；请求失败时恢复先前状态。
+- **客户端检查：** 在 `frontend/` 目录运行 `npm run lint`、`npm run typecheck`、`npm run test:run` 和 `npm run build`，分别执行代码检查、类型检查、测试和生产构建。
+
 ## 核心功能
 
 - **多租户数据隔离：** PostgreSQL 行级安全（RLS）策略将业务数据限制在已认证的租户范围内。

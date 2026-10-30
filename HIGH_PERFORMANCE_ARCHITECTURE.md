@@ -31,7 +31,11 @@ PostgreSQL
 
 ### Ключевые Компоненты
 
-#### `app/services/parser_queue.py`
+#### Historical `ParserQueueService` design (not implemented)
+
+This section records an earlier design proposal, not an active module. The current
+ARQ implementation is in `app/infrastructure/queue/worker/`; public parsing
+endpoints are retained for compatibility and return HTTP 410.
 
 **ParserQueueService** - высокопроизводительный сервис управления очередями:
 
@@ -544,17 +548,17 @@ docker-compose up -d redis
 ```bash
 # Новые файлы уже созданы:
 # - app/core/llm_cache.py
-# - app/services/parser_queue.py
+# - app/infrastructure/queue/worker/ (active ARQ worker and tasks)
 # - contracts/crawler_schema.json
 # - contracts/crawler.proto
-# - app/routers/parser.py (обновлен)
+# - app/api/v1/routes/parser.py (compatibility endpoints)
 ```
 
 ### Шаг 5: Тестирование
 
 ```bash
 # Запуск тестов
-pytest tests/test_parser_queue.py -v
+pytest tests/test_worker_redis.py -v
 pytest tests/test_llm_cache.py -v
 ```
 

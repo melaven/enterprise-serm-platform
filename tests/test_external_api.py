@@ -8,9 +8,9 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI, Header, HTTPException, status
 
+from app.api.v1.routes import external_api
 from app.core.anonymizer import anonymize_author_name
 from app.core.api_keys import verify_api_key
-from app.routers import external_api
 
 
 class FakeSession:

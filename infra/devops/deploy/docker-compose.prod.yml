@@ -32,7 +32,7 @@ services:
 
   worker:
     <<: *app
-    command: ["python", "-m", "app.services.worker.main"]
+    command: ["python", "-m", "app.infrastructure.queue.worker.main"]
     stop_grace_period: 40s
     mem_limit: 1g
     depends_on: { redis: { condition: service_healthy } }

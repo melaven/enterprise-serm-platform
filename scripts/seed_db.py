@@ -320,8 +320,13 @@ async def seed_database(data: dict[str, Any]) -> None:
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
     from sqlalchemy.pool import NullPool
 
-    from app.models.economics import Company, Platform, PlatformStatistic, Review
-    from app.schemas.economics import ReviewStatus
+    from app.api.schemas.economics import ReviewStatus
+    from app.infrastructure.persistence.models.economics import (
+        Company,
+        Platform,
+        PlatformStatistic,
+        Review,
+    )
 
     url = make_url(database_url)
     if url.drivername in {"postgres", "postgresql"}:

@@ -66,7 +66,7 @@
 
 Если хочешь протестировать 500 ошибку:
 
-1. Временно сломай endpoint в `app/routers/analytics.py`:
+1. Временно сломай endpoint в `app/api/v1/routes/analytics.py`:
    ```python
    @router.get("/summary")
    async def get_dashboard_summary():

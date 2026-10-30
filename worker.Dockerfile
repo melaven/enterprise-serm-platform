@@ -39,11 +39,11 @@ RUN apt-get update \
 
 WORKDIR /srv
 COPY --chown=app:app app ./app
-COPY --chown=app:app sql ./sql
+COPY --chown=app:app migrations ./migrations
 COPY --chown=app:app scripts ./scripts
 RUN python -m compileall -q app
 
 # Воркер работает не от root.
 USER app
 
-CMD ["arq", "app.services.worker.worker.WorkerSettings"]
+CMD ["arq", "app.infrastructure.queue.worker.worker.WorkerSettings"]

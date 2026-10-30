@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import ValidationError
 
+from app.api.schemas.auth import JWTPayload
 from app.core.auth import (
     AuthConfig,
     decode_token,
@@ -17,7 +18,6 @@ from app.core.auth import (
     get_jwt_payload,
 )
 from app.core.tenant_session import build_rls_claims, tenant_session
-from app.schemas.auth import JWTPayload
 
 SECRET = "x" * 40  # тестовый секрет, не настоящий
 CFG = AuthConfig(secret=SECRET, jwks_url=None)
@@ -86,24 +86,45 @@ def test_missing_bearer_is_401() -> None:
     assert ei.value.status_code == 401
 
 
-@pytest.mark.parametrize("tenant", ["not-a-uuid", ""])
-def test_token_with_invalid_tenant_is_403(tenant: str) -> None:
+@pytest.mark.parametrize(
+    ("claim", "tenant"),
+    [
+        ("tenant_id", "not-a-uuid"),
+        ("tenant_id", ""),
+        ("company_id", "not-a-uuid"),
+        ("company_id", ""),
+    ],
+)
+def test_token_with_invalid_tenant_is_401(claim: str, tenant: str) -> None:
     with pytest.raises(HTTPException) as ei:
-        run(get_jwt_payload(creds(token(tenant_id=tenant)), CFG))
-    assert ei.value.status_code == 403
+        run(get_jwt_payload(creds(token(**{claim: tenant})), CFG))
+    assert ei.value.status_code == 401
+    assert ei.value.detail == "Invalid authentication token: missing tenant context"
 
 
-def test_missing_tenant_falls_back_to_user_id() -> None:
+def test_missing_tenant_is_rejected_without_falling_back_to_user_id() -> None:
     payload = run(get_jwt_payload(creds(token(tenant_id=None)), CFG))
     assert payload.tenant_id is None
-    assert run(get_current_tenant(payload)) == UUID(USER)
+    with pytest.raises(HTTPException) as ei:
+        run(get_current_tenant(payload))
+    assert ei.value.status_code == 401
+    assert ei.value.detail == "Invalid authentication token: missing tenant context"
+
+
+def test_company_id_claim_is_accepted_as_tenant_context() -> None:
+    payload = run(get_jwt_payload(creds(token(tenant_id=None, company_id=TENANT)), CFG))
+    assert payload.company_id == UUID(TENANT)
+    assert run(get_current_tenant(payload)) == UUID(TENANT)
 
 
 def test_user_metadata_tenant_is_ignored() -> None:
     tok = token(tenant_id=None, user_metadata={"tenant_id": TENANT})
     payload = run(get_jwt_payload(creds(tok), CFG))
     assert payload.tenant_id is None
-    assert run(get_current_tenant(payload)) == UUID(USER)
+    with pytest.raises(HTTPException) as ei:
+        run(get_current_tenant(payload))
+    assert ei.value.status_code == 401
+    assert ei.value.detail == "Invalid authentication token: missing tenant context"
 
 
 def test_payload_requires_fields() -> None:

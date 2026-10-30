@@ -3,7 +3,10 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.worker.tasks import fetch_platform_reviews, fetch_reviews_task
+from app.infrastructure.queue.worker.tasks import (
+    fetch_platform_reviews,
+    fetch_reviews_task,
+)
 
 
 @pytest.mark.parametrize(

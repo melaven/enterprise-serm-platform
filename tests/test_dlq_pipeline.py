@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.worker.analysis_tasks import process_reviews_batch
+from app.infrastructure.queue.worker.analysis_tasks import process_reviews_batch
 
 
 @pytest.mark.asyncio

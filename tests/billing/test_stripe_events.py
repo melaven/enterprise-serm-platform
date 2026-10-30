@@ -22,7 +22,7 @@ if "structlog" not in sys.modules:
         )
         sys.modules["structlog"] = m
 
-from app.services.stripe_events import OutOfOrder, apply_event  # noqa: E402
+from app.application.billing.stripe_events import OutOfOrder, apply_event  # noqa: E402
 
 
 class FakeGw:

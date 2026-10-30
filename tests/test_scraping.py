@@ -5,8 +5,8 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from app.schemas.parser import Platform
-from app.services.scraping import (
+from app.api.schemas.parser import Platform
+from app.application.scraping import (
     DEFAULT_PROFILES,
     HttpxReviewScraper,
     PermanentScrapeError,

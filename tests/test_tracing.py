@@ -2,7 +2,7 @@ import asyncio
 import uuid
 from typing import Any
 
-from arq_tracing_example import enqueue_traced, traced_task
+from examples.arq_tracing_example import enqueue_traced, traced_task
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse

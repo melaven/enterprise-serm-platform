@@ -41,8 +41,12 @@ def test_migration_statements_drop_only_script_transaction_wrappers() -> None:
     assert statements[0].endswith("CREATE TABLE demo(value text)")
 
 
-def test_migration_chain_is_ordered_and_all_files_exist() -> None:
-    assert MIGRATIONS == tuple(sorted(MIGRATIONS))
+def test_migration_chain_respects_dependencies_and_all_files_exist() -> None:
+    assert (
+        MIGRATIONS.index("009_billing_seed.sql")
+        < MIGRATIONS.index("014_rename_quotas_table.sql")
+        < MIGRATIONS.index("013_stripe_billing.sql")
+    )
     assert all((MIGRATIONS_DIR / filename).is_file() for filename in MIGRATIONS)
     assert all(
         migration_statements((MIGRATIONS_DIR / filename).read_text(encoding="utf-8"))
@@ -66,6 +70,52 @@ def test_quota_service_migration_matches_runtime_contract() -> None:
         "consume_reviews",
     ):
         assert any(f"FUNCTION public.{function_name}" in s for s in statements)
+
+
+def test_stripe_billing_uses_existing_tenant_context_function() -> None:
+    sql = (MIGRATIONS_DIR / "013_stripe_billing.sql").read_text(encoding="utf-8")
+
+    assert "app.current_company_id()" in sql
+    assert "app.current_tenant_id()" not in sql
+
+
+def test_entitlement_fix_migration_defines_quota_rollover() -> None:
+    filename = "036_fix_entitlement_tenant_context.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "CREATE OR REPLACE FUNCTION app.roll_quota_period" in sql
+    assert "CREATE OR REPLACE FUNCTION app.get_entitlement" in sql
+    assert "app.current_company_id()" in sql
+
+
+def test_sanitized_reviews_migration_adds_scoped_deduplication_and_pii_checks() -> None:
+    filename = "037_sanitized_reviews.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "ADD COLUMN IF NOT EXISTS external_id varchar(255)" in sql
+    assert "ADD COLUMN IF NOT EXISTS author_hash varchar(32)" in sql
+    assert "uq_reviews_company_platform_external_id" in sql
+    assert "author_display IN ('Клиент', 'Анонимный клиент')" in sql
+    assert "reviews_external_id_hash_chk" in sql
+    assert "reviews_author_hash_chk" in sql
+
+
+def test_review_ingestion_migration_aligns_deduplication_schema() -> None:
+    filename = "038_review_ingest_dedup_indexes.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "ALTER COLUMN platform_id DROP NOT NULL" in sql
+    assert "DROP INDEX IF EXISTS public.uq_reviews_analytics_dedup" in sql
+    assert "DROP INDEX IF EXISTS public.uq_reviews_company_platform_external_id" in sql
+    assert (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_reviews_tenant_platform_external_id"
+        in sql
+    )
+    assert "ON public.reviews (company_id, platform, external_id)" in sql
+    assert "WHERE" not in sql
 
 
 def test_schema_cleanup_migration_removes_duplicate_review_pipeline_state() -> None:

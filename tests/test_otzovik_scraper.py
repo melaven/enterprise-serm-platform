@@ -2,7 +2,9 @@ import logging
 
 import pytest
 
-from app.services.platforms.scraper import OtzovikScraperAdapter
+from app.infrastructure.integrations.review_platforms.scraper import (
+    OtzovikScraperAdapter,
+)
 
 
 @pytest.mark.asyncio

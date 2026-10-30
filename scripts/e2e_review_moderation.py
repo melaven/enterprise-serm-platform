@@ -25,8 +25,8 @@ from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal, engine
-from app.models.economics import Review
-from app.models.review_reply import ReviewReply
+from app.infrastructure.persistence.models.economics import Review
+from app.infrastructure.persistence.models.review_reply import ReviewReply
 
 
 class E2EFailure(RuntimeError):

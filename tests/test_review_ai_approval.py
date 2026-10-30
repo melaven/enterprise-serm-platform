@@ -7,11 +7,11 @@ from fastapi import Header
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.api.schemas.economics import ReviewStatus
 from app.core.auth import get_current_tenant
 from app.core.dependencies import get_tenant_db
+from app.infrastructure.persistence.models.economics import Company, Platform, Review
 from app.main import app
-from app.models.economics import Company, Platform, Review
-from app.schemas.economics import ReviewStatus
 
 
 @pytest.mark.asyncio

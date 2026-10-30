@@ -2,8 +2,11 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Frontend-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Frontend-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-Build-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
+[![Zustand](https://img.shields.io/badge/Zustand-State%20management-443E38)](https://zustand.docs.pmnd.rs/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-Utility--first-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
 🇬🇧 [English](README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
@@ -75,6 +78,31 @@ flowchart LR
 
 The diagram shows the intended processing flow. RLS policies enforce tenant-scoped access at the database layer; application and worker behavior must also be configured and tested for each deployment.
 
+## 🖥️ Frontend Architecture & Client Engineering
+
+The single-page client is built with React 18, TypeScript, and Vite. Its source lives in `frontend/src/`:
+
+```text
+frontend/src/
+├── api/          # Axios client, API services, and error handling
+├── components/   # Shared UI primitives and global error boundary
+├── features/     # Feature modules for auth, dashboard, reviews, and billing
+├── hooks/        # Reusable client-side hooks
+├── pages/        # Route-level screens
+├── store/        # Zustand application state with persistence
+├── types/        # Shared TypeScript types
+├── App.tsx
+├── main.tsx      # React entry point and route configuration
+└── index.css     # Global styles and Tailwind CSS base
+```
+
+- **Routing and access:** React Router defines public and protected routes. The shared `ProtectedRoute` guards protected screens; authorization must still be enforced by the backend.
+- **State Management:** Zustand manages shared application state with persistence. API calls are centralized in `api/`, where the Axios client normalizes errors and coordinates quota and rate-limit handling.
+- **Zero-Trust Client Security:** Treat the browser as an untrusted environment. Client-side route guards improve navigation but do not replace backend authorization or database-level tenant isolation; never rely on the client to protect secrets or enforce access.
+- **Component-Driven UI:** Shared UI primitives live in `components/`, while business-specific screens and behavior are organized in `features/`. Tailwind CSS v3 and the project theme configuration provide utility classes and design tokens.
+- **Optimistic UI:** For suitable reversible interactions, update the interface before the request completes, then reconcile with the server response and restore the prior state if the request fails.
+- **Client checks:** From `frontend/`, run `npm run lint`, `npm run typecheck`, `npm run test:run`, and `npm run build` for linting, type checking, tests, and a production build.
+
 ## Core Features
 
 - **Multi-tenant data isolation:** PostgreSQL Row Level Security (RLS) policies scope business records to the authenticated tenant.
@@ -88,7 +116,7 @@ The diagram shows the intended processing flow. RLS policies enforce tenant-scop
 
 | Area | Technologies |
 |---|---|
-| **Frontend** | React 18, TypeScript, Vite, Zustand |
+| **Frontend** | React 18, TypeScript, Vite, Zustand, Tailwind CSS v3 |
 | **Backend API** | Python 3.10+, FastAPI, Pydantic |
 | **Database** | Supabase-hosted PostgreSQL, PostgreSQL RLS |
 | **Async processing** | Redis, ARQ |

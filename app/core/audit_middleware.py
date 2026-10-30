@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.database import AsyncSessionLocal
 from app.core.logger import get_logger
 from app.core.tenant_session import get_tenant_session
-from app.models.economics import AuditLog
+from app.infrastructure.persistence.models.economics import AuditLog
 
 logger = get_logger(__name__)
 _WEBHOOK_ID = re.compile(r"^/api/v1/webhooks/(?P<endpoint_id>[0-9a-fA-F-]{36})/?$")

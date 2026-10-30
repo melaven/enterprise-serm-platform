@@ -3,15 +3,34 @@ Tests for SI Assistant API endpoints.
 Tests cover tenant isolation, reply generation, and moderation status transitions.
 """
 
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.economics import Review
-from app.models.review_reply import ReviewReply
-from app.schemas.economics import ReplyModerationStatus, ReviewStatus
+from app.api.schemas.economics import ReplyModerationStatus, ReviewStatus
+from app.application.reviews.service import ReviewApplicationService
+from app.infrastructure.persistence.models.economics import Review
+from app.infrastructure.persistence.models.review_reply import ReviewReply
+
+
+@pytest.mark.asyncio
+async def test_review_service_uses_injected_session() -> None:
+    session = AsyncMock()
+    result = Mock()
+    result.all.return_value = []
+    session.execute.return_value = result
+    service = ReviewApplicationService(
+        session=session,
+        tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+    )
+
+    reviews = await service.list_assistant_reviews("all", None, 50, 0)
+
+    assert reviews == []
+    session.execute.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -158,8 +177,11 @@ async def test_generate_reply_uses_encrypted_source_without_persisting_reply(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Generate from encrypted source and mark a draft without storing its text."""
-    from app.models.review_analysis_payload import ReviewAnalysisPayload
-    from app.services import review_service
+    from app.application.reviews import service as review_service
+    from app.core import dependencies
+    from app.infrastructure.persistence.models.review_analysis_payload import (
+        ReviewAnalysisPayload,
+    )
 
     source_text = "Поддержка ответила быстро и помогла решить проблему."
     review = Review(
@@ -192,14 +214,16 @@ async def test_generate_reply_uses_encrypted_source_without_persisting_reply(
             self, review_text: str, tags: list[str], rating: int
         ) -> str:
             self.arguments = (review_text, tags, rating)
-            return "Благодарим за отзыв. Рады, что наша поддержка помогла решить вопрос."
+            return (
+                "Благодарим за отзыв. Рады, что наша поддержка помогла решить вопрос."
+            )
 
         async def close(self) -> None:
             self.closed = True
 
     analyzer = FakeAnalyzer()
+    monkeypatch.setattr(dependencies, "create_openai_analyzer", lambda: analyzer)
     monkeypatch.setattr(review_service, "decrypt_token", lambda encrypted: source_text)
-    monkeypatch.setattr(review_service, "create_openai_analyzer", lambda: analyzer)
 
     response = await client.post(f"/api/v1/reviews/{review.id}/generate-reply")
 
@@ -230,7 +254,7 @@ async def test_generate_reply_requires_retained_encrypted_source(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Do not generate a low-quality response from the safe summary."""
-    from app.services import review_service
+    from app.core import dependencies
 
     review = Review(
         company_id=company_id,
@@ -245,16 +269,25 @@ async def test_generate_reply_requires_retained_encrypted_source(
     db_session.add(review)
     await db_session.commit()
 
-    monkeypatch.setattr(
-        review_service,
-        "create_openai_analyzer",
-        lambda: pytest.fail("Analyzer must not be initialized without source text"),
-    )
+    class UnusedAnalyzer:
+        closed = False
+
+        async def generate_reply(
+            self, review_text: str, tags: list[str], rating: int
+        ) -> str:
+            pytest.fail("Analyzer must not generate a reply without source text")
+
+        async def close(self) -> None:
+            self.closed = True
+
+    analyzer = UnusedAnalyzer()
+    monkeypatch.setattr(dependencies, "create_openai_analyzer", lambda: analyzer)
 
     response = await client.post(f"/api/v1/reviews/{review.id}/generate-reply")
     assert response.status_code == 409
     assert response.json()["error"]["status_code"] == 409
     assert review.suggested_reply is None
+    assert analyzer.closed
 
 
 @pytest.mark.asyncio
@@ -288,9 +321,11 @@ async def test_create_review_encrypts_source_and_enqueues_analysis(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    from app.application.reviews import service as review_service
+    from app.infrastructure.persistence.models.review_analysis_payload import (
+        ReviewAnalysisPayload,
+    )
     from app.main import app
-    from app.models.review_analysis_payload import ReviewAnalysisPayload
-    from app.services import review_service
 
     source_text = "A confidential customer review."
     monkeypatch.setattr(
@@ -394,9 +429,7 @@ async def test_approve_moderation_updates_status_without_writing_to_review(
     )
     await db_session.commit()
 
-    response = await client.post(
-        f"/api/v1/reviews/{review.id}/approve-moderation"
-    )
+    response = await client.post(f"/api/v1/reviews/{review.id}/approve-moderation")
 
     assert response.status_code == 200
     assert response.json()["status"] == ReplyModerationStatus.APPROVED.value

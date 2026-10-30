@@ -65,7 +65,7 @@ services:
 
   worker:
     <<: *app
-    command: ["arq", "app.services.worker.worker.WorkerSettings"]
+    command: ["arq", "app.infrastructure.queue.worker.worker.WorkerSettings"]
     stop_grace_period: 40s # дать дозавершить задачи; прерванные ARQ вернёт в очередь
     mem_limit: ${WORKER_MEM_LIMIT:-1g}
     depends_on: *app-deps
@@ -75,7 +75,7 @@ services:
       - data
       - edge
     healthcheck:
-      test: ["CMD", "arq", "--check", "app.services.worker.worker.WorkerSettings"]
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.WorkerSettings"]
       interval: 30s
       timeout: 10s
       retries: 3

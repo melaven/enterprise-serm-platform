@@ -3,8 +3,8 @@ from types import SimpleNamespace
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
+from app.infrastructure.queue.worker.worker import get_redis_settings
 from app.main import redis_health_check
-from app.services.worker.worker import get_redis_settings
 
 
 def test_worker_redis_settings_preserve_password_and_database(

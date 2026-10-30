@@ -8,7 +8,8 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..schemas.auth import JWTPayload
+from app.api.schemas.auth import JWTPayload
+from app.core.auth import tenant_id_from_payload
 
 # SQL для установки RLS контекста
 SET_RLS_CONTEXT = text(
@@ -20,7 +21,10 @@ SET_RLS_CONTEXT = text(
 
 def build_rls_claims(payload: JWTPayload) -> str:
     """Строит JWT claims для RLS политик в минимальном и безопасном формате."""
-    claims = {"sub": str(payload.sub), "tenant_id": str(payload.tenant_id)}
+    claims = {
+        "sub": str(payload.sub),
+        "tenant_id": str(tenant_id_from_payload(payload)),
+    }
     return json.dumps(claims)
 
 
@@ -51,7 +55,7 @@ async def tenant_session(
             SET_RLS_CONTEXT,
             {
                 "claims": build_rls_claims(payload),
-                "company_id": str(payload.tenant_id),
+                "company_id": str(tenant_id_from_payload(payload)),
                 "user_id": str(payload.sub),
             },
         )

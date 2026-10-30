@@ -9,9 +9,9 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
+from app.api.v1.routes import analytics
+from app.api.v1.routes.analytics import router
 from app.core.auth import get_current_tenant
-from app.routers import analytics
-from app.routers.analytics import router
 
 
 class FakeResult:

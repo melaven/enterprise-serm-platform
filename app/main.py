@@ -15,10 +15,35 @@ from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
+from sqladmin import Admin
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import ExceptionHandler
+
+from app.api.admin import (
+    AdminAuthenticationBackend,
+    CompanyAdmin,
+    PlatformAdmin,
+    ReviewAdmin,
+    ReviewReplyAdmin,
+)
+from app.api.v1.routes import (
+    analytics,
+    api_keys,
+    auth,
+    billing,
+    companies,
+    economics,
+    external_api,
+    parser,
+    platforms,
+    quotas,
+    reputation,
+    reviews,
+    stripe_webhook,
+    webhooks_config,
+)
 
 from .core.audit_middleware import SecurityAuditMiddleware
 from .core.database import engine, get_db
@@ -44,23 +69,6 @@ from .core.middleware import (
     RequestLoggingMiddleware,
 )
 from .core.rate_limit import RateLimitDependency, add_rate_limit_headers
-from .routers import (
-    analytics,
-    api_keys,
-    auth,
-    billing,
-    companies,
-    economics,
-    external_api,
-    parser,
-    platforms,
-    quotas,
-    reputation,
-    reviews,
-    stripe_webhook,
-    webhooks_config,
-)
-from .services.worker.worker import create_arq_pool
 
 # Определяем переменные окружения
 environment = os.getenv("ENVIRONMENT", "development")
@@ -125,6 +133,8 @@ async def lifespan(app: FastAPI):
 
         # Инициализация ARQ pool для отправки задач
         try:
+            from app.infrastructure.queue.worker.worker import create_arq_pool
+
             arq_pool = await create_arq_pool()
             app.state.arq_pool = arq_pool
             app.state.redis_pool = arq_pool
@@ -176,6 +186,13 @@ app = FastAPI(
 )
 
 app.state.redis_pool = None
+admin = Admin(
+    app,
+    engine,
+    authentication_backend=AdminAuthenticationBackend(),
+)
+for admin_view in (CompanyAdmin, PlatformAdmin, ReviewAdmin, ReviewReplyAdmin):
+    admin.add_view(admin_view)
 
 
 # Настройка OpenAPI схемы безопасности для Swagger UI (Bearer Token)
@@ -205,7 +222,7 @@ def custom_openapi():
     return app.openapi_schema
 
 
-app.openapi = custom_openapi
+app.openapi = custom_openapi  # type: ignore[method-assign]
 
 
 # Enterprise Middleware Stack (порядок важен!)
@@ -235,18 +252,15 @@ if debug_mode:
 # 3.5. Rate Limit Headers (автоматическое добавление X-RateLimit-* заголовков)
 app.middleware("http")(add_rate_limit_headers)
 
-# CORS origins may be provided as a comma-separated FRONTEND_URL value.
-frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000").strip()
-allowed_origins = [
-    origin.strip() for origin in frontend_url.split(",") if origin.strip()
-] or ["http://localhost:3000"]
-
-# 4. CORS (после всех custom middleware)
+# CORS is registered last so Starlette places it outermost, ahead of audit middleware.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["Retry-After", "X-Correlation-ID"],
 )
@@ -303,7 +317,7 @@ app.include_router(webhooks_config.router, tags=["Webhooks"])
 
 # Системные роутеры (только для разработки и тестирования)
 if __debug__:
-    from .routers import system
+    from app.api.v1.routes import system
 
     app.include_router(system.router, prefix="/api/v1/system", tags=["System"])
 

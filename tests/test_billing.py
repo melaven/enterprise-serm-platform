@@ -14,10 +14,10 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
 
-from app.routers.quotas import _require_quota_admin
-from app.schemas.auth import JWTPayload
-from app.schemas.billing import QuotaLimits, QuotaStatus, QuotaUsage
-from app.services.billing import QuotaNotFoundError, QuotaService
+from app.api.schemas.auth import JWTPayload
+from app.api.schemas.billing import QuotaLimits, QuotaStatus, QuotaUsage
+from app.api.v1.routes.quotas import _require_quota_admin
+from app.application.billing.service import QuotaNotFoundError, QuotaService
 
 
 @pytest.fixture

@@ -18,7 +18,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import PyJWKClient
 from pydantic import ValidationError
 
-from app.schemas.auth import JWTPayload
+from app.api.schemas.auth import JWTPayload
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -70,6 +70,17 @@ def _unauthorized(detail: str) -> HTTPException:
         detail=detail,
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def tenant_id_from_payload(payload: JWTPayload) -> UUID:
+    """Return an explicit tenant claim, never deriving tenant identity from ``sub``."""
+    tenant_id = payload.tenant_id or payload.company_id
+    if tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token: missing tenant context",
+        )
+    return tenant_id
 
 
 def decode_token(token: str, config: AuthConfig) -> JWTPayload:
@@ -129,7 +140,16 @@ async def get_jwt_payload(
     except jwt.PyJWTError as exc:
         raise _unauthorized("Invalid token") from exc
     except ValidationError as exc:
-        # токен подлинный, но к арендатору не привязан
+        tenant_claim_errors = {
+            error["loc"][0]
+            for error in exc.errors()
+            if error["loc"] and error["loc"][0] in {"tenant_id", "company_id"}
+        }
+        if tenant_claim_errors:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication token: missing tenant context",
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Token is not bound to a tenant",
@@ -139,12 +159,8 @@ async def get_jwt_payload(
 async def get_current_tenant(
     payload: Annotated[JWTPayload, Depends(get_jwt_payload)],
 ) -> UUID:
-    """Извлекает tenant_id из JWT payload.
-
-    Если tenant_id отсутствует в токене, используем sub (user_id) как tenant_id.
-    Это позволяет работать с токенами Supabase без custom claims.
-    """
-    return payload.tenant_id or payload.sub
+    """Extract the tenant ID from explicit tenant claims in the JWT."""
+    return tenant_id_from_payload(payload)
 
 
 CurrentPayload = Annotated[JWTPayload, Depends(get_jwt_payload)]

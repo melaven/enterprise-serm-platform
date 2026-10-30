@@ -44,7 +44,7 @@ COPY --from=builder /opt/venv /opt/venv
 WORKDIR /srv
 # Состав образа определяет .dockerignore (без .env, тестов, кэшей).
 COPY --chown=app:app app ./app
-COPY --chown=app:app sql ./sql
+COPY --chown=app:app migrations ./migrations
 COPY --chown=app:app scripts ./scripts
 # Байт-код собираем на этапе сборки: корневая ФС в проде read-only, во время работы .pyc писать некуда.
 RUN python -m compileall -q app

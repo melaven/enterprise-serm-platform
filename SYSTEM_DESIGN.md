@@ -144,7 +144,7 @@ Main approach: **invariants expressed by atomic SQL statements and constraints, 
 
 ## 7. Realtime: SSE **[impl]**
 
-Parsing task progress delivered to browser via `text/event-stream`; native implementation in `app/routers/parser.py`.
+Parsing task progress delivered to browser via `text/event-stream`; native implementation in `app/api/v1/routes/parser.py`.
 
 - **Why SSE not WebSocket or polling:** one-way stream (server → client), goes over regular HTTP without protocol upgrade, browser auto-reconnects, client doesn't need repeated API requests.
 - **Authorization:** HttpOnly cookie — EventSource sends cookies but can't set `Authorization`; this is one argument for cookie sessions (section 8). Task status access must be restricted to owning company (`job_id` contains `company_id`).
@@ -287,7 +287,7 @@ Telegram event -> prefilter (regex: length, topic, intent, stopwords)
 | Webhook applied once | 5 parallel `event_id` inserts on PG16 → one `true`; logic tests | Integration test with real Stripe CLI |
 | Stripe signature rejects forgery | Test on real SDK (forgery, modified body, replay) | Run in environment with `stripe` |
 | Tenant isolation | RLS policies, SQL smoke test | Automated "A doesn't read B" test in CI |
-| SSE works | Native implementation in `app/routers/parser.py` | Automated stream tests (status change, client disconnect) and integration test with real Redis |
+| SSE works | Native implementation in `app/api/v1/routes/parser.py` | Automated stream tests (status change, client disconnect) and integration test with real Redis |
 | End-to-end correlation | Tests `tests/core/test_tracing.py` (API → worker) | — |
 
 ## 16. Roadmap to Production Ready

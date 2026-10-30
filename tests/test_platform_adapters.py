@@ -7,13 +7,22 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy.dialects import postgresql
 
-from app.models.economics import PlatformIntegration
-from app.services.platforms import BasePlatformAdapter, PlatformAdapterFactory
-from app.services.platforms.avito import AvitoAdapter
-from app.services.platforms.google import GoogleBusinessAdapter
-from app.services.platforms.scraper import OtzovikScraperAdapter
-from app.services.platforms.twogis import TwoGisAdapter
-from app.services.platforms.yandex import YandexBusinessAdapter
+from app.infrastructure.integrations.review_platforms import (
+    BasePlatformAdapter,
+    PlatformAdapterFactory,
+)
+from app.infrastructure.integrations.review_platforms.avito import AvitoAdapter
+from app.infrastructure.integrations.review_platforms.google import (
+    GoogleBusinessAdapter,
+)
+from app.infrastructure.integrations.review_platforms.scraper import (
+    OtzovikScraperAdapter,
+)
+from app.infrastructure.integrations.review_platforms.twogis import TwoGisAdapter
+from app.infrastructure.integrations.review_platforms.yandex import (
+    YandexBusinessAdapter,
+)
+from app.infrastructure.persistence.models.economics import PlatformIntegration
 
 
 @pytest.mark.parametrize(
@@ -135,14 +144,14 @@ async def test_oauth_adapters_refresh_after_401_and_retry_once(
 
     original_async_client = httpx.AsyncClient
     monkeypatch.setattr(
-        "app.services.platforms.google.httpx.AsyncClient",
+        "app.infrastructure.integrations.review_platforms.google.httpx.AsyncClient",
         lambda **kwargs: original_async_client(
             transport=httpx.MockTransport(handle_request),
             **kwargs,
         ),
     )
     monkeypatch.setattr(
-        "app.services.platforms.google.get_settings",
+        "app.infrastructure.integrations.review_platforms.google.get_settings",
         lambda: SimpleNamespace(
             **{
                 "google_oauth_client_id": "client-id",

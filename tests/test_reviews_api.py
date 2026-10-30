@@ -17,9 +17,10 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
+from app.api.schemas.auth import AuthContext
+from app.api.schemas.economics import ReviewStatus
 from app.core.database import Base
-from app.models.economics import Company, Platform, Review
-from app.schemas.economics import ReviewStatus
+from app.infrastructure.persistence.models.economics import Company, Platform, Review
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or os.environ.get(
     "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/tenable_test"
@@ -161,6 +162,7 @@ async def client_factory(
     db_connection: AsyncConnection,
     rate_limit_pool,
 ) -> AsyncIterator[ClientFactory]:
+    from app.api.dependencies.tenant import get_current_user
     from app.core.auth import get_current_tenant
     from app.core.dependencies import get_tenant_db
     from app.main import app
@@ -169,6 +171,11 @@ async def client_factory(
         x_test_tenant: UUID = Header(alias=TENANT_HEADER),
     ) -> UUID:
         return x_test_tenant
+
+    async def user_from_header(
+        x_test_tenant: UUID = Header(alias=TENANT_HEADER),
+    ) -> AuthContext:
+        return AuthContext(user_id=x_test_tenant, company_id=x_test_tenant)
 
     async def test_database_session() -> AsyncIterator[AsyncSession]:
         async with AsyncSession(
@@ -179,6 +186,7 @@ async def client_factory(
             yield session
 
     app.dependency_overrides[get_current_tenant] = tenant_from_header
+    app.dependency_overrides[get_current_user] = user_from_header
     app.dependency_overrides[get_tenant_db] = test_database_session
     previous_redis_pool = app.state.redis_pool
     app.state.redis_pool = rate_limit_pool
@@ -199,6 +207,7 @@ async def client_factory(
         for client in clients:
             await client.aclose()
         app.dependency_overrides.pop(get_current_tenant, None)
+        app.dependency_overrides.pop(get_current_user, None)
         app.dependency_overrides.pop(get_tenant_db, None)
         app.state.redis_pool = previous_redis_pool
 
@@ -227,6 +236,23 @@ async def test_reviews_list_is_isolated_by_tenant(
         "POSITIVE",
         "NEGATIVE",
     }
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_reviews_list_rejects_another_company_id(
+    client_factory: ClientFactory,
+    review_tenants: dict[str, UUID],
+) -> None:
+    tenant_a_client = client_factory(review_tenants["tenant_a"])
+
+    response = await tenant_a_client.get(
+        "/api/v1/reviews",
+        params={"company_id": str(review_tenants["tenant_b"])},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Access denied to this tenant"
 
 
 @pytest.mark.integration

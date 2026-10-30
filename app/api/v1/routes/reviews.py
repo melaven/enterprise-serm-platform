@@ -222,8 +222,12 @@ async def get_review(
             "success": True,
             "data": {
                 "review_id": str(review.id),
-                "platform_name": review.platform_ref.name,
-                "company_name": review.platform_ref.company.name,
+                "platform_name": (
+                    review.platform_ref.name
+                    if review.platform_ref
+                    else review.platform or "Unknown"
+                ),
+                "company_name": review.company.name,
                 "author_name": review.author_name,
                 "rating": review.rating,
                 "text": review.text,
@@ -489,8 +493,12 @@ async def get_reviews_requiring_attention(
         urgent_reviews.append(
             {
                 "review_id": str(review.id),
-                "platform_name": review.platform_ref.name,
-                "company_name": review.platform_ref.company.name,
+                "platform_name": (
+                    review.platform_ref.name
+                    if review.platform_ref
+                    else review.platform or "Unknown"
+                ),
+                "company_name": review.company.name,
                 "author_name": review.author_name,
                 "rating": review.rating,
                 "text": review.text,

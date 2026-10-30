@@ -249,8 +249,12 @@ class ReviewProcessorService:
                 queue.append(
                     {
                         "review_id": str(review.id),
-                        "platform_name": review.platform_ref.name,
-                        "company_name": review.platform_ref.company.name,
+                        "platform_name": (
+                            review.platform_ref.name
+                            if review.platform_ref
+                            else review.platform or "Unknown"
+                        ),
+                        "company_name": review.company.name,
                         "rating": review.rating,
                         "author_name": review.author_name,
                         "created_at": review.created_at.isoformat(),

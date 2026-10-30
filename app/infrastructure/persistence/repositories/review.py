@@ -202,9 +202,10 @@ class ReviewRepository(BaseRepository[Review]):
             query = (
                 select(Review)
                 .options(
+                    selectinload(Review.company),
                     selectinload(Review.platform_ref).selectinload(
                         Review.platform_ref.property.mapper.class_.company
-                    )
+                    ),
                 )
                 .where(Review.id == review_id)
             )
@@ -397,9 +398,10 @@ class ReviewRepository(BaseRepository[Review]):
             query = (
                 select(Review)
                 .options(
+                    selectinload(Review.company),
                     selectinload(Review.platform_ref).selectinload(
                         Review.platform_ref.property.mapper.class_.company
-                    )
+                    ),
                 )
                 .where(
                     and_(

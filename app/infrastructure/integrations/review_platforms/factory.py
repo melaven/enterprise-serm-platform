@@ -52,21 +52,21 @@ class PlatformAdapterFactory:
 
 def get_adapter(platform: str) -> BaseReviewAdapter:
     """Get a review adapter for the specified platform.
-    
+
     Args:
         platform: Platform identifier (e.g., "yandex", "google")
-        
+
     Returns:
         BaseReviewAdapter instance for the platform
-        
+
     Raises:
         ValueError: If platform is not supported
     """
     platform_lower = platform.strip().lower()
-    
+
     if platform_lower == "yandex":
         return YandexMockAdapter()
-    
+
     supported = ["yandex"]
     raise ValueError(
         f"Unsupported platform {platform!r}. Supported platforms: {', '.join(supported)}"

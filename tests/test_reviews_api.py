@@ -252,7 +252,11 @@ async def test_reviews_list_rejects_another_company_id(
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Access denied to this tenant"
+    error = response.json()
+    assert error["success"] is False
+    assert error["error"]["type"] == "HTTPException"
+    assert error["error"]["status_code"] == 403
+    assert error["error"]["message"] == "Доступ запрещен"
 
 
 @pytest.mark.integration

@@ -1,8 +1,8 @@
 from datetime import datetime, timezone
 
+from app.api.schemas.parser import RawReview
 from app.core.anonymizer import anonymize_author_name
 from app.core.review_privacy import safe_review_summary
-from app.schemas.parser import RawReview
 
 
 def test_author_label_is_constant_and_does_not_encode_identity() -> None:

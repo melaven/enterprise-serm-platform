@@ -8,14 +8,14 @@ import pytest_asyncio
 from fastapi import Depends, FastAPI
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.api.v1.routes.api_keys import router
 from app.core import api_keys
 from app.core.api_keys import hash_api_key, verify_api_key
 from app.core.auth import get_current_tenant
 from app.core.dependencies import get_tenant_db
 from app.core.rate_limit import RateLimitDependency, add_rate_limit_headers
-from app.models.api_key import APIKey
-from app.models.economics import Company
-from app.routers.api_keys import router
+from app.infrastructure.persistence.models.api_key import APIKey
+from app.infrastructure.persistence.models.economics import Company
 
 
 class FakePipeline:
@@ -249,7 +249,7 @@ async def test_verify_api_key_uses_redis_after_first_database_lookup(
 async def test_api_key_usage_is_flushed_in_a_batch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services.worker import api_key_usage
+    from app.infrastructure.queue.worker import api_key_usage
 
     redis = FakeRedis()
     key_hash = "a" * 64

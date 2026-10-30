@@ -8,16 +8,19 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.parser import Platform, RawReview
-from app.services.parsers.base import (
+from app.api.schemas.parser import Platform, RawReview
+from app.infrastructure.parsers.base import (
     InvalidSourceUrlError,
     ParserDataError,
     ParserTransportError,
     UnsupportedPlatformError,
 )
-from app.services.parsers.factory import ParserDeps, create_parser
-from app.services.parsers.twogis import TwoGisParser, parse_branch_id
-from app.services.worker.tasks import fetch_platform_reviews, fetch_reviews_task
+from app.infrastructure.parsers.factory import ParserDeps, create_parser
+from app.infrastructure.parsers.twogis import TwoGisParser, parse_branch_id
+from app.infrastructure.queue.worker.tasks import (
+    fetch_platform_reviews,
+    fetch_reviews_task,
+)
 
 URL = "https://2gis.ru/moscow/firm/70000001012345678/tab/reviews"
 CID = UUID("11111111-1111-1111-1111-111111111111")

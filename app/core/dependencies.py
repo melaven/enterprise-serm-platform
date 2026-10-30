@@ -11,20 +11,22 @@ from uuid import UUID
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..repositories import (
+from app.api.schemas.auth import JWTPayload
+from app.application import (
+    EconomicsService,
+    ParserService,
+    ReviewProcessorService,
+    SentimentService,
+)
+from app.application.reviews.service import ReviewQueue, ReviewReplyAnalyzer
+from app.infrastructure.integrations.llm.review_analyzer import create_openai_analyzer
+from app.infrastructure.persistence.repositories import (
     CompanyRepository,
     ParserRepository,
     PlatformRepository,
     ReviewRepository,
 )
-from ..schemas.auth import JWTPayload
-from ..services import (
-    EconomicsService,
-    ParserService,
-    ReviewApplicationService,
-    ReviewProcessorService,
-    SentimentService,
-)
+
 from .auth import get_current_tenant, get_jwt_payload
 from .database import AsyncSessionLocal
 
@@ -168,17 +170,18 @@ async def get_review_processor_service(
     )
 
 
-async def get_review_application_service(
-    request: Request,
-    db: AsyncSession = Depends(get_tenant_db),
-    tenant_id: UUID = Depends(get_current_tenant),
-) -> ReviewApplicationService:
-    """Create the tenant-scoped application service for review use cases."""
-    return ReviewApplicationService(
-        db=db,
-        tenant_id=tenant_id,
-        arq_pool=getattr(request.app.state, "arq_pool", None),
-    )
+def get_review_queue(request: Request) -> ReviewQueue | None:
+    """Provide the application ARQ pool to review use cases."""
+    return getattr(request.app.state, "arq_pool", None)
+
+
+async def get_review_reply_analyzer() -> AsyncGenerator[ReviewReplyAnalyzer, None]:
+    """Provide an analyzer for one request and close its external client afterward."""
+    analyzer = create_openai_analyzer()
+    try:
+        yield analyzer
+    finally:
+        await analyzer.close()
 
 
 # === COMBINED DEPENDENCIES ===

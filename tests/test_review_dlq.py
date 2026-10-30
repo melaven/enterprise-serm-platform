@@ -21,7 +21,7 @@ if "sqlalchemy" not in sys.modules:
 
 import logging
 
-import review_dlq
+import app.infrastructure.queue.review_dlq as review_dlq
 
 
 class Result:

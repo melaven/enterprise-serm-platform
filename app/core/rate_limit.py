@@ -22,7 +22,12 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.api_keys import resolve_api_key_tenant_id
-from app.core.auth import decode_token, get_auth_config, get_current_tenant
+from app.core.auth import (
+    decode_token,
+    get_auth_config,
+    get_current_tenant,
+    tenant_id_from_payload,
+)
 from app.core.config import get_settings
 from app.core.dependencies import get_tenant_db
 
@@ -215,7 +220,10 @@ class RateLimitDependency:
             payload = decode_token(authorization[1], get_auth_config())
         except (jwt.PyJWTError, ValidationError):
             return None
-        return payload.tenant_id or payload.sub
+        try:
+            return tenant_id_from_payload(payload)
+        except HTTPException:
+            return None
 
     async def __call__(self, request: Request) -> None:
         if not request.url.path.startswith("/api/"):

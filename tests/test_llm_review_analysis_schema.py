@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.ai import LLMReviewAnalysisResult, Sentiment, system_prompt
+from app.api.schemas.ai import LLMReviewAnalysisResult, Sentiment, system_prompt
 
 
 def test_llm_review_analysis_result_validates_and_normalizes_output() -> None:

@@ -9,10 +9,10 @@ from fastapi import Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.schemas.billing import QuotaStatus
+from app.application.billing.service import QuotaService
 from app.core.auth import get_current_tenant
 from app.core.dependencies import get_tenant_db
-from app.schemas.billing import QuotaStatus
-from app.services.billing import QuotaService
 
 get_tenant_db_for_quotas = get_tenant_db
 

@@ -76,7 +76,7 @@ app.add_middleware(CORSMiddleware, ...,   # CORS добавлять ПОСЛЕ: 
     allow_headers=[..., "X-Correlation-ID"],            # фронт шлёт этот заголовок
     expose_headers=["Retry-After", "X-Correlation-ID"]) # иначе браузер не отдаст его в JS
 ```
-- Воркеры: `@traced_task` на задаче и `configure_logging_from_env()` в `on_startup` (сделано в `app/worker` и `parser_worker/app/worker`).
+- Воркеры: `@traced_task` на задаче и `configure_logging_from_env()` в `on_startup` (реализация SERM находится в `app/infrastructure/queue/worker`; `app/worker.py` сохранён как compatibility import).
 - Постановка: `enqueue_traced(pool, "task", …)` вместо `pool.enqueue_job`.
 - Переменные: `LOG_LEVEL` (INFO), `LOG_FORMAT` (`json` | `console` для локальной отладки).
 - Фронтенд: `VITE_SEND_CORRELATION_ID=false`, если CORS бэкенда ещё не разрешает заголовок.

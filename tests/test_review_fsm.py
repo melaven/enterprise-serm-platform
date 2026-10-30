@@ -1,5 +1,5 @@
-from app.models.review import Review, ReviewState
-from app.services.fsm import ReviewFSM
+from app.domain.reviews.fsm import ReviewFSM
+from app.infrastructure.persistence.models.review import Review, ReviewState
 
 
 def test_ignored_state_is_available_and_terminal() -> None:

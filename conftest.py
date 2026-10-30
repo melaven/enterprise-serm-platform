@@ -84,7 +84,7 @@ async def review_assistant_connection(
     company_id: UUID, other_company_id: UUID
 ) -> AsyncIterator[AsyncConnection]:
     from app.core.database import Base
-    from app.models.economics import Company, Platform
+    from app.infrastructure.persistence.models.economics import Company, Platform
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     try:

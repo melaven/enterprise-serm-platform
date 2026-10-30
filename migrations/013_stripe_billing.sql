@@ -1,5 +1,5 @@
 -- 013_stripe_billing.sql: тарифы, подписки Stripe, идемпотентность вебхуков.
--- Требует 008 (tenant_quotas, app.current_tenant_id). Применять под postgres.
+-- Требует 014 (tenant_quotas) и 001 (app.current_company_id). Применять под postgres.
 --
 -- Модель доверия:
 --   * арендатор может ТОЛЬКО ЧИТАТЬ свою подписку и список тарифов;
@@ -90,7 +90,7 @@ BEGIN
   FROM pg_roles WHERE rolname IN ('app_tenant', 'authenticated');
   EXECUTE 'DROP POLICY IF EXISTS tenant_select ON public.subscriptions';
   EXECUTE format('CREATE POLICY tenant_select ON public.subscriptions FOR SELECT TO %s '
-                 'USING (tenant_id = (SELECT app.current_tenant_id()))', roles);
+                 'USING (tenant_id = (SELECT app.current_company_id()))', roles);
   EXECUTE 'DROP POLICY IF EXISTS plans_read ON public.plans';
   EXECUTE format('CREATE POLICY plans_read ON public.plans FOR SELECT TO %s USING (true)', roles);
 END $$;
@@ -114,7 +114,7 @@ RETURNS TABLE (plan_code text, status text, reviews_parsed_used bigint,
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
 AS $$
 BEGIN
-  IF p_tenant_id IS DISTINCT FROM app.current_tenant_id() THEN
+  IF p_tenant_id IS DISTINCT FROM app.current_company_id() THEN
     RAISE EXCEPTION 'tenant mismatch' USING ERRCODE = '42501';
   END IF;
   PERFORM app.roll_quota_period(p_tenant_id);

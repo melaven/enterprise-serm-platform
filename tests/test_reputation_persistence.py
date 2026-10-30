@@ -11,12 +11,14 @@ import pytest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import configure_mappers
 
+from app.api.schemas.economics import ReviewStatus
+from app.api.schemas.parser import Platform as ReviewPlatform
 from app.core.llm_cache import LLMCache
-from app.models.economics import PlatformStatistic, Review
-from app.repositories.postgres_review_sink import PostgresReviewSink
-from app.repositories.review import ReviewRepository
-from app.schemas.economics import ReviewStatus
-from app.schemas.parser import Platform as ReviewPlatform
+from app.infrastructure.persistence.models.economics import PlatformStatistic, Review
+from app.infrastructure.persistence.repositories.postgres_review_sink import (
+    PostgresReviewSink,
+)
+from app.infrastructure.persistence.repositories.review import ReviewRepository
 
 
 class _InsertResult:
@@ -101,7 +103,7 @@ def test_reputation_models_bind_rows_to_tenant_and_configure_relationships() -> 
         for constraint in Review.__table__.constraints
     )
     assert any(
-        index.name == "uq_reviews_analytics_dedup" and index.unique
+        index.name == "uq_reviews_tenant_platform_external_id" and index.unique
         for index in Review.__table__.indexes
     )
 

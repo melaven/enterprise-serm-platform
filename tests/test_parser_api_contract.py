@@ -5,8 +5,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.api.v1.routes.parser import router
 from app.core.rate_limit import check_parser_limits
-from app.routers.parser import router
 
 
 @pytest.fixture

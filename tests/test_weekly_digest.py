@@ -5,8 +5,8 @@ from uuid import uuid4
 
 import pytest
 
-from app.services.worker import digest
-from app.services.worker.worker import WorkerSettings
+from app.infrastructure.queue.worker import digest
+from app.infrastructure.queue.worker.worker import WorkerSettings
 
 
 class FakeResult:

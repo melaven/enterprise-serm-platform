@@ -1,10 +1,21 @@
-import { useState, FormEvent } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
 
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { useAppStore } from '@/store/useAppStore';
+
+const loginSchema = z.object({
+  email: z.string().min(1, 'Email обязателен').email('Некорректный email'),
+  password: z.string().min(1, 'Пароль обязателен').min(6, 'Минимум 6 символов'),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
 
 /**
  * LoginPage — строгая flat-форма входа на bg-ink-950
@@ -19,34 +30,33 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { performLogin, isAuthenticated } = useAppStore();
   
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const form = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
+
   const [isLoading, setIsLoading] = useState(false);
 
   // Если уже залогинен, редирект на главную
   if (isAuthenticated) {
-    navigate('/');
+    navigate('/dashboard');
     return null;
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    
-    if (!email.trim() || !password.trim()) {
-      toast.error('Заполните все поля');
-      return;
-    }
-
+  const onSubmit = async (values: LoginFormValues) => {
     setIsLoading(true);
     
     try {
-      const success = await performLogin(email, password);
+      const success = await performLogin(values.email, values.password);
       
       if (success) {
         toast.success('Вход выполнен', {
-          description: `Добро пожаловать, ${email}`,
+          description: `Добро пожаловать, ${values.email}`,
         });
-        navigate('/');
+        navigate('/dashboard');
       } else {
         toast.error('Ошибка входа', {
           description: 'Проверьте email и пароль',
@@ -76,39 +86,39 @@ export function LoginPage() {
         <div className="rounded-sm border-2 border-chrome-600 bg-ink-900 p-8">
           <h2 className="mb-6 text-2xl font-semibold text-white">Вход</h2>
           
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="email" className="block text-sm font-medium text-chrome-300">
                 Email
               </label>
-              <input
+              <Input
                 id="email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
                 disabled={isLoading}
-                className="w-full rounded-sm border-2 border-chrome-600 bg-ink-950 px-4 py-2.5 text-white placeholder:text-chrome-500 transition-colors focus:border-plum focus:outline-none disabled:opacity-50"
                 autoComplete="email"
-                required
+                {...form.register('email')}
               />
+              {form.formState.errors.email && (
+                <p className="mt-1 text-sm text-plum">{form.formState.errors.email.message}</p>
+              )}
             </div>
 
             <div className="space-y-2">
               <label htmlFor="password" className="block text-sm font-medium text-chrome-300">
                 Пароль
               </label>
-              <input
+              <Input
                 id="password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 disabled={isLoading}
-                className="w-full rounded-sm border-2 border-chrome-600 bg-ink-950 px-4 py-2.5 text-white placeholder:text-chrome-500 transition-colors focus:border-plum focus:outline-none disabled:opacity-50"
                 autoComplete="current-password"
-                required
+                {...form.register('password')}
               />
+              {form.formState.errors.password && (
+                <p className="mt-1 text-sm text-plum">{form.formState.errors.password.message}</p>
+              )}
             </div>
 
             <Button
@@ -116,7 +126,7 @@ export function LoginPage() {
               variant="default"
               size="lg"
               disabled={isLoading}
-              className="w-full"
+              className="w-full bg-lime text-ink-950 hover:bg-lime/90"
             >
               {isLoading ? (
                 <>

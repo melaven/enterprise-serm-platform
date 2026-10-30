@@ -1,7 +1,23 @@
 import pytest
 
-from app.services.pii import PLACEHOLDER as P
-from app.services.pii import contains_pii, redact, redact_text
+from app.core.pii import PLACEHOLDER as P
+from app.core.pii import PIISanitizer, contains_pii, redact, redact_text
+
+
+def test_hash_user_id_is_stable_platform_scoped_and_pseudonymous() -> None:
+    user_hash = PIISanitizer.hash_user_id("google", "raw-user-123")
+
+    assert user_hash.startswith("usr_")
+    assert len(user_hash) == 28
+    assert user_hash == PIISanitizer.hash_user_id("google", "raw-user-123")
+    assert user_hash != PIISanitizer.hash_user_id("yandex", "raw-user-123")
+    assert "raw-user-123" not in user_hash
+
+
+def test_mask_author_name_returns_only_generic_labels() -> None:
+    assert PIISanitizer.mask_author_name("Иван Петров") == "Клиент"
+    assert PIISanitizer.mask_author_name(None) == "Анонимный клиент"
+    assert PIISanitizer.mask_author_name("  ") == "Анонимный клиент"
 
 
 def test_task_example():

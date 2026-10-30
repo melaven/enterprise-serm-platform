@@ -342,13 +342,7 @@ async def seed_database(reviews: list[ReviewRecord]) -> bool:
         from sqlalchemy.exc import SQLAlchemyError
 
         from app.core.database import AsyncSessionLocal, engine
-        from app.models.economics import (
-            Company,
-            Platform,
-            ReplyModerationStatus,
-            Review,
-            ReviewStatus,
-        )
+        from app.infrastructure.persistence.models.economics import Company, Platform, ReplyModerationStatus, Review, ReviewStatus
 
         company_id_value = os.getenv("DEMO_COMPANY_ID")
         if not company_id_value:

@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.services.scrapers.schemas import RawReviewSchema, clean_text, to_utc
+from app.application.scrapers.schemas import RawReviewSchema, clean_text, to_utc
 
 UTC = timezone.utc
 

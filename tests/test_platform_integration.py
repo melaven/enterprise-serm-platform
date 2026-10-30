@@ -7,10 +7,10 @@ import pytest
 import pytest_asyncio
 from fastapi import FastAPI
 
+from app.api.v1.routes.platforms import router
 from app.core.auth import get_current_tenant
 from app.core.dependencies import get_tenant_db
-from app.models import economics
-from app.routers.platforms import router
+from app.infrastructure.persistence.models import economics
 
 
 class FakeIntegrationSession:

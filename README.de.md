@@ -75,6 +75,31 @@ flowchart LR
 
 Das Diagramm zeigt den vorgesehenen Verarbeitungsablauf. RLS-Richtlinien begrenzen den mandantenbezogenen Datenzugriff auf Datenbankebene. Das Verhalten der Anwendung und der Worker muss für jede Bereitstellung ebenfalls konfiguriert und geprüft werden.
 
+## 🖥️ Frontend-Architektur und Client Engineering
+
+Der Single-Page-Client basiert auf React 18, TypeScript und Vite. Der Quellcode befindet sich in `frontend/src/`:
+
+```text
+frontend/src/
+├── api/          # Axios-Client, API-Services und Fehlerbehandlung
+├── components/   # Gemeinsame UI-Bausteine und globale Fehlergrenze
+├── features/     # Module für Authentifizierung, Dashboard, Bewertungen und Abrechnung
+├── hooks/        # Wiederverwendbare Client-Hooks
+├── pages/        # Routenbezogene Ansichten
+├── store/        # Anwendungszustand mit Zustand und Persistenz
+├── types/        # Gemeinsame TypeScript-Typen
+├── App.tsx
+├── main.tsx      # React-Einstiegspunkt und Routenkonfiguration
+└── index.css     # Globale Stile und Tailwind-CSS-Basis
+```
+
+- **Routing und Zugriff:** React Router definiert öffentliche und geschützte Routen. `ProtectedRoute` schützt eingeschränkte Ansichten; die Autorisierung muss zusätzlich im Backend durchgesetzt werden.
+- **State Management:** Zustand verwaltet den gemeinsam genutzten und persistierten Anwendungszustand. API-Aufrufe sind in `api/` zentralisiert; der Axios-Client vereinheitlicht Fehler und koordiniert Kontingente sowie Ratenbegrenzungen.
+- **Zero-Trust Client Security:** Der Browser gilt als nicht vertrauenswürdige Umgebung. Clientseitige Routenschutzmaßnahmen verbessern die Navigation, ersetzen aber weder die Backend-Autorisierung noch die mandantenbezogene Datenbankisolation. Geheimnisse und Zugriffskontrollen dürfen nicht dem Client anvertraut werden.
+- **Component-Driven UI:** Gemeinsame UI-Bausteine liegen in `components/`; funktionsspezifische Ansichten und Abläufe sind in `features/` organisiert. Tailwind CSS v3 und die Theme-Konfiguration stellen Utility-Klassen und Design-Tokens bereit.
+- **Optimistic UI:** Bei geeigneten, reversiblen Aktionen kann die Oberfläche vor Abschluss der Anfrage aktualisiert werden. Anschließend wird sie mit der Serverantwort abgeglichen; bei einem Fehler wird der vorherige Zustand wiederhergestellt.
+- **Client-Prüfungen:** Führen Sie in `frontend/` `npm run lint`, `npm run typecheck`, `npm run test:run` und `npm run build` für Linting, Typprüfung, Tests und den Produktionsbuild aus.
+
 ## Kernfunktionen
 
 - **Mandantenübergreifende Datenisolierung:** PostgreSQL-Row-Level-Security-Richtlinien (RLS) beschränken Geschäftsdaten auf den authentifizierten Mandanten.

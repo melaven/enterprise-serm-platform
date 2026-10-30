@@ -4,7 +4,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from app.routers.reviews import router
+from app.api.v1.routes.reviews import router
 
 
 @pytest.mark.asyncio

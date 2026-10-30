@@ -1,10 +1,14 @@
-#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
+set -e
 
 # Pre-commit hook: TypeScript check + Linting
 echo "🔍 Running pre-commit checks..."
 
+cd frontend
+
 # Run lint-staged
 npx lint-staged
+
+# Run TypeScript against the project tsconfig, not lint-staged's individual file list.
+npx tsc --noEmit
 
 echo "✅ Pre-commit checks passed!"

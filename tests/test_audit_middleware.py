@@ -7,10 +7,10 @@ import pytest
 import pytest_asyncio
 from fastapi import Depends, FastAPI, Request, Response
 
+from app.api.v1.routes import webhooks_config
 from app.core import audit_middleware
 from app.core.audit_middleware import SecurityAuditMiddleware
 from app.core.auth import AuthConfig, get_auth_config, get_current_tenant
-from app.routers import webhooks_config
 
 
 class FakeAuditSession:

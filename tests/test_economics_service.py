@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.services.economics_service import (
+from app.application.economics_service import (
     BusinessMetrics,
     EconomicsService,
     ReviewInput,

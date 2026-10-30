@@ -10,8 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.anonymizer import anonymize_author_name  # noqa: E402
 from app.core.review_privacy import safe_review_summary  # noqa: E402
-from app.services.local_review_si import analyze_review_locally  # noqa: E402
-from app.services.pii import PLACEHOLDER, contains_pii, redact_text  # noqa: E402
+from app.application.reviews.local_si import analyze_review_locally  # noqa: E402
+from app.core.pii import PLACEHOLDER, contains_pii, redact_text  # noqa: E402
 
 SAMPLE = "Мой телефон 89001234567, официант хамил"
 EXPECTED_SANITIZED = f"Мой телефон {PLACEHOLDER}, официант хамил"

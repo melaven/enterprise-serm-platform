@@ -15,12 +15,12 @@ def test_imports():
 
     try:
         # Test core auth imports
+        from app.api.schemas.auth import JWTPayload  # noqa: F401
         from app.core.auth import CurrentTenant, get_current_tenant  # noqa: F401
         from app.core.tenant_session import (  # noqa: F401
             build_rls_claims,
             get_tenant_session,
         )
-        from app.schemas.auth import JWTPayload  # noqa: F401
 
         print("✅ Core auth imports: OK")
 
@@ -50,7 +50,7 @@ def test_jwt_payload():
     print("🔍 Testing JWT payload...")
 
     try:
-        from app.schemas.auth import JWTPayload
+        from app.api.schemas.auth import JWTPayload
 
         # Test valid payload
         payload = JWTPayload(sub=uuid4(), tenant_id=uuid4())
@@ -77,8 +77,8 @@ def test_rls_claims():
     try:
         import json
 
+        from app.api.schemas.auth import JWTPayload
         from app.core.tenant_session import build_rls_claims
-        from app.schemas.auth import JWTPayload
 
         payload = JWTPayload(sub=uuid4(), tenant_id=uuid4())
 

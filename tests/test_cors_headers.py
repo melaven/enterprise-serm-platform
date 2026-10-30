@@ -35,7 +35,7 @@ def cors_client() -> Iterator[TestClient]:
 
     # Try to override session dependency if it exists
     try:
-        from session import get_tenant_session
+        from archive.legacy_python.session import get_tenant_session
 
         dependencies[get_tenant_session] = mock_session
     except ImportError:

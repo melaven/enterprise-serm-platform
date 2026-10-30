@@ -75,6 +75,31 @@ flowchart LR
 
 El diagrama representa el flujo previsto. Las políticas RLS limitan el acceso a los datos en la base de datos; el comportamiento de la aplicación y de los workers también debe configurarse y probarse en cada despliegue.
 
+## 🖥️ Arquitectura frontend e ingeniería del cliente
+
+El cliente de página única está construido con React 18, TypeScript y Vite. El código fuente se encuentra en `frontend/src/`:
+
+```text
+frontend/src/
+├── api/          # Cliente Axios, servicios de API y gestión de errores
+├── components/   # Primitivas de interfaz compartidas y límite global de errores
+├── features/     # Módulos de autenticación, panel, opiniones y facturación
+├── hooks/        # Hooks reutilizables del cliente
+├── pages/        # Pantallas asociadas a rutas
+├── store/        # Estado de la aplicación con Zustand y persistencia
+├── types/        # Tipos compartidos de TypeScript
+├── App.tsx
+├── main.tsx      # Punto de entrada de React y configuración de rutas
+└── index.css     # Estilos globales y base de Tailwind CSS
+```
+
+- **Enrutamiento y acceso:** React Router define rutas públicas y protegidas. `ProtectedRoute` protege las pantallas restringidas, pero la autorización también debe aplicarse en el backend.
+- **Gestión del estado (State Management):** Zustand gestiona el estado compartido de la aplicación con persistencia. Las llamadas a la API se centralizan en `api/`; el cliente Axios normaliza los errores y coordina las cuotas y los límites de frecuencia.
+- **Seguridad del cliente Zero Trust:** el navegador se considera un entorno no confiable. Las protecciones de rutas en el cliente mejoran la navegación, pero no sustituyen la autorización del backend ni el aislamiento de tenants en la base de datos. No confíe al cliente la protección de secretos ni la aplicación del control de acceso.
+- **Interfaz basada en componentes (Component-Driven UI):** los componentes de interfaz compartidos están en `components/`, mientras que las pantallas y la lógica específicas se organizan en `features/`. Tailwind CSS v3 y la configuración del tema proporcionan clases de utilidad y tokens de diseño.
+- **Interfaz optimista (Optimistic UI):** para interacciones reversibles adecuadas, actualice la interfaz antes de que termine la solicitud; después, sincronícela con la respuesta del servidor y restaure el estado anterior si la solicitud falla.
+- **Comprobaciones del cliente:** desde `frontend/`, ejecute `npm run lint`, `npm run typecheck`, `npm run test:run` y `npm run build` para el análisis estático, la comprobación de tipos, las pruebas y la compilación de producción.
+
 ## Funciones principales
 
 - **Aislamiento de datos multi-tenant:** las políticas de PostgreSQL Row Level Security (RLS) limitan los registros empresariales al tenant autenticado.

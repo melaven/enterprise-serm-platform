@@ -138,7 +138,7 @@ services:
         condition: service_healthy
     stop_grace_period: 30s
     healthcheck:
-      test: ["CMD", "arq", "--check", "app.services.worker.worker.WorkerSettings"]
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.WorkerSettings"]
       interval: 30s
       timeout: 10s
       retries: 3

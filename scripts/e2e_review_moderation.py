@@ -61,9 +61,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def read_review(
-    review_id: UUID, tenant_id: UUID
-) -> ReviewSnapshot:
+async def read_review(review_id: UUID, tenant_id: UUID) -> ReviewSnapshot:
     async with AsyncSessionLocal() as session:
         await session.execute(
             text(
@@ -215,13 +213,9 @@ async def run(args: argparse.Namespace) -> None:
                 print("result: E2E PASSED")
                 return
         else:
-            generated = await client.post(
-                f"/api/v1/reviews/{review_id}/generate-reply"
-            )
+            generated = await client.post(f"/api/v1/reviews/{review_id}/generate-reply")
             if generated.status_code != 200:
-                raise E2EFailure(
-                    f"Generate reply failed: HTTP {generated.status_code}"
-                )
+                raise E2EFailure(f"Generate reply failed: HTTP {generated.status_code}")
             suggested_reply = generated.json().get("suggested_reply")
             if not isinstance(suggested_reply, str) or not suggested_reply.strip():
                 raise E2EFailure("Generate reply returned an empty suggested_reply")
@@ -251,13 +245,9 @@ async def run(args: argparse.Namespace) -> None:
                 "review_replies persisted=yes; reviews.suggested_reply=NULL"
             )
 
-        approved = await client.post(
-            f"/api/v1/reviews/{review_id}/approve-moderation"
-        )
+        approved = await client.post(f"/api/v1/reviews/{review_id}/approve-moderation")
         if approved.status_code != 200:
-            raise E2EFailure(
-                f"Approve moderation failed: HTTP {approved.status_code}"
-            )
+            raise E2EFailure(f"Approve moderation failed: HTTP {approved.status_code}")
         review = await read_review(review_id, args.tenant_id)
         if review.moderation_status != "approved":
             raise E2EFailure("Review is not APPROVED after approval")

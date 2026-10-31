@@ -33,7 +33,7 @@ SERM API supports multitenancy through Row Level Security (RLS) in PostgreSQL. E
 ### 1. Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install .
 ```
 
 ### 2. Configure Environment Variables

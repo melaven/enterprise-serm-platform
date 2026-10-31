@@ -190,7 +190,7 @@ python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 
 # Install dependencies
-pip install -r requirements.txt
+pip install .
 
 # Start development server
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload

@@ -263,7 +263,7 @@ To test the pipeline locally before pushing:
 
 ```bash
 # Run linting
-pip install -r requirements-dev.txt
+pip install ".[dev]"
 ruff check app/ tests/
 ruff format --check app/ tests/
 

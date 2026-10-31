@@ -11,7 +11,7 @@ Pro plan limits in `public.plans` are placeholders (10000 reviews / 2M LLM token
 
 ## 2. Application
 
-- `requirements.txt`: `stripe` (requires version with `Session.create_async`; pin version and API version in Dashboard).
+- `pyproject.toml`: `stripe` (requires version with `Session.create_async`; pin version and API version in Dashboard).
 - `.env`: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (whsec_… specifically from THIS endpoint), `STRIPE_PRICE_PRO`, `BILLING_DATABASE_URL` (billing_service role), `APP_BASE_URL`.
 - `main.py`: `include_router(stripe_webhook.router, prefix="/api/v1")`, `include_router(billing.router, prefix="/api/v1")`.
 - Exclude webhook from global `require_csrf` and cookie-auth (it has no session; protection is signature-based). Nginx: soft `limit_req` for `/api/v1/webhooks/` (Stripe sends in batches), `client_max_body_size 1m` already exists.

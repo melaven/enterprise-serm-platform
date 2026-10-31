@@ -191,8 +191,7 @@ source .venv/bin/activate  # Linux/Mac
 # Install new package
 pip install package-name
 
-# Update requirements.txt
-pip freeze > requirements.txt
+# Add the dependency to pyproject.toml
 ```
 
 ---
@@ -314,8 +313,8 @@ print(response.json())
 **Problem:** `ModuleNotFoundError: No module named 'app'`
 **Solution:** 
 ```bash
-# Install package in editable mode
-pip install -e .
+# Install the project and development dependencies in editable mode
+pip install -e ".[dev]"
 ```
 
 ### Database Connection Errors

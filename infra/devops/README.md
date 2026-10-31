@@ -19,7 +19,7 @@ git push origin main                           # CI: тесты -> образ ->
 GitHub Secrets: `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`, `DEPLOY_HOST`, `PROD_ENV_FILE` (весь .env: DATABASE_URL, SUPABASE_URL, GROQ_API_KEY, REDIS_PASSWORD…), `GHCR_TOKEN` (read:packages), `LOADTEST_TOKENS_JSON`. Variables: `DOMAIN`, `STAGING_URL`. Environment `production` -> Required reviewers.
 
 ## Что нужно в репозитории, чтобы пайплайн прошёл (в загруженном дереве этого НЕТ)
-1. `requirements.txt` (Dockerfile и CI его используют) — в дереве только `requirements-dev.txt`/`-bot.txt`.
+1. `pyproject.toml` с runtime- и dev-зависимостями (Dockerfile и CI устанавливают пакеты из него).
 2. `app/main.py` (`app.main:app`) и эндпоинт `GET /health` (healthcheck compose, Caddy, smoke).
 3. `ruff format --check` упадёт на неотформатированном коде: один раз прогнать `ruff format .`.
 4. Postgres: прод — Supabase (migrations/001,002 зависят от схемы `auth`). Профиль `selfhosted-db` — только для стендов и требует shim схемы `auth`.

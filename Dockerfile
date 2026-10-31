@@ -19,10 +19,10 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /build
-# Слой зависимостей кэшируется, пока requirements.txt не менялся.
-COPY requirements.txt .
+COPY pyproject.toml .
+COPY app ./app
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --prefer-binary -r requirements.txt
+    pip install --prefer-binary .
 
 # ---- runtime: без компилятора, запуск не от root ------------------------------------
 FROM python:${PYTHON_VERSION}-slim AS runtime

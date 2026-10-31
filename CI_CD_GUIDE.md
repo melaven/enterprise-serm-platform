@@ -238,7 +238,7 @@ docker-compose up -d
 ### Lint Failures
 ```bash
 # Local check
-pip install -r requirements-dev.txt
+pip install ".[dev]"
 ruff check app/ tests/
 ruff format app/ tests/
 mypy app/ --strict
@@ -341,7 +341,7 @@ If pipeline fails:
 1. Check logs in GitHub Actions
 2. Run failing tests locally
 3. Ensure .env configured correctly locally
-4. Check dependencies in requirements.txt
+4. Check dependencies in pyproject.toml
 5. Contact DevOps team
 
 ---

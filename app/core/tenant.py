@@ -8,8 +8,9 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.tenant_session import set_tenant_rls_context
 
 from .database import AsyncSessionLocal
 
@@ -31,15 +32,11 @@ class TenantSessionFactory:
             company_id: ID компании для изоляции
 
         Yields:
-            AsyncSession с установленным app.company_id
+            AsyncSession с установленным tenant RLS контекстом
         """
         async with self.session_local() as session:
             try:
-                # Устанавливаем tenant context для RLS
-                await session.execute(
-                    text("SELECT set_config('app.company_id', :company_id, true)"),
-                    {"company_id": str(company_id)},
-                )
+                await set_tenant_rls_context(session, company_id)
 
                 logger.debug(f"🔐 Tenant session created: company_id={company_id}")
 

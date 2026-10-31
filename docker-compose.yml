@@ -1,23 +1,100 @@
-name: tenable-backend-dev
+name: tenable-serm-local
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: tenable-serm-local:latest
+  init: true
+  restart: unless-stopped
+  env_file:
+    - .env.runtime
+  environment: &app-environment
+    DATABASE_URL: ${LOCAL_TENANT_DATABASE_URL:?Set LOCAL_TENANT_DATABASE_URL in .env.compose}
+    TENANT_DATABASE_URL: ${LOCAL_TENANT_DATABASE_URL:?Set LOCAL_TENANT_DATABASE_URL in .env.compose}
+    USE_TENANT_ROLE: "true"
+    REDIS_URL: redis://redis:6379/0
+    ENVIRONMENT: ${ENVIRONMENT:-development}
+  security_opt:
+    - no-new-privileges:true
+  networks:
+    - data
+    - egress
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Задайте POSTGRES_USER в .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD в .env}
-      POSTGRES_DB: ${POSTGRES_DB:?Задайте POSTGRES_DB в .env}
-    ports:
-      # Только loopback: БД не должна быть видна из локальной сети.
-      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.compose}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.compose}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.compose}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - data
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tenable-serm-local:latest
+    command: ["python", "scripts/migrate.py"]
+    restart: "no"
+    environment:
+      DATABASE_URL: ${LOCAL_ADMIN_DATABASE_URL:?Set LOCAL_ADMIN_DATABASE_URL in .env.compose}
+      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env.compose}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - data
+
+  api:
+    <<: *app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    <<: *app
+    command: ["arq", "app.infrastructure.queue.worker.worker.WorkerSettings"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
 
 volumes:
   pgdata:
+  redisdata:
+
+networks:
+  data:
+    internal: true
+  egress:
+    driver: bridge

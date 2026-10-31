@@ -28,6 +28,38 @@ def build_rls_claims(payload: JWTPayload) -> str:
     return json.dumps(claims)
 
 
+async def set_rls_context(
+    session: AsyncSession,
+    payload: JWTPayload,
+    *,
+    user_id: str | None = None,
+) -> None:
+    """Устанавливает tenant claims в текущую транзакцию базы данных."""
+    tenant_id = tenant_id_from_payload(payload)
+    await session.execute(
+        SET_RLS_CONTEXT,
+        {
+            "claims": build_rls_claims(payload),
+            "company_id": str(tenant_id),
+            "user_id": user_id if user_id is not None else str(payload.sub),
+        },
+    )
+
+
+async def set_tenant_rls_context(
+    session: AsyncSession,
+    tenant_id: UUID,
+    user_id: UUID | None = None,
+) -> None:
+    """Устанавливает tenant RLS-контекст, когда полный JWT недоступен."""
+    payload = JWTPayload(sub=user_id or tenant_id, tenant_id=tenant_id)
+    await set_rls_context(
+        session,
+        payload,
+        user_id=str(user_id) if user_id else "",
+    )
+
+
 @asynccontextmanager
 async def tenant_session(
     factory: Callable[[], AsyncSession],
@@ -51,14 +83,7 @@ async def tenant_session(
     """
     async with factory() as session, session.begin():
         # Устанавливаем RLS контекст первым statement в транзакции
-        await session.execute(
-            SET_RLS_CONTEXT,
-            {
-                "claims": build_rls_claims(payload),
-                "company_id": str(tenant_id_from_payload(payload)),
-                "user_id": str(payload.sub),
-            },
-        )
+        await set_rls_context(session, payload)
         yield session
 
 
@@ -79,22 +104,9 @@ async def get_tenant_session(
     Returns:
         AsyncSession с установленным RLS контекстом
     """
-    # Создаем минимальный payload для RLS
-    payload = JWTPayload(
-        sub=user_id or tenant_id,  # Если user_id нет, используем tenant_id
-        tenant_id=tenant_id,
-    )
-
     session = factory()
 
     # Устанавливаем RLS контекст
-    await session.execute(
-        SET_RLS_CONTEXT,
-        {
-            "claims": build_rls_claims(payload),
-            "company_id": str(tenant_id),
-            "user_id": str(user_id) if user_id else "",
-        },
-    )
+    await set_tenant_rls_context(session, tenant_id, user_id)
 
     return session

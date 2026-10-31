@@ -29,6 +29,7 @@ from app.infrastructure.persistence.repositories import (
 
 from .auth import get_current_tenant, get_jwt_payload
 from .database import AsyncSessionLocal
+from .tenant_session import set_rls_context
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def get_tenant_db(
-    tenant_id: UUID = Depends(get_current_tenant),
     payload: JWTPayload = Depends(get_jwt_payload),
 ) -> AsyncGenerator[AsyncSession, None]:
     """
@@ -65,16 +65,8 @@ async def get_tenant_db(
     # Создаем tenant-aware session с автоматическим cleanup
     async with AsyncSessionLocal() as session:
         try:
-            # Устанавливаем RLS контекст для tenant изоляции
-            from sqlalchemy import text
-
-            await session.execute(
-                text(
-                    "SELECT set_config('app.company_id', :company_id, true), "
-                    "set_config('app.user_id', :user_id, true)"
-                ),
-                {"company_id": str(tenant_id), "user_id": str(payload.sub)},
-            )
+            # Set transaction-local RLS context before yielding the session.
+            await set_rls_context(session, payload)
 
             yield session
 

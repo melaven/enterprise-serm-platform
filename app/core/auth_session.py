@@ -6,11 +6,11 @@ import logging
 from collections.abc import AsyncGenerator
 from uuid import UUID
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import AsyncSessionLocal
 from .jwt_handler import AuthContext
+from .tenant_session import set_tenant_rls_context
 
 logger = logging.getLogger(__name__)
 
@@ -18,19 +18,20 @@ logger = logging.getLogger(__name__)
 class TenantSession:
     """Обертка для сессии БД с установленным tenant context"""
 
-    def __init__(self, session: AsyncSession, company_id: UUID):
+    def __init__(self, session: AsyncSession, company_id: UUID, user_id: UUID):
         self.session = session
         self.company_id = company_id
+        self.user_id = user_id
         self._context_set = False
 
     async def __aenter__(self) -> AsyncSession:
         """Вход в контекстный менеджер - устанавливаем tenant context"""
 
         if not self._context_set:
-            # Устанавливаем app.company_id для RLS
-            await self.session.execute(
-                text("SELECT set_config('app.company_id', :company_id, true)"),
-                {"company_id": str(self.company_id)},
+            await set_tenant_rls_context(
+                self.session,
+                self.company_id,
+                self.user_id,
             )
             self._context_set = True
             logger.debug(f"Tenant context set: company_id={self.company_id}")
@@ -64,14 +65,13 @@ async def get_tenant_session(auth_context: AuthContext) -> TenantSession:
     """
     Создание tenant-aware сессии БД
 
-    Сессия автоматически устанавливает app.company_id для RLS
-    и управляет транзакциями.
+    Сессия устанавливает tenant RLS контекст и управляет транзакциями.
     """
 
     # Создаем новую сессию для tenant
     session = AsyncSessionLocal()
 
-    return TenantSession(session, auth_context.company_id)
+    return TenantSession(session, auth_context.company_id, auth_context.user_id)
 
 
 # Альтернативная функция для совместимости с FastAPI Depends

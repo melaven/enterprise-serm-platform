@@ -1,4 +1,37 @@
 # Local Development Guide - Tenable SERM
+
+## Docker Compose (PostgreSQL, Redis, API, and worker)
+
+In PowerShell, create separate files for Compose settings and application secrets:
+
+```powershell
+Copy-Item compose.env.example .env.compose
+Copy-Item runtime.env.example .env.runtime
+```
+
+Edit `.env.compose` with PostgreSQL credentials and these local database URLs:
+
+```text
+LOCAL_ADMIN_DATABASE_URL=postgresql+asyncpg://tenable:<URL-encoded-POSTGRES_PASSWORD>@db:5432/tenable
+LOCAL_TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:<URL-encoded-APP_TENANT_PASSWORD>@db:5432/tenable
+```
+
+Set `APP_TENANT_PASSWORD` to the same password used in the tenant URL. In
+`.env.runtime`, set `SUPABASE_URL` and `SUPABASE_JWT_SECRET`; add integration
+credentials only when needed.
+
+Start the stack:
+
+```powershell
+docker compose --env-file .env.compose up --build
+```
+
+Compose applies migrations before starting the API and worker. PostgreSQL and
+Redis are reachable only on the internal Docker network; the API is published
+on `127.0.0.1:8000` by default. Change `API_PORT` to select another host port.
+Stop the stack with `docker compose --env-file .env.compose down`; database and
+Redis data remain in named volumes.
+
 ## Setup Without Docker
 
 ### Overview

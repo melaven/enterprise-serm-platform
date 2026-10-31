@@ -4,7 +4,11 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import ValidationError
 
+from app.core.config import Settings
+from app.core.exceptions import LLMServiceError
 from app.infrastructure.integrations.llm.review_analyzer import (
+    DEFAULT_MODEL,
+    GROQ_API_BASE_URL,
     OpenAIReviewAnalyzer,
     ReviewAnalysisSchema,
 )
@@ -61,6 +65,59 @@ def test_analyzer_system_prompt_defines_safe_analysis_rules() -> None:
     assert "не более трёх" in prompt
     assert "threat_level" in prompt
     assert "suggested_reply" in prompt
+
+
+@pytest.mark.asyncio
+async def test_analyzer_uses_configured_groq_key_and_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/app",
+        supabase_url="https://example.supabase.co",
+        groq_api_key="test-groq-key",
+        groq_model="openai/gpt-oss-test",
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.integrations.llm.review_analyzer.get_settings",
+        lambda: settings,
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "conflicting-openai-key")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://invalid.example/v1")
+
+    analyzer = OpenAIReviewAnalyzer()
+    try:
+        assert analyzer.api_key == "test-groq-key"
+        assert analyzer.model == "openai/gpt-oss-test"
+        assert analyzer.base_url == GROQ_API_BASE_URL
+    finally:
+        await analyzer.close()
+
+
+def test_analyzer_does_not_fall_back_to_openai_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/app",
+        supabase_url="https://example.supabase.co",
+        groq_api_key=None,
+    )
+    monkeypatch.setattr(
+        "app.infrastructure.integrations.llm.review_analyzer.get_settings",
+        lambda: settings,
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "conflicting-openai-key")
+
+    with pytest.raises(LLMServiceError, match="GROQ_API_KEY not configured"):
+        OpenAIReviewAnalyzer()
+
+
+def test_default_model_is_groq_120b() -> None:
+    assert DEFAULT_MODEL == "openai/gpt-oss-120b"
+    settings = Settings(
+        database_url="postgresql+asyncpg://user:pass@localhost/app",
+        supabase_url="https://example.supabase.co",
+    )
+    assert settings.groq_model == DEFAULT_MODEL
 
 
 @pytest.mark.parametrize("tag", ["service", "QUALITY", "STAFF", "unknown"])

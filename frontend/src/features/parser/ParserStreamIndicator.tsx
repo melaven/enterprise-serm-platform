@@ -72,7 +72,7 @@ export function ParserStreamIndicator({
     <div className="flex items-center gap-2">
       <div
         className={cn(
-          'h-2 w-2 rounded-full',
+          'h-2 w-2 rounded-sm',
           isConnected
             ? 'bg-lime animate-pulse'
             : connectionError
@@ -103,7 +103,7 @@ export function ParserStreamIndicator({
         {connectionStatusDot}
         {progress && (
           <div className="flex items-center gap-2">
-            <div className="h-1 w-20 bg-ink-100 rounded-full overflow-hidden">
+            <div className="h-1 w-20 rounded-sm bg-ink-100 overflow-hidden">
               <div
                 className="h-full bg-lime transition-all duration-300"
                 style={{ width: `${progress.percentage}%` }}
@@ -156,16 +156,14 @@ export function ParserStreamIndicator({
             </span>
           </div>
           
-          <div className="relative h-2 bg-ink-100 rounded-full overflow-hidden">
+          <div className="relative h-2 rounded-sm bg-ink-100 overflow-hidden">
             <div
               className={cn(
                 'absolute inset-y-0 left-0 transition-all duration-300',
-                'bg-gradient-to-r from-lime to-plum-400'
+                'bg-lime'
               )}
               style={{ width: `${progress.percentage}%` }}
             >
-              {/* Shimmer effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer" />
             </div>
           </div>
           

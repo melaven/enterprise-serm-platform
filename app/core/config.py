@@ -3,6 +3,8 @@ from functools import lru_cache
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -16,6 +18,8 @@ class Settings(BaseSettings):
     # Брокер ARQ. В проде: rediss://:<password>@host:6379/0 (Redis только во
     # внутренней сети: ARQ сериализует аргументы задач через pickle).
     redis_url: str = "redis://127.0.0.1:6379/0"
+    groq_api_key: SecretStr | None = None
+    groq_model: str = DEFAULT_GROQ_MODEL
     # Только для legacy-проектов с HS256. Пусто -> проверка подписи через JWKS.
     supabase_jwt_secret: str | None = None
     jwt_audience: str = "authenticated"

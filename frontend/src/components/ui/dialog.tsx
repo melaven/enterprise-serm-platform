@@ -63,7 +63,7 @@ export const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps
       aria-modal="true"
       aria-labelledby="dialog-title"
       className={cn(
-        'relative w-full max-w-2xl rounded-sm border-2 border-chrome-600 bg-ink-950 p-6 shadow-xl',
+        'relative w-full max-w-2xl rounded-sm border-2 border-chrome-600 bg-ink-950 p-6',
         'max-h-[90vh] overflow-y-auto',
         className,
       )}
@@ -120,7 +120,7 @@ export function DialogClose({ onClose }: DialogCloseProps) {
   return (
     <button
       onClick={onClose}
-      className="rounded-sm text-chrome-400 transition-colors hover:text-white focus:outline-none focus:ring-2 focus:ring-lime focus:ring-offset-2 focus:ring-offset-ink-950"
+      className="rounded-sm text-chrome-400 transition-colors hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime"
       aria-label="Закрыть диалог"
       type="button"
     >

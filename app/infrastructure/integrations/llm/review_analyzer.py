@@ -5,7 +5,6 @@ Compatible with Groq API via OpenAI SDK
 """
 
 import asyncio
-import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import ClassVar
@@ -25,15 +24,15 @@ from tenacity import (
     wait_exponential,
 )
 
+from app.core.config import DEFAULT_GROQ_MODEL, get_settings
 from app.core.exceptions import LLMServiceError
 from app.core.logger import get_correlation_id
 
 logger = structlog.get_logger(__name__)
 
 # Configuration
-DEFAULT_MODEL = os.getenv("LLM_MODEL", "openai/gpt-oss-20b")
+DEFAULT_MODEL = DEFAULT_GROQ_MODEL
 GROQ_API_BASE_URL = "https://api.groq.com/openai/v1"
-FALLBACK_MODEL = "openai/gpt-oss-120b"
 DEFAULT_TIMEOUT = 30.0  # seconds
 MAX_RETRIES = 5  # Increased for tenacity retry
 MAX_REVIEW_CHARS = 4000
@@ -268,20 +267,21 @@ ReviewAnalysisSchema; не добавляй поля, комментарии, Ma
         self,
         api_key: str | None = None,
         *,
-        model: str = DEFAULT_MODEL,
+        model: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
     ):
-        groq_api_key = os.getenv("GROQ_API_KEY")
-        self.api_key = api_key or groq_api_key or os.getenv("OPENAI_API_KEY")
+        if api_key is None:
+            settings = get_settings()
+            configured_key = settings.groq_api_key
+            if configured_key is None or not configured_key.get_secret_value():
+                raise LLMServiceError("GROQ_API_KEY not configured")
+            api_key = configured_key.get_secret_value()
+            model = model or settings.groq_model
 
-        if not self.api_key:
-            raise LLMServiceError("GROQ_API_KEY or OPENAI_API_KEY not configured")
-
-        self.model = model
+        self.api_key = api_key
+        self.model = model or DEFAULT_MODEL
         self.timeout = timeout
-        self.base_url = os.getenv("OPENAI_BASE_URL") or (
-            GROQ_API_BASE_URL if groq_api_key else None
-        )
+        self.base_url = GROQ_API_BASE_URL
         self.client = AsyncClient(
             api_key=self.api_key,
             base_url=self.base_url,
@@ -441,14 +441,15 @@ ReviewAnalysisSchema; не добавляй поля, комментарии, Ma
 
         return "\n".join(lines)
 
-    async def _analyze_with_retry(self, prompt: str) -> AnalysisResult:
+    async def _analyze_with_retry(
+        self, prompt: str, *, use_structured_outputs: bool = True
+    ) -> AnalysisResult:
         """
         Execute analysis with structured outputs and fallbacks.
         Tenacity decorator handles retry logic at the method level.
         This method handles single attempt with fallback strategies.
         """
         current_model = self.model
-        use_structured_outputs = True
 
         # Single attempt - tenacity will retry on exceptions
         try:
@@ -527,32 +528,18 @@ ReviewAnalysisSchema; не добавляй поля, комментарии, Ma
                     "openai_400_fallback_to_json_object",
                     error=str(exc),
                 )
-                # This is a one-time fallback, let tenacity retry if needed
-                use_structured_outputs = False
-                # Retry immediately with json_object format
-                return await self._analyze_with_retry(prompt)
+                return await self._analyze_with_retry(
+                    prompt, use_structured_outputs=False
+                )
 
             # Handle 429 Rate Limit or 503 Service Unavailable
             if status_code in (429, 503):
-                if current_model == self.model:
-                    # First time: switch to fallback model
-                    logger.warning(
-                        "openai_rate_limit_switching_model",
-                        status_code=status_code,
-                        from_model=self.model,
-                        to_model=FALLBACK_MODEL,
-                    )
-                    current_model = FALLBACK_MODEL
-                    # Let tenacity retry with new model
-                    raise
-                else:
-                    # Already using fallback, let tenacity retry
-                    logger.warning(
-                        "openai_rate_limit_retry",
-                        status_code=status_code,
-                        model=current_model,
-                    )
-                    raise
+                logger.warning(
+                    "openai_rate_limit_retry",
+                    status_code=status_code,
+                    model=current_model,
+                )
+                raise
 
             # Other errors - let tenacity decide if retryable
             if not _is_retryable_error(exc):
@@ -626,5 +613,5 @@ ReviewAnalysisSchema; не добавляй поля, комментарии, Ma
 def create_openai_analyzer(
     api_key: str | None = None, **kwargs
 ) -> OpenAIReviewAnalyzer:
-    """Factory function for creating OpenAI analyzer"""
+    """Create the Groq-backed analyzer using the configured key and model."""
     return OpenAIReviewAnalyzer(api_key=api_key, **kwargs)

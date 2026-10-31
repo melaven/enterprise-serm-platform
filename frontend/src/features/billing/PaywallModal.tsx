@@ -165,7 +165,7 @@ export function PaywallModal({
                 </span>
               </div>
               
-              <div className="h-2 bg-ink-50 rounded-full overflow-hidden">
+              <div className="h-2 rounded-sm bg-ink-50 overflow-hidden">
                 <div
                   className="h-full bg-red-500"
                   style={{ width: '100%' }}

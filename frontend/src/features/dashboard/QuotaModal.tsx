@@ -53,7 +53,6 @@ export function QuotaModal() {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 transition-opacity"
-      style={{ backdropFilter: 'blur(8px)' }}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) setIsOpen(false);
       }}
@@ -61,9 +60,8 @@ export function QuotaModal() {
       <section
         aria-labelledby="quota-modal-title"
         aria-modal="true"
-        className="relative w-full max-w-md overflow-hidden border border-gray-100 bg-white text-gray-900"
+        className="relative w-full max-w-md overflow-hidden rounded-sm border border-gray-100 bg-white text-gray-900"
         role="dialog"
-        style={{ borderRadius: '12px', boxShadow: '0 25px 50px -12px rgb(0 0 0 / 0.35)' }}
       >
         <button
           aria-label="Закрыть"
@@ -77,7 +75,7 @@ export function QuotaModal() {
         </button>
 
         <header className="flex flex-col items-center bg-plum p-6 text-white">
-          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-white/10">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-sm bg-white/10">
             <svg aria-hidden="true" fill="none" height="24" viewBox="0 0 24 24" width="24">
               <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" className="text-lime" />
               <path d="M12 8v4m0 4h.01" stroke="currentColor" strokeLinecap="round" strokeWidth="2" className="text-lime" />
@@ -119,7 +117,7 @@ export function QuotaModal() {
           </ul>
 
           <button
-            className="w-full rounded-lg bg-lime px-4 py-3 font-semibold text-black transition-all duration-200 hover:brightness-95"
+            className="w-full rounded-sm bg-lime px-4 py-3 font-semibold text-black transition-colors duration-200 hover:bg-lime/90"
             onClick={() => {
               setIsOpen(false);
               window.location.href = '/billing';

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from typing import TYPE_CHECKING, Any, Final
 
@@ -26,15 +25,15 @@ from app.api.schemas.review_analysis import (
     ReviewFlag,
     Sentiment,
 )
+from app.core.config import DEFAULT_GROQ_MODEL, get_settings
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
 
 log = logging.getLogger(__name__)
 
-# Groq выводит модели из эксплуатации: llama3-70b-8192 закрыта 30.08.2025, llama-3.3-70b-versatile — 16.08.2026
-# (https://console.groq.com/docs/deprecations). Модель задаётся окружением: LLM_MODEL.
-DEFAULT_MODEL: Final = "openai/gpt-oss-120b"
+# Model configuration is centralized in app.core.config.
+DEFAULT_MODEL: Final = DEFAULT_GROQ_MODEL
 MAX_REVIEW_CHARS: Final = 3000
 MAX_ATTEMPTS: Final = 2
 
@@ -326,7 +325,7 @@ class ReviewAnalyzer:
 
     @property
     def model(self) -> str:
-        return self._model or os.getenv("LLM_MODEL") or DEFAULT_MODEL
+        return self._model or DEFAULT_MODEL
 
     async def _complete(self, messages: list[ChatCompletionMessageParam]) -> str:
         kwargs: dict[str, Any] = {}
@@ -391,5 +390,5 @@ class ReviewAnalyzer:
 
 
 def default_analyzer(client: AsyncOpenAI) -> ReviewAnalyzer:
-    """Фабрика: модель и endpoint берутся из окружения (LLM_MODEL, OPENAI_BASE_URL при создании клиента)."""
-    return ReviewAnalyzer(client)
+    """Create an analyzer with the model configured in application settings."""
+    return ReviewAnalyzer(client, model=get_settings().groq_model)

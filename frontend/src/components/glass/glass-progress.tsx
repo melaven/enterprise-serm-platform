@@ -100,7 +100,7 @@ export interface GlassCircularProgressProps {
   value?: number;
   /** Размер в px */
   size?: number;
-  /** Толщина ring */
+  /** Толщина линии */
   strokeWidth?: number;
   /** Показать label внутри */
   label?: string;
@@ -133,7 +133,7 @@ export function GlassCircularProgress({
         height={size}
         style={{ transform: 'rotate(-90deg)' }}
       >
-        {/* Background ring */}
+        {/* Track */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -143,7 +143,7 @@ export function GlassCircularProgress({
           strokeWidth={strokeWidth}
         />
 
-        {/* Progress ring - Electric Lime RGB(197, 255, 74) */}
+        {/* Progress stroke */}
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -151,7 +151,7 @@ export function GlassCircularProgress({
           fill="none"
           stroke="rgb(197, 255, 74)"
           strokeWidth={strokeWidth}
-          strokeLinecap="round"
+          strokeLinecap="butt"
           strokeDasharray={circumference}
           strokeDashoffset={indeterminate ? circumference * 0.75 : offset}
           className="transition-all duration-500 ease-out"
@@ -202,7 +202,7 @@ export function GlassProgressInline({
       )}
     >
       {/* Animated spinner */}
-      <div className="size-4 animate-spin rounded-full border-2 border-white/20 border-t-lime" />
+      <div className="size-4 animate-spin rounded-sm border-2 border-white/20 border-t-lime" />
 
       {/* Progress text */}
       <div className="flex items-center gap-2 text-xs">

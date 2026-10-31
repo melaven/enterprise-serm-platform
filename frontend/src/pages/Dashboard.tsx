@@ -206,8 +206,7 @@ export default function Dashboard() {
               variant="outline"
               onClick={handleExportCSV}
               disabled={isExporting}
-              className="border-[#5A189A] text-[#5A189A] hover:bg-[#5A189A]/10"
-              style={{ borderColor: '#5A189A', color: '#5A189A' }}
+              className="border-plum text-plum hover:bg-plum/10"
             >
               <Download className="h-4 w-4 mr-2" />
               {isExporting ? 'Экспорт...' : 'Export to CSV'}

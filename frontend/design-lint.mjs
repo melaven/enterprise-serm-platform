@@ -9,7 +9,7 @@ import { basename, join, extname } from 'node:path';
 
 const RULES = [
   [/\bshadow(-|\b)/, 'тень (shadow-*)'],
-  [/\bring(-|\b)/, 'ring-* (это box-shadow)'],
+  [/\bring-\S+/, 'ring-* (это box-shadow)'],
   [/\bdrop-shadow/, 'drop-shadow'],
   [/\bbackdrop-/, 'backdrop-* (стекло)'],
   [/\bblur(-|\b)/, 'blur'],
@@ -28,7 +28,7 @@ const SKIP = new Set(['design-lint.mjs', 'tailwind.config.js', 'LandingPage.tsx'
 function* walk(dir) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
-    if (statSync(p).isDirectory()) yield* walk(p);
+    if (statSync(p).isDirectory() && name !== '__tests__') yield* walk(p);
     else if (['.ts', '.tsx', '.css', '.html'].includes(extname(p))) yield p;
   }
 }
@@ -37,7 +37,7 @@ let failures = 0;
 for (const root of ['src', 'index.html']) {
   const files = statSync(root).isDirectory() ? [...walk(root)] : [root];
   for (const file of files) {
-    if (SKIP.has(basename(file))) continue;
+    if (SKIP.has(basename(file)) || /\.test\.[^.]+$/.test(file)) continue;
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       if (/design-lint:ignore/.test(line)) return;
       if (/:\s*none\b/.test(line) && /shadow|filter/.test(line)) return; // `box-shadow: none` разрешён

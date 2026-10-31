@@ -20,6 +20,7 @@ import { BillingPage } from './pages/BillingPage.tsx'
 import { LandingPage } from './pages/LandingPage.tsx'
 import { ReviewsDashboard } from './features/reviews/ReviewsDashboard.tsx'
 import { SettingsPage } from './pages/SettingsPage.tsx'
+import { ReviewsOverviewPage } from './pages/ReviewsOverviewPage.tsx'
 import { ProtectedRoute } from './features/auth/ProtectedRoute.tsx'
 import './index.css'
 
@@ -56,6 +57,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             element={
               <ProtectedRoute>
                 <ReviewsDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reviews/overview"
+            element={
+              <ProtectedRoute>
+                <ReviewsOverviewPage />
               </ProtectedRoute>
             }
           />

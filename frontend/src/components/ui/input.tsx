@@ -6,7 +6,7 @@ export type InputProps = React.InputHTMLAttributes<HTMLInputElement>;
 
 /**
  * Плоский инпут: zinc-950 / zinc-800. Фокус — мгновенная смена рамки на lime.
- * Глобальный outline (globals.css) гасится, кольца и тени не используются.
+ * Фокус обозначен контрастным outline, кольца и тени не используются.
  */
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
   ({ className, type = 'text', ...props }, ref) => (
@@ -16,8 +16,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
       className={cn(
         'h-11 w-full rounded-sm border border-ink-700 bg-ink-900 px-4 text-sm text-ink-100',
         'placeholder:text-ink-500',
-        'ring-0 ring-offset-0 shadow-none',
-        'focus-visible:border-lime focus-visible:outline-none focus-visible:ring-0 focus-visible:ring-offset-0',
+        'focus-visible:border-lime focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime',
         'aria-[invalid=true]:border-plum',
         'disabled:cursor-not-allowed disabled:opacity-40',
         className,

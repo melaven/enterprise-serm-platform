@@ -1,7 +1,7 @@
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 
 const BASE =
-  'group flex w-full items-start gap-3 rounded-sm border border-zinc-700 bg-zinc-950 p-4 text-sm font-medium uppercase tracking-wider text-zinc-100 shadow-none';
+  'group flex w-full items-start gap-3 rounded-sm border border-zinc-700 bg-zinc-950 p-4 text-sm font-medium uppercase tracking-wider text-zinc-100';
 
 /**
  * Плоские тосты: border Chrome, без теней. success — lime, error — crimson #A4172A

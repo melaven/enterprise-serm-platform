@@ -232,7 +232,7 @@ function UsageStats({ stats }: UsageStatsProps) {
           </span>
         </div>
         
-        <div className="h-2 bg-ink-50 rounded-full overflow-hidden">
+        <div className="h-2 rounded-sm bg-ink-50 overflow-hidden">
           <div
             className={cn(
               'h-full transition-all duration-300',
@@ -262,7 +262,7 @@ function UsageStats({ stats }: UsageStatsProps) {
           </span>
         </div>
         
-        <div className="h-2 bg-ink-50 rounded-full overflow-hidden">
+        <div className="h-2 rounded-sm bg-ink-50 overflow-hidden">
           <div
             className={cn(
               'h-full transition-all duration-300',

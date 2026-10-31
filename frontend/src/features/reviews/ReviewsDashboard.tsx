@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { ArrowLeft, Inbox, Search, Sparkles, Star } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 import { fetchReviews } from '@/api/reviews';
 import { useAuth } from '@/store/useAppStore';
@@ -144,6 +145,12 @@ export function ReviewsDashboard() {
               {visible.length} из {reviews.length}
             </span>
           </div>
+          <Link
+            to="/reviews/overview"
+            className={`mt-2 inline-flex text-xs text-neutral-600 underline-offset-2 hover:text-neutral-900 hover:underline ${FOCUS}`}
+          >
+            Табличный обзор
+          </Link>
 
           <label className="relative mt-3 block">
             <span className="sr-only">Поиск по тексту и автору</span>

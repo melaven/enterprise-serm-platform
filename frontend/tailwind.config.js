@@ -30,6 +30,8 @@ export default {
         current: 'currentColor',
         black: '#000000',
         white: '#FFFFFF',
+        gray: colors.gray,
+        neutral: colors.neutral,
         ink: {
           DEFAULT: channelColor('--color-ink'),
           50: channelColor('--color-ink-50'),

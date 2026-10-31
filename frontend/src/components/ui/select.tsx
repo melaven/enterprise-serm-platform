@@ -16,8 +16,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
       ref={ref}
       className={cn(
         'h-11 w-full rounded-sm border border-ink-700 bg-ink-900 px-4 text-sm text-ink-100',
-        'ring-0 ring-offset-0 shadow-none appearance-none',
-        'focus-visible:border-lime focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lime focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950',
+        'appearance-none focus-visible:border-lime focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-lime',
         'aria-[invalid=true]:border-plum',
         'disabled:cursor-not-allowed disabled:opacity-40',
         'cursor-pointer',

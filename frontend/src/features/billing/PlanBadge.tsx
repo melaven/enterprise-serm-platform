@@ -174,7 +174,7 @@ export function PlanBadge({ className, compact = false }: PlanBadgeProps) {
               </span>
             </div>
             
-            <div className="h-1 bg-ink-50 rounded-full overflow-hidden">
+            <div className="h-1 rounded-sm bg-ink-50 overflow-hidden">
               <div
                 className={cn(
                   'h-full transition-all duration-300',
@@ -198,7 +198,7 @@ export function PlanBadge({ className, compact = false }: PlanBadgeProps) {
               </span>
             </div>
             
-            <div className="h-1 bg-ink-50 rounded-full overflow-hidden">
+            <div className="h-1 rounded-sm bg-ink-50 overflow-hidden">
               <div
                 className={cn(
                   'h-full transition-all duration-300',

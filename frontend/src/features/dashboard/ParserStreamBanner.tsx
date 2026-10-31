@@ -68,7 +68,7 @@ export function ParserStreamBanner({
   return (
     <div
       className={cn(
-        'relative w-full border-b-2 border-plum-700 bg-gradient-to-r from-ink-900 to-plum-900/20',
+        'relative w-full border-b-2 border-plum-700 bg-ink-900',
         className
       )}
       role="status"
@@ -78,7 +78,7 @@ export function ParserStreamBanner({
       {/* Background Progress Bar */}
       {progress && (
         <div
-          className="absolute inset-0 bg-gradient-to-r from-plum-900/30 to-lime/10 transition-all duration-300"
+          className="absolute inset-y-0 left-0 bg-lime/10 transition-all duration-300"
           style={{
             width: `${progress.percentage}%`,
           }}
@@ -92,7 +92,7 @@ export function ParserStreamBanner({
           <div className="flex items-center gap-2">
             <div
               className={cn(
-                'h-2 w-2 rounded-full',
+                'h-2 w-2 rounded-sm',
                 isConnected
                   ? 'bg-lime animate-pulse'
                   : connectionError
@@ -182,10 +182,10 @@ export function ParserStatusBadge() {
   }
   
   return (
-    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-plum-900/30 border border-plum-700">
+    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-sm bg-plum-900/30 border border-plum-700">
       <div
         className={cn(
-          'h-1.5 w-1.5 rounded-full',
+          'h-1.5 w-1.5 rounded-sm',
           isConnected ? 'bg-lime animate-pulse' : 'bg-chrome-500'
         )}
       />

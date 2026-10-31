@@ -39,7 +39,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
           <div className="max-w-md w-full space-y-6 text-center">
             {/* Error Icon */}
             <div className="flex justify-center">
-              <div className="p-4 rounded-full bg-ink-900 border-2 border-chrome-600">
+              <div className="p-4 rounded-sm bg-ink-900 border-2 border-chrome-600">
                 <AlertTriangle className="h-12 w-12 text-plum" strokeWidth={1.5} />
               </div>
             </div>

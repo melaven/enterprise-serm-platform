@@ -9,6 +9,7 @@ from functools import lru_cache
 from uuid import UUID
 
 from fastapi import Depends, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas.auth import JWTPayload
@@ -19,7 +20,9 @@ from app.application import (
     SentimentService,
 )
 from app.application.reviews.service import ReviewQueue, ReviewReplyAnalyzer
+from app.core.exceptions import NotFoundError
 from app.infrastructure.integrations.llm.review_analyzer import create_openai_analyzer
+from app.infrastructure.persistence.models.economics import Review
 from app.infrastructure.persistence.repositories import (
     CompanyRepository,
     ParserRepository,
@@ -167,8 +170,21 @@ def get_review_queue(request: Request) -> ReviewQueue | None:
     return getattr(request.app.state, "arq_pool", None)
 
 
-async def get_review_reply_analyzer() -> AsyncGenerator[ReviewReplyAnalyzer, None]:
+async def get_review_reply_analyzer(
+    review_id: UUID,
+    session: AsyncSession = Depends(get_tenant_db),
+    tenant_id: UUID = Depends(get_current_tenant),
+) -> AsyncGenerator[ReviewReplyAnalyzer, None]:
     """Provide an analyzer for one request and close its external client afterward."""
+    review = await session.scalar(
+        select(Review.id).where(
+            Review.id == review_id,
+            Review.company_id == tenant_id,
+        )
+    )
+    if review is None:
+        raise NotFoundError("Review", str(review_id))
+
     analyzer = create_openai_analyzer()
     try:
         yield analyzer

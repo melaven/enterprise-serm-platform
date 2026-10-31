@@ -24,9 +24,7 @@ x-app: &app
     ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     ADMIN_SECRET_KEY: ${ADMIN_SECRET_KEY:-}
     GROQ_API_KEY: ${GROQ_API_KEY:-}
-    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
-    LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-20b}
+    GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-120b}
     ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
     FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}

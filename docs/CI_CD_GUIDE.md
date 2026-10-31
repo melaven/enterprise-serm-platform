@@ -106,10 +106,10 @@ pytest tests/test_billing_deps.py -v
 **Purpose:** Docker image build and security scanning
 
 **Steps:**
-1. Build backend.Dockerfile
-2. Build worker.Dockerfile
-3. Build frontend.Dockerfile
-4. Test docker-compose build
+1. Build the shared Python `Dockerfile` for API, worker, and migrations
+2. Build `frontend/Dockerfile`
+3. Validate `docker compose --env-file .env.example config`
+4. Test the Compose build
 5. **Security Scan (Trivy)** - vulnerability check
 6. Upload security results to GitHub Security
 7. Push images to Docker Hub (main branch only)
@@ -262,11 +262,9 @@ pytest tests/test_billing.py -v -k "tenant"
 ### Docker Build Failures
 ```bash
 # Local build
-docker-compose build
-# Separately
-docker build -f backend.Dockerfile -t test-backend .
-docker build -f worker.Dockerfile -t test-worker .
-docker build -f frontend.Dockerfile -t test-frontend .
+docker compose --env-file .env.example build
+# Frontend image
+docker build -f frontend/Dockerfile -t test-frontend frontend
 ```
 
 ## Best Practices

@@ -29,7 +29,7 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 
 # libffi8: рантайм-библиотека для cffi/cryptography, если они собирались из исходников.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libffi8 \
+    && apt-get install -y --no-install-recommends libffi8 netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
@@ -46,11 +46,14 @@ WORKDIR /srv
 COPY --chown=app:app app ./app
 COPY --chown=app:app migrations ./migrations
 COPY --chown=app:app scripts ./scripts
+COPY --chown=app:app scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Байт-код собираем на этапе сборки: корневая ФС в проде read-only, во время работы .pyc писать некуда.
 RUN python -m compileall -q app
 
 USER app
 EXPOSE 8000
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Healthcheck образа (compose может переопределить): TCP-порт API.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=5 \

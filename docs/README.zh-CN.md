@@ -6,7 +6,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
-🇬🇧 [English](README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
+🇬🇧 [English](../README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
 
 Tenable 是一款面向 B2B 的 Sentiment Intelligence（SI，情感洞察）与搜索引擎声誉管理（SERM）平台，用于分析依法获取的公开商业评价。平台帮助组织了解评价情绪、发现服务质量风险，并通过租户隔离的分析跟踪声誉趋势。
 
@@ -124,17 +124,17 @@ frontend/src/
 ## 安全与运维说明
 
 - 应用的租户隔离模型要求使用 PostgreSQL；SQLite 不能替代对 RLS 行为的验证。
-- 请通过仓库提供的迁移工具应用数据库迁移，不要手动执行迁移文件。参见 [`migrations/README.md`](migrations/README.md)。
+- 请通过仓库提供的迁移工具应用数据库迁移，不要手动执行迁移文件。参见 [`migrations/README.md`](../migrations/README.md)。
 - 使用部署环境的密钥管理机制保护秘密和凭据。不要提交 `.env` 文件或生产凭据。
 - 投入生产前，请检查已启用的集成、租户角色、网络访问、数据库策略、LLM 配置、日志和数据保留设置。
 - 将 DLQ 视为具有运维敏感性的存储。限制访问，并根据部署需求制定保留和重放流程。
 
 ## 仓库文档
 
-- [`README.md`](README.md) — 英文主版本。
-- [`frontend/README.md`](frontend/README.md) — 前端专属文档。
-- [`migrations/README.md`](migrations/README.md) — 数据库迁移指南。
-- [`infra/devops/README.md`](infra/devops/README.md) — DevOps 与部署文档。
+- [`README.md`](../README.md) — 英文主版本。
+- [`frontend/README.md`](../frontend/README.md) — 前端专属文档。
+- [`migrations/README.md`](../migrations/README.md) — 数据库迁移指南。
+- [`infra/devops/README.md`](../infra/devops/README.md) — DevOps 与部署文档。
 
 ## 许可证
 

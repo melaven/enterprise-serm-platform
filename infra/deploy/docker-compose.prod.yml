@@ -51,25 +51,45 @@ services:
     networks:
       - backend
 
+  migrate:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: "3.12"
+    image: tenable-serm:latest
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
+      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}
+    command: ["true"]
+    restart: "no"
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
   # FastAPI Backend
   backend:
     build:
       context: ../..
-      dockerfile: backend.Dockerfile
+      dockerfile: Dockerfile
       args:
         PYTHON_VERSION: "3.12"
-    image: tenable-serm-backend:latest
+    image: tenable-serm:latest
     env_file:
       - ../../.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
+      DATABASE_URL: postgresql+asyncpg://app_tenant:${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-serm}
       TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-serm}
-      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}
       USE_TENANT_ROLE: "true"
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
       ENVIRONMENT: production
       DEBUG: "false"
+    entrypoint: ["uvicorn"]
+    command: ["app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     restart: unless-stopped
     init: true
     read_only: true
@@ -80,8 +100,8 @@ services:
     security_opt:
       - no-new-privileges:true
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
@@ -106,20 +126,21 @@ services:
   worker:
     build:
       context: ../..
-      dockerfile: worker.Dockerfile
+      dockerfile: Dockerfile
       args:
         PYTHON_VERSION: "3.12"
-    image: tenable-serm-worker:latest
+    image: tenable-serm:latest
     env_file:
       - ../../.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
+      DATABASE_URL: postgresql+asyncpg://app_tenant:${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-serm}
       TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-serm}
-      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}
       USE_TENANT_ROLE: "true"
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       ENVIRONMENT: production
       DEBUG: "false"
+    entrypoint: ["arq"]
+    command: ["app.infrastructure.queue.worker.worker.WorkerSettings"]
     restart: unless-stopped
     init: true
     read_only: true
@@ -130,8 +151,8 @@ services:
     security_opt:
       - no-new-privileges:true
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       backend:
@@ -154,8 +175,8 @@ services:
   # React Frontend with Nginx
   frontend:
     build:
-      context: ../..
-      dockerfile: frontend.Dockerfile
+      context: ../../frontend
+      dockerfile: Dockerfile
     image: tenable-serm-frontend:latest
     restart: unless-stopped
     depends_on:
@@ -183,7 +204,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - nginx-logs:/var/log/nginx
     depends_on:
       backend:

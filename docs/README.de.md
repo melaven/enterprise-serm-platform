@@ -6,7 +6,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
-🇬🇧 [English](README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
+🇬🇧 [English](../README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
 
 Tenable ist eine B2B-Plattform für Sentiment Intelligence (SI) und Suchmaschinen-Reputationsmanagement (SERM), die rechtmäßig erhobene öffentliche Unternehmensbewertungen analysiert. Sie unterstützt Unternehmen dabei, Stimmungen zu verstehen, Risiken für die Servicequalität zu erkennen und Reputationsentwicklungen mit Mandantentrennung auszuwerten.
 
@@ -124,17 +124,17 @@ frontend/src/
 ## Sicherheit und Betrieb
 
 - Das Mandantentrennungsmodell der Anwendung erfordert PostgreSQL. SQLite ersetzt keine Prüfung des RLS-Verhaltens.
-- Wenden Sie Datenbankmigrationen mit dem Migrationsskript des Repositorys an, statt Migrationsdateien manuell auszuführen. Siehe [`migrations/README.md`](migrations/README.md).
+- Wenden Sie Datenbankmigrationen mit dem Migrationsskript des Repositorys an, statt Migrationsdateien manuell auszuführen. Siehe [`migrations/README.md`](../migrations/README.md).
 - Schützen Sie Geheimnisse und Zugangsdaten mit der Secret-Verwaltung Ihrer Bereitstellungsumgebung. Committen Sie keine `.env`-Dateien oder Produktionszugangsdaten.
 - Prüfen Sie vor dem Produktiveinsatz aktivierte Integrationen, Mandantenrollen, Netzwerkzugriff, Datenbankrichtlinien, LLM-Konfiguration, Protokollierung und Aufbewahrungseinstellungen.
 - Behandeln Sie die DLQ als betrieblich sensible Datenablage. Beschränken Sie den Zugriff und definieren Sie geeignete Aufbewahrungs- und Wiederholungsverfahren.
 
 ## Repository-Dokumentation
 
-- [`README.md`](README.md) — Hauptversion auf Englisch.
-- [`frontend/README.md`](frontend/README.md) — Dokumentation zum Frontend.
-- [`migrations/README.md`](migrations/README.md) — Anleitung zu Datenbankmigrationen.
-- [`infra/devops/README.md`](infra/devops/README.md) — DevOps- und Bereitstellungsdokumentation.
+- [`README.md`](../README.md) — Hauptversion auf Englisch.
+- [`frontend/README.md`](../frontend/README.md) — Dokumentation zum Frontend.
+- [`migrations/README.md`](../migrations/README.md) — Anleitung zu Datenbankmigrationen.
+- [`infra/devops/README.md`](../infra/devops/README.md) — DevOps- und Bereitstellungsdokumentation.
 
 ## Lizenz
 

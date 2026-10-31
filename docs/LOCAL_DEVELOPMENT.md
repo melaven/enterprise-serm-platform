@@ -5,31 +5,33 @@
 In PowerShell, create separate files for Compose settings and application secrets:
 
 ```powershell
-Copy-Item compose.env.example .env.compose
-Copy-Item runtime.env.example .env.runtime
+Copy-Item .env.example .env
 ```
 
-Edit `.env.compose` with PostgreSQL credentials and these local database URLs:
+Edit `.env` and set unique PostgreSQL, tenant-role, and Redis passwords. The
+template includes local container URLs for the migration role and `app_tenant`:
 
 ```text
-LOCAL_ADMIN_DATABASE_URL=postgresql+asyncpg://tenable:<URL-encoded-POSTGRES_PASSWORD>@db:5432/tenable
-LOCAL_TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:<URL-encoded-APP_TENANT_PASSWORD>@db:5432/tenable
+DATABASE_URL=postgresql+asyncpg://tenable:<URL-encoded-POSTGRES_PASSWORD>@db:5432/tenable
+TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:<URL-encoded-APP_TENANT_PASSWORD>@db:5432/tenable
 ```
 
 Set `APP_TENANT_PASSWORD` to the same password used in the tenant URL. In
-`.env.runtime`, set `SUPABASE_URL` and `SUPABASE_JWT_SECRET`; add integration
-credentials only when needed.
+`.env`, set `SUPABASE_URL` and `SUPABASE_JWT_SECRET`; add integration credentials
+only when needed.
 
-Start the stack:
+Validate the Compose configuration against the example, then start with the
+standard `.env`:
 
 ```powershell
-docker compose --env-file .env.compose up --build
+docker compose --env-file .env.example config
+docker compose up --build
 ```
 
 Compose applies migrations before starting the API and worker. PostgreSQL and
 Redis are reachable only on the internal Docker network; the API is published
 on `127.0.0.1:8000` by default. Change `API_PORT` to select another host port.
-Stop the stack with `docker compose --env-file .env.compose down`; database and
+Stop the stack with `docker compose down`; database and
 Redis data remain in named volumes.
 
 ## Setup Without Docker
@@ -48,7 +50,7 @@ This guide covers setting up a local development environment for Tenable SERM wi
 
 ### Required Software
 
-1. **Python 3.10+**
+1. **Python 3.11+**
    - Download from https://www.python.org/downloads/
    - Make sure to check "Add Python to PATH" during installation
 
@@ -76,30 +78,17 @@ This guide covers setting up a local development environment for Tenable SERM wi
 ### Windows (PowerShell)
 
 ```powershell
-# 1. Run setup script
-.\setup_env.ps1
-
-# 2. Configure environment
-copy .env.example .env
-# Edit .env with your settings
-
-# 3. Start backend
-.\start_backend.bat
+Copy-Item .env.example .env
+# Configure PostgreSQL, Supabase, and Redis settings in .env
+docker compose up --build
 ```
 
 ### Linux/Mac
 
 ```bash
-# 1. Run setup script
-chmod +x setup_env.sh
-./setup_env.sh
-
-# 2. Configure environment
 cp .env.example .env
-# Edit .env with your settings
-
-# 3. Start backend
-./start_backend.sh
+# Configure PostgreSQL, Supabase, and Redis settings in .env
+docker compose up --build
 ```
 
 ---
@@ -140,55 +129,27 @@ LOG_LEVEL=DEBUG
 
 ### 1. Start Backend
 
-**Windows:**
-```batch
-.\start_backend.bat
-```
-
-**Linux/Mac:**
-```bash
-./start_backend.sh
-```
-
-Backend will start at http://127.0.0.1:8000
+The API starts with the Compose stack and is available at
+http://127.0.0.1:8000.
 
 ### 2. Run Tests
 
-**Windows:**
-```batch
-.\run_tests.bat
-```
-
-**Linux/Mac:**
 ```bash
-./run_tests.sh
+pytest --cov=app --cov-report=html
 ```
 
 Coverage report will be generated in `htmlcov/index.html`
 
 ### 3. Run Linting
 
-**Windows:**
-```batch
-.\run_lint.bat
-```
-
-**Linux/Mac:**
 ```bash
-./run_lint.sh
+ruff check
 ```
 
 ### 4. Format Code
 
-**Windows:**
-```batch
-.\format_code.bat
-```
-
-**Linux/Mac:**
 ```bash
 ruff format app/ tests/
-ruff check --fix app/ tests/
 ```
 
 ---
@@ -369,7 +330,7 @@ netstat -ano | findstr :8000
 # Kill process (replace PID)
 taskkill /PID <PID> /F
 
-# Or use different port in start_backend.bat
+# Or use a different port for the API
 uvicorn app.main:app --host 127.0.0.1 --port 8001
 ```
 
@@ -412,9 +373,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8001
 
 ## Pre-commit Hooks
 
-Pre-commit hooks are installed automatically by `setup_env.ps1`/`setup_env.sh`.
-
-To manually install:
+To install pre-commit hooks manually:
 ```bash
 pre-commit install
 ```

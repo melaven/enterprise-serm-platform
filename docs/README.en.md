@@ -8,7 +8,7 @@
 > database-level data isolation, atomic quotas, idempotent queues and webhooks, end-to-end tracing, Zero Trust by default.
 > The [Status](#status-whats-implemented-and-whats-not) section honestly separates "working and verified", "written but not connected", and "designed".
 
-[🇷🇺 Русская версия](README.md)
+[🇷🇺 Русская версия](README.ru.md)
 
 ---
 

@@ -9,7 +9,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-Utility--first-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
-🇬🇧 [English](README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
+🇬🇧 [English](README.md) | 🇷🇺 [Русский](docs/README.ru.md) | 🇪🇸 [Español](docs/README.es.md) | 🇨🇳 [简体中文](docs/README.zh-CN.md) | 🇩🇪 [Deutsch](docs/README.de.md)
 
 Tenable is a B2B Sentiment Intelligence (SI) and Search Engine Reputation Management (SERM) platform for analyzing lawfully obtained public business feedback. It helps organizations understand sentiment, identify service-quality risks, and track reputation trends through tenant-isolated analytics.
 
@@ -134,7 +134,7 @@ frontend/src/
 
 ## Repository Documentation
 
-- [`README.en.md`](README.en.md) — English project overview and implementation notes.
+- [`docs/README.en.md`](docs/README.en.md) — English project overview and implementation notes.
 - [`frontend/README.md`](frontend/README.md) — frontend-specific documentation.
 - [`migrations/README.md`](migrations/README.md) — database migration guidance.
 - [`infra/devops/README.md`](infra/devops/README.md) — DevOps and deployment documentation.

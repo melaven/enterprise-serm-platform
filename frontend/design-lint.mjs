@@ -5,7 +5,7 @@
  * нарушений: произвольные значения bg-[...], инлайн-стили, сторонний CSS.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { basename, join, extname } from 'node:path';
 
 const RULES = [
   [/\bshadow(-|\b)/, 'тень (shadow-*)'],
@@ -37,7 +37,7 @@ let failures = 0;
 for (const root of ['src', 'index.html']) {
   const files = statSync(root).isDirectory() ? [...walk(root)] : [root];
   for (const file of files) {
-    if (SKIP.has(file.split('/').pop())) continue;
+    if (SKIP.has(basename(file))) continue;
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       if (/design-lint:ignore/.test(line)) return;
       if (/:\s*none\b/.test(line) && /shadow|filter/.test(line)) return; // `box-shadow: none` разрешён

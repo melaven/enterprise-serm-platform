@@ -7,14 +7,51 @@ x-app: &app
   image: tenable-serm-local:latest
   init: true
   restart: unless-stopped
-  env_file:
-    - .env.runtime
   environment: &app-environment
-    DATABASE_URL: ${LOCAL_TENANT_DATABASE_URL:?Set LOCAL_TENANT_DATABASE_URL in .env.compose}
-    TENANT_DATABASE_URL: ${LOCAL_TENANT_DATABASE_URL:?Set LOCAL_TENANT_DATABASE_URL in .env.compose}
+    DATABASE_URL: ${TENANT_DATABASE_URL:?Set TENANT_DATABASE_URL in .env}
+    TENANT_DATABASE_URL: ${TENANT_DATABASE_URL:?Set TENANT_DATABASE_URL in .env}
     USE_TENANT_ROLE: "true"
-    REDIS_URL: redis://redis:6379/0
+    REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}@redis:6379/0
     ENVIRONMENT: ${ENVIRONMENT:-development}
+    DEBUG: ${DEBUG:-false}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in .env}
+    SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+    SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+    SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+    JWT_AUDIENCE: ${JWT_AUDIENCE:-authenticated}
+    ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+    ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    ADMIN_SECRET_KEY: ${ADMIN_SECRET_KEY:-}
+    GROQ_API_KEY: ${GROQ_API_KEY:-}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+    LLM_MODEL: ${LLM_MODEL:-openai/gpt-oss-20b}
+    ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+    FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    APP_BASE_URL: ${APP_BASE_URL:-http://localhost:5173}
+    BILLING_DATABASE_URL: ${BILLING_DATABASE_URL:-}
+    APIKEY_DATABASE_URL: ${APIKEY_DATABASE_URL:-}
+    STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+    STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    STRIPE_PRICE_PRO: ${STRIPE_PRICE_PRO:-}
+    BROWSERLESS_TOKEN: ${BROWSERLESS_TOKEN:-}
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_FROM: ${SMTP_FROM:-}
+    SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+    TG_BOT_TOKEN: ${TG_BOT_TOKEN:-}
+    TG_API_BASE_URL: ${TG_API_BASE_URL:-}
+    TG_COMPANY_ID: ${TG_COMPANY_ID:-}
+    TG_API_TOKEN: ${TG_API_TOKEN:-}
+    TG_ALLOWED_USER_IDS: ${TG_ALLOWED_USER_IDS:-}
+    TWOGIS_API_KEY: ${TWOGIS_API_KEY:-}
+    GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+    GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+    YANDEX_OAUTH_CLIENT_ID: ${YANDEX_OAUTH_CLIENT_ID:-}
+    YANDEX_OAUTH_CLIENT_SECRET: ${YANDEX_OAUTH_CLIENT_SECRET:-}
   security_opt:
     - no-new-privileges:true
   networks:
@@ -26,9 +63,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.compose}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.compose}
-      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.compose}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -42,11 +79,16 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     volumes:
       - redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -58,11 +100,11 @@ services:
       context: .
       dockerfile: Dockerfile
     image: tenable-serm-local:latest
-    command: ["python", "scripts/migrate.py"]
+    command: ["true"]
     restart: "no"
     environment:
-      DATABASE_URL: ${LOCAL_ADMIN_DATABASE_URL:?Set LOCAL_ADMIN_DATABASE_URL in .env.compose}
-      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env.compose}
+      DATABASE_URL: ${DATABASE_URL:?Set the PostgreSQL admin DATABASE_URL in .env}
+      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}
     depends_on:
       db:
         condition: service_healthy
@@ -71,7 +113,8 @@ services:
 
   api:
     <<: *app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    entrypoint: ["uvicorn"]
+    command: ["app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     depends_on:
@@ -79,15 +122,28 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 3).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   worker:
     <<: *app
-    command: ["arq", "app.infrastructure.queue.worker.worker.WorkerSettings"]
+    entrypoint: ["arq"]
+    command: ["app.infrastructure.queue.worker.worker.WorkerSettings"]
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.WorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
 
 volumes:
   pgdata:

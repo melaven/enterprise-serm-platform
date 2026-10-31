@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
 # Релизный деплой Tenable SERM на Ubuntu VPS.
 #
-# Сделать исполняемым (один раз):   chmod +x deploy.sh
-# Запуск:                           ./deploy.sh [--clean] [--no-migrate] [-h|--help]
+# Сделать исполняемым (один раз):   chmod +x scripts/deploy.sh
+# Запуск:                           ./scripts/deploy.sh [--clean] [-h|--help]
 #   --clean       пересобрать образы без кэша (--no-cache --pull) и удалить старые образы/кэш сборки
-#   --no-migrate  пропустить накатку SQL-миграций
 #
-# Порядок: проверки -> build -> postgres/redis -> миграции -> up -d остальных сервисов -> проверка.
-# Миграции идут ДО старта нового api/worker: новый код никогда не работает на старой схеме.
+# Порядок: проверки -> build -> postgres/redis -> api/worker/nginx -> проверка.
+# Compose требует успешного завершения migrate до старта api/worker.
 
 set -Eeuo pipefail
 
@@ -15,8 +14,8 @@ COMPOSE_FILE="docker-compose.prod.yml"
 ENV_FILE=".env"
 ENV_TEMPLATE=".env.example"
 WAIT_TIMEOUT=180
-# Без этих значений стек не стартует (совпадает с ${VAR:?} в compose + DATABASE_URL приложения).
-REQUIRED_VARS=(SERVER_NAME TLS_CERT_DIR REDIS_PASSWORD POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB DATABASE_URL SUPABASE_URL BROWSERLESS_TOKEN)
+# Без этих значений стек не стартует (совпадает с ${VAR:?} в compose).
+REQUIRED_VARS=(SERVER_NAME TLS_CERT_DIR REDIS_PASSWORD POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB DATABASE_URL TENANT_DATABASE_URL APP_TENANT_PASSWORD SUPABASE_URL)
 
 # --- цвета (только в терминале) ---
 if [[ -t 1 ]]; then
@@ -38,17 +37,17 @@ on_error() {
 trap 'on_error $LINENO' ERR
 
 CLEAN=0
-MIGRATE=1
 for arg in "$@"; do
   case "$arg" in
     --clean) CLEAN=1 ;;
-    --no-migrate) MIGRATE=0 ;;
     -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) fail "Неизвестный аргумент: $arg (см. --help)" ;;
   esac
 done
 
-cd "$(dirname "$(readlink -f "$0")")"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+cd "$ROOT_DIR"
 
 # Один деплой за раз.
 exec 9>/tmp/tenable-deploy.lock
@@ -64,7 +63,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   [[ -f "$ENV_TEMPLATE" ]] || fail "Нет ни $ENV_FILE, ни шаблона $ENV_TEMPLATE."
   cp "$ENV_TEMPLATE" "$ENV_FILE"
   chmod 600 "$ENV_FILE"
-  warn "Создан $ENV_FILE из $ENV_TEMPLATE. Заполни ВСЕ значения (секреты, домен, DATABASE_URL) и запусти ./deploy.sh снова."
+  warn "Создан $ENV_FILE из $ENV_TEMPLATE. Заполни ВСЕ значения и запусти ./scripts/deploy.sh снова."
   exit 1
 fi
 chmod 600 "$ENV_FILE"
@@ -111,23 +110,14 @@ else
 fi
 ok "Образы собраны"
 
-# --- 3. инфраструктура, затем миграции ---
+# --- 3. инфраструктура ---
 info "Запуск postgres и redis..."
 dc up -d --wait --wait-timeout "$WAIT_TIMEOUT" postgres redis
 ok "postgres и redis healthy"
 
-if ((MIGRATE)); then
-  info "Накатка SQL-миграций (scripts/migrate.py)..."
-  # run --rm --no-deps: одноразовый контейнер из свежесобранного образа; не зависит от того, запущен ли api.
-  dc run --rm --no-deps -T api python scripts/migrate.py
-  ok "Миграции применены"
-else
-  warn "Миграции пропущены (--no-migrate)"
-fi
-
-# --- 4. остальные сервисы ---
+# --- 4. приложение; migrate запускается как обязательная Compose-зависимость ---
 info "Запуск api, worker, nginx..."
-dc up -d --remove-orphans --wait --wait-timeout "$WAIT_TIMEOUT"
+dc up -d --remove-orphans --wait --wait-timeout "$WAIT_TIMEOUT" api worker nginx
 ok "Все сервисы healthy"
 
 # --- 5. проверка ---

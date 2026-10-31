@@ -58,9 +58,6 @@ pytest.ini
 .pre-commit-config.yaml
 docker-compose*.yml
 Dockerfile
-backend.Dockerfile
-worker.Dockerfile
-frontend.Dockerfile
 # Exclude root nginx.conf but allow frontend/nginx.conf
 /nginx.conf
 nginx/nginx.conf

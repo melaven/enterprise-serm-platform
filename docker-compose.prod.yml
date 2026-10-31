@@ -14,6 +14,9 @@ x-app: &app
     - path: .env
       required: true
   environment: &app-env
+    DATABASE_URL: ${TENANT_DATABASE_URL:?TENANT_DATABASE_URL не задан в .env}
+    TENANT_DATABASE_URL: ${TENANT_DATABASE_URL:?TENANT_DATABASE_URL не задан в .env}
+    USE_TENANT_ROLE: "true"
     # Перекрывает REDIS_URL из .env: из контейнера Redis виден по имени сервиса, пароль из того же .env.
     REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD не задан в .env}@redis:6379/0
     # API не публикуется наружу, достучаться до него может только nginx: доверяем его X-Forwarded-*.
@@ -43,12 +46,47 @@ x-app: &app
     - edge   # исходящий интернет для разрешенных интеграций и связь с nginx
 
 services:
+  migrate:
+    build:
+      context: .
+      target: runtime
+      args:
+        PYTHON_VERSION: "3.12"
+    image: tenable-serm:${APP_VERSION:-latest}
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL должен быть admin DSN для миграций}
+      APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?APP_TENANT_PASSWORD не задан в .env}
+    command: ["true"]
+    restart: "no"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - data
+      - edge
+
   api:
     <<: *app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+    entrypoint: ["uvicorn"]
+    command: ["app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
     environment:
       <<: *app-env
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    depends_on:
+      <<: *app-deps
+      migrate:
+        condition: service_completed_successfully
     expose:
       - "8000" # только внутри docker-сети; на хост порт не публикуется
     mem_limit: ${API_MEM_LIMIT:-1g}
@@ -65,10 +103,14 @@ services:
 
   worker:
     <<: *app
-    command: ["arq", "app.infrastructure.queue.worker.worker.WorkerSettings"]
+    entrypoint: ["arq"]
+    command: ["app.infrastructure.queue.worker.worker.WorkerSettings"]
     stop_grace_period: 40s # дать дозавершить задачи; прерванные ARQ вернёт в очередь
     mem_limit: ${WORKER_MEM_LIMIT:-1g}
-    depends_on: *app-deps
+    depends_on:
+      <<: *app-deps
+      migrate:
+        condition: service_completed_successfully
     environment:
       <<: *app-env
     networks:
@@ -105,7 +147,9 @@ services:
       start_period: 20s
     logging: *logging
     networks:
-      - data
+      data:
+        aliases:
+          - db
 
   redis:
     image: redis:7-alpine
@@ -141,8 +185,8 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./infra/nginx/api-proxy.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       # Каталог с fullchain.pem и privkey.pem (например /etc/letsencrypt/live/<домен>)
       - ${TLS_CERT_DIR:?TLS_CERT_DIR (каталог с fullchain.pem и privkey.pem) не задан в .env}:/etc/nginx/certs:ro
       - ${ACME_WEBROOT:-./infra/nginx/acme}:/var/www/certbot:ro

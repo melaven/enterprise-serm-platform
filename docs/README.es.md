@@ -6,7 +6,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
-🇬🇧 [English](README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
+🇬🇧 [English](../README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
 
 Tenable es una plataforma B2B de Sentiment Intelligence (SI) y gestión de la reputación en buscadores (SERM) para analizar opiniones públicas sobre empresas obtenidas de forma lícita. Ayuda a las organizaciones a comprender el sentimiento, detectar riesgos relacionados con la calidad del servicio y seguir la evolución de su reputación mediante análisis con aislamiento entre tenants.
 
@@ -124,17 +124,17 @@ frontend/src/
 ## Seguridad y operación
 
 - El modelo de aislamiento de tenants de la aplicación requiere PostgreSQL; SQLite no sustituye la validación del comportamiento de RLS.
-- Aplique las migraciones mediante el ejecutor de migraciones del repositorio, en lugar de ejecutar archivos de migración manualmente. Consulte [`migrations/README.md`](migrations/README.md).
+- Aplique las migraciones mediante el ejecutor de migraciones del repositorio, en lugar de ejecutar archivos de migración manualmente. Consulte [`migrations/README.md`](../migrations/README.md).
 - Proteja secretos y credenciales mediante la gestión de secretos del entorno de despliegue. No incluya archivos `.env` ni credenciales de producción en commits.
 - Antes de producción, revise las integraciones habilitadas, los roles de tenant, el acceso de red, las políticas de la base de datos, la configuración de LLM, los registros y la retención.
 - Trate la DLQ como un almacén de datos sensibles desde el punto de vista operativo. Restrinja el acceso y defina procedimientos de retención y repetición adecuados.
 
 ## Documentación del repositorio
 
-- [`README.md`](README.md) — versión principal en inglés.
-- [`frontend/README.md`](frontend/README.md) — documentación específica del frontend.
-- [`migrations/README.md`](migrations/README.md) — guía de migraciones de base de datos.
-- [`infra/devops/README.md`](infra/devops/README.md) — documentación de DevOps y despliegue.
+- [`README.md`](../README.md) — versión principal en inglés.
+- [`frontend/README.md`](../frontend/README.md) — documentación específica del frontend.
+- [`migrations/README.md`](../migrations/README.md) — guía de migraciones de base de datos.
+- [`infra/devops/README.md`](../infra/devops/README.md) — documentación de DevOps y despliegue.
 
 ## Licencia
 

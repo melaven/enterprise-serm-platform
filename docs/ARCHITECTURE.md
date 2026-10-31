@@ -147,20 +147,20 @@ returns HTTP 402 and the task is not sent to the queue.
 If opening the repository from scratch, read in this order to navigate the structure effectively.
 
 ### 1. Entry Documents
-- [README.md](README.md) — general project description, stack, startup, main scenarios
+- [README.md](../README.md) — general project description, stack, startup, main scenarios
 - [ARCHITECTURE.md](ARCHITECTURE.md) — architecture map and core principles
 - [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) — more technical backend map
-- [frontend/FRONTEND_ARCHITECTURE.md](frontend/FRONTEND_ARCHITECTURE.md) — frontend structure and modularity
+- [frontend/FRONTEND_ARCHITECTURE.md](../frontend/FRONTEND_ARCHITECTURE.md) — frontend structure and modularity
 
 ### 2. Application Entry Points
-- [app/main.py](app/main.py) — main FastAPI entrypoint
-- [app/core/dependencies.py](app/core/dependencies.py) — DI and service/repository factories
-- [app/core/database.py](app/core/database.py) — database and sessions
-- [app/core/auth.py](app/core/auth.py) — authentication and authorization
-- [app/core/tenant.py](app/core/tenant.py) — tenant context
+- [app/main.py](../app/main.py) — main FastAPI entrypoint
+- [app/core/dependencies.py](../app/core/dependencies.py) — DI and service/repository factories
+- [app/core/database.py](../app/core/database.py) — database and sessions
+- [app/core/auth.py](../app/core/auth.py) — authentication and authorization
+- [app/core/tenant.py](../app/core/tenant.py) — tenant context
 
 ### 3. HTTP Layer
-- [app/api/v1/routes](app/api/v1/routes) — API endpoints
+- [app/api/v1/routes](../app/api/v1/routes) — API endpoints
   - `auth.py` — login/registration/tokens
   - `reviews.py` — reviews
   - `companies.py` — companies
@@ -171,37 +171,37 @@ If opening the repository from scratch, read in this order to navigate the struc
   - `reputation.py` — reputation and summary metrics
 
 ### 4. Business Logic
-- [app/application](app/application) — use cases and application services
-- [app/domain/reviews](app/domain/reviews) — review lifecycle and domain rules
+- [app/application](../app/application) — use cases and application services
+- [app/domain/reviews](../app/domain/reviews) — review lifecycle and domain rules
 
 ### 5. Data and Database Access
-- [app/infrastructure/persistence/repositories](app/infrastructure/persistence/repositories) — repositories
+- [app/infrastructure/persistence/repositories](../app/infrastructure/persistence/repositories) — repositories
   - `company.py`, `platform.py`, `review.py`
   - `analytics_repo.py`
   - `dlq.py`
   - `parser.py`
-- [app/infrastructure/persistence/models](app/infrastructure/persistence/models) — SQLAlchemy models
-- [app/api/schemas](app/api/schemas) — Pydantic API contracts
+- [app/infrastructure/persistence/models](../app/infrastructure/persistence/models) — SQLAlchemy models
+- [app/api/schemas](../app/api/schemas) — Pydantic API contracts
 
 ### 6. Integrations and Infrastructure
-- [app/infrastructure](app/infrastructure) — persistence, integrations, parsers, and queue workers
-- [migrations](migrations) — database migrations
-- [scripts](scripts) — migration and seed utilities
-- [docker-compose.yml](docker-compose.yml) — local infrastructure
-- [docker-compose.prod.yml](docker-compose.prod.yml) — production configuration
-- [scripts/run_api.py](scripts/run_api.py) — optional backend startup
-- [app/worker.py](app/worker.py) — compatibility import for the ARQ worker
+- [app/infrastructure](../app/infrastructure) — persistence, integrations, parsers, and queue workers
+- [migrations](../migrations) — database migrations
+- [scripts](../scripts) — migration and seed utilities
+- [docker-compose.yml](../docker-compose.yml) — local infrastructure
+- [docker-compose.prod.yml](../docker-compose.prod.yml) — production configuration
+- [scripts/run_api.py](../scripts/run_api.py) — optional backend startup
+- [app/worker.py](../app/worker.py) — compatibility import for the ARQ worker
 
 ### 7. Frontend
-- [frontend](frontend) — React/Vite application
-  - [frontend/src](frontend/src) — main UI code
+- [frontend](../frontend) — React/Vite application
+  - [frontend/src](../frontend/src) — main UI code
   - `api/` — HTTP client and integrations
   - `features/` — feature modules
   - `pages/` — routes
   - `components/` — UI components
 
 ### 8. Tests and Quality
-- [tests](tests) — backend tests
+- [tests](../tests) — backend tests
 - `*.test.ts` / `*.test.py` — contract and logic validation
 - `pytest.ini` and configuration files — test environment settings
 
@@ -230,14 +230,14 @@ migrations/
 
 If you need to quickly understand the project and locate components:
 
-1. Open [README.md](README.md)
+1. Open [README.md](../README.md)
 2. Read [ARCHITECTURE.md](ARCHITECTURE.md)
-3. Open [app/main.py](app/main.py)
-4. Review [app/core/dependencies.py](app/core/dependencies.py)
-5. Navigate through routes in [app/api/v1/routes](app/api/v1/routes)
-6. Then use cases in [app/application](app/application)
-7. Then persistence adapters in [app/infrastructure/persistence](app/infrastructure/persistence)
-8. Only after that review frontend in [frontend](frontend)
+3. Open [app/main.py](../app/main.py)
+4. Review [app/core/dependencies.py](../app/core/dependencies.py)
+5. Navigate through routes in [app/api/v1/routes](../app/api/v1/routes)
+6. Then use cases in [app/application](../app/application)
+7. Then persistence adapters in [app/infrastructure/persistence](../app/infrastructure/persistence)
+8. Only after that review frontend in [frontend](../frontend)
 
 This provides a "horizontal" path through the architecture without chaos or repeated folder searches.
 

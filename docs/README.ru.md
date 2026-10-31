@@ -6,7 +6,7 @@
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL%20%2B%20RLS-3FCF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 
-🇬🇧 [English](README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
+🇬🇧 [English](../README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
 
 Tenable — B2B-платформа Sentiment Intelligence (SI) и управления репутацией в поисковых системах (SERM) для анализа правомерно полученных публичных отзывов о компаниях. Платформа помогает организациям оценивать тональность отзывов, выявлять риски качества обслуживания и отслеживать динамику репутации с изоляцией данных арендаторов.
 
@@ -124,17 +124,17 @@ frontend/src/
 ## Безопасность и эксплуатация
 
 - Для модели изоляции арендаторов приложения требуется PostgreSQL; SQLite не заменяет проверку работы RLS.
-- Применяйте миграции базы данных через миграционный скрипт репозитория, а не вручную. См. [`migrations/README.md`](migrations/README.md).
+- Применяйте миграции базы данных через миграционный скрипт репозитория, а не вручную. См. [`migrations/README.md`](../migrations/README.md).
 - Храните секреты и учётные данные средствами управления секретами в среде развёртывания. Не коммитьте `.env` и производственные секреты.
 - Перед промышленным запуском проверьте активные интеграции, роли арендаторов, сетевой доступ, политики базы данных, настройки LLM, журналирование и сроки хранения.
 - Считайте DLQ хранилищем чувствительных с операционной точки зрения данных. Ограничьте доступ и определите подходящие процедуры хранения и повторной обработки.
 
 ## Документация репозитория
 
-- [`README.md`](README.md) — основная версия на английском языке.
-- [`frontend/README.md`](frontend/README.md) — документация frontend.
-- [`migrations/README.md`](migrations/README.md) — руководство по миграциям базы данных.
-- [`infra/devops/README.md`](infra/devops/README.md) — документация DevOps и развёртывания.
+- [`README.md`](../README.md) — основная версия на английском языке.
+- [`frontend/README.md`](../frontend/README.md) — документация frontend.
+- [`migrations/README.md`](../migrations/README.md) — руководство по миграциям базы данных.
+- [`infra/devops/README.md`](../infra/devops/README.md) — документация DevOps и развёртывания.
 
 ## Лицензия
 

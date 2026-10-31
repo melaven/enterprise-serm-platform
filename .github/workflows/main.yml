@@ -191,35 +191,18 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build backend image
+      - name: Build application image
         run: |
-          docker build -f backend.Dockerfile -t tenable-serm-backend:latest .
-
-      - name: Build worker image
-        run: |
-          docker build -f worker.Dockerfile -t tenable-serm-worker:latest .
+          docker build -f Dockerfile -t tenable-serm:latest .
 
       - name: Build frontend image
         run: |
-          docker build -f frontend.Dockerfile -t tenable-serm-frontend:latest .
+          docker build -f frontend/Dockerfile -t tenable-serm-frontend:latest frontend
 
       - name: Test docker-compose build
-        env:
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_password
-          POSTGRES_DB: test_db
-          APP_TENANT_PASSWORD: test_tenant
-          REDIS_PASSWORD: test_redis_pass
-          JWT_SECRET_KEY: test_secret_key_for_ci_docker
-          GROQ_API_KEY: test_key
-          SUPABASE_URL: https://test.supabase.co
-          SUPABASE_SERVICE_ROLE_KEY: test_key
-          SUPABASE_JWT_SECRET: test_jwt_secret
         run: |
-          # Compose services declare .env as an env_file; CI supplies dummy build-only values.
-          touch .env
-          trap 'rm -f .env' EXIT
-          docker compose build
+          docker compose --env-file .env.example config -q
+          docker compose --env-file .env.example build
 
       - name: Security Scan (Trivy)
         uses: aquasecurity/trivy-action@master
@@ -247,11 +230,9 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: |
-          docker tag tenable-serm-backend:latest ${{ secrets.DOCKER_USERNAME }}/tenable-serm-backend:latest
-          docker tag tenable-serm-worker:latest ${{ secrets.DOCKER_USERNAME }}/tenable-serm-worker:latest
+          docker tag tenable-serm:latest ${{ secrets.DOCKER_USERNAME }}/tenable-serm:latest
           docker tag tenable-serm-frontend:latest ${{ secrets.DOCKER_USERNAME }}/tenable-serm-frontend:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm-backend:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm-worker:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm:latest
           docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm-frontend:latest
 
       - name: Create deployment tag

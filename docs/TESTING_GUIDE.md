@@ -8,8 +8,7 @@
 cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\Tenable SERM"
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Или просто:
-start_backend.bat
+# API starts with the Docker Compose stack described in docs/QUICKSTART.md.
 ```
 
 ### 2. ARQ Worker (опционально)
@@ -18,8 +17,7 @@ start_backend.bat
 cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\Tenable SERM"
 python worker.py
 
-# Или:
-start_worker.bat
+# Start the worker with: docker compose up worker
 ```
 
 ### 3. Frontend
@@ -28,8 +26,7 @@ start_worker.bat
 cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\Tenable SERM\frontend"
 npm run dev
 
-# Или:
-start_frontend.bat
+# Install dependencies with npm install, then run npm run dev.
 ```
 
 ---

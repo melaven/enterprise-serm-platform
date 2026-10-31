@@ -17,7 +17,12 @@ from app.core.auth import (
     get_current_tenant,
     get_jwt_payload,
 )
-from app.core.tenant_session import build_rls_claims, tenant_session
+from app.core.tenant_session import (
+    SET_RLS_CONTEXT,
+    build_rls_claims,
+    set_rls_context,
+    tenant_session,
+)
 
 SECRET = "x" * 40  # тестовый секрет, не настоящий
 CFG = AuthConfig(secret=SECRET, jwks_url=None)
@@ -138,6 +143,45 @@ def test_claims_json_is_safe_and_minimal() -> None:
     assert data == {"sub": USER, "tenant_id": TENANT}
 
 
+def test_set_rls_context_sets_all_tenant_claims() -> None:
+    log: list[Any] = []
+    p = decode_token(token(), CFG)
+    session = _Session(log)
+
+    run(set_rls_context(session, p))  # type: ignore[arg-type]
+
+    stmt, params = log[0]
+    assert stmt == SET_RLS_CONTEXT
+    assert params == {
+        "claims": json.dumps({"sub": USER, "tenant_id": TENANT}),
+        "company_id": TENANT,
+        "user_id": USER,
+    }
+
+
+def test_tenant_db_dependency_sets_rls_context_before_yield(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import dependencies
+
+    log: list[Any] = []
+    session = _Session(log)
+    payload = decode_token(token(), CFG)
+    monkeypatch.setattr(dependencies, "AsyncSessionLocal", lambda: session)
+
+    async def go() -> None:
+        generator = dependencies.get_tenant_db(payload=payload)
+        assert await anext(generator) is session
+        stmt, params = log[0]
+        assert stmt == SET_RLS_CONTEXT
+        assert json.loads(params["claims"])["tenant_id"] == TENANT
+        with pytest.raises(StopAsyncIteration):
+            await generator.asend(None)
+
+    run(go())
+    assert log[-2:] == ["commit", "close"]
+
+
 class _Begin:
     def __init__(self, log: list[Any]) -> None:
         self.log = log
@@ -164,6 +208,15 @@ class _Session:
 
     async def execute(self, stmt: Any, params: dict[str, str]) -> None:
         self.log.append((stmt, params))
+
+    async def commit(self) -> None:
+        self.log.append("commit")
+
+    async def rollback(self) -> None:
+        self.log.append("rollback")
+
+    async def close(self) -> None:
+        self.log.append("close")
 
 
 def test_tenant_context_is_first_statement_in_transaction() -> None:

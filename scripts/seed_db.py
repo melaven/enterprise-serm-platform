@@ -637,7 +637,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=ROOT / "mock_reputation_data.json",
+        default=ROOT / "examples" / "mock_reputation_data.json",
         help="Path for the frontend JSON fixture.",
     )
     parser.add_argument(

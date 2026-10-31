@@ -25,7 +25,7 @@ the repository root in PowerShell.
    ```
 
 4. Seed the demo tenant, platforms, 120 reviews, statistics, and LLM cache.
-   The command is idempotent and also writes `mock_reputation_data.json`.
+   The command is idempotent and also writes `examples/mock_reputation_data.json`.
 
    ```powershell
    python scripts/seed_db.py

@@ -13,6 +13,7 @@ from app.infrastructure.persistence.models.economics import (
     Review,
     WebhookEndpoint,
 )
+from app.infrastructure.persistence.models.outbox_event import OutboxEvent
 from app.infrastructure.persistence.models.review import ReviewState
 from app.infrastructure.persistence.models.review_analysis_payload import (
     ReviewAnalysisPayload,
@@ -27,6 +28,7 @@ __all__ = [
     "PlatformIntegration",
     "PlatformStatistic",
     "Review",
+    "OutboxEvent",
     "ReviewAnalysisPayload",
     "ReviewReply",
     "ReviewState",

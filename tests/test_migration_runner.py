@@ -118,6 +118,20 @@ def test_review_ingestion_migration_aligns_deduplication_schema() -> None:
     assert "WHERE" not in sql
 
 
+def test_transactional_outbox_migration_is_registered_and_tenant_isolated() -> None:
+    filename = "040_transactional_outbox.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS public.outbox_events" in sql
+    assert "payload jsonb NOT NULL" in sql
+    assert "status IN ('pending', 'processed', 'failed')" in sql
+    assert "payload ->> 'tenant_id' = app.current_company_id()::text" in sql
+    assert "FOR UPDATE OF event SKIP LOCKED" in sql
+    assert "SECURITY DEFINER" in sql
+    assert "GRANT EXECUTE ON FUNCTION public.claim_outbox_events(integer)" in sql
+
+
 def test_schema_cleanup_migration_removes_duplicate_review_pipeline_state() -> None:
     sql = (MIGRATIONS_DIR / "028_schema_cleanup.sql").read_text(encoding="utf-8")
 

@@ -8,11 +8,13 @@ from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas.economics import ReplyModerationStatus, ReviewStatus
 from app.application.reviews.service import ReviewApplicationService
 from app.infrastructure.persistence.models.economics import Review
+from app.infrastructure.persistence.models.outbox_event import OutboxEvent
 from app.infrastructure.persistence.models.review_reply import ReviewReply
 
 
@@ -315,7 +317,7 @@ async def test_generate_reply_rls_denies_access(
 
 
 @pytest.mark.asyncio
-async def test_create_review_encrypts_source_and_enqueues_analysis(
+async def test_create_review_encrypts_source_and_writes_analysis_outbox(
     client: AsyncClient,
     company_id,
     db_session: AsyncSession,
@@ -325,22 +327,11 @@ async def test_create_review_encrypts_source_and_enqueues_analysis(
     from app.infrastructure.persistence.models.review_analysis_payload import (
         ReviewAnalysisPayload,
     )
-    from app.main import app
 
     source_text = "A confidential customer review."
     monkeypatch.setattr(
         review_service, "encrypt_token", lambda text: "encrypted-source"
     )
-
-    class FakeQueue:
-        def __init__(self) -> None:
-            self.job = None
-
-        async def enqueue_job(self, function_name: str, *args, **kwargs) -> None:
-            self.job = (function_name, args, kwargs)
-
-    queue = FakeQueue()
-    monkeypatch.setattr(app.state, "arq_pool", queue, raising=False)
 
     response = await client.post(
         "/api/v1/reviews/",
@@ -360,9 +351,15 @@ async def test_create_review_encrypts_source_and_enqueues_analysis(
     payload = await db_session.get(ReviewAnalysisPayload, review_id)
     assert payload is not None
     assert payload.encrypted_text == "encrypted-source"
-    assert queue.job is not None
-    assert queue.job[0] == "process_review_task"
-    assert queue.job[1] == (str(review_id), str(company_id))
+    outbox_event = await db_session.scalar(
+        select(OutboxEvent).where(
+            OutboxEvent.payload["review_id"].as_string() == str(review_id)
+        )
+    )
+    assert outbox_event is not None
+    assert outbox_event.event_type == "review.analysis.requested"
+    assert outbox_event.status == "pending"
+    assert outbox_event.payload["tenant_id"] == str(company_id)
 
 
 @pytest.mark.asyncio

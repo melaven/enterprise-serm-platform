@@ -105,13 +105,11 @@ async def create_review(
     review_data: ReviewCreate,
     session: AsyncSession = Depends(get_tenant_db),
     tenant_id: UUID = Depends(get_current_tenant),
-    arq_pool: ReviewQueue | None = Depends(get_review_queue),
 ) -> ReviewResponse:
-    """Сохранить отзыв и поставить его анализ в ARQ без ожидания обработки."""
+    """Сохранить отзыв и событие анализа в одной транзакции."""
     service = ReviewApplicationService(
         session=session,
         tenant_id=tenant_id,
-        arq_pool=arq_pool,
     )
     new_review = await service.create_review(
         platform_id=review_data.platform_id,
@@ -160,13 +158,11 @@ async def receive_review_webhook(
     review_data: ReviewBase,
     session: AsyncSession = Depends(get_tenant_db),
     tenant_id: UUID = Depends(get_current_tenant),
-    arq_pool: ReviewQueue | None = Depends(get_review_queue),
 ) -> JSONResponse:
-    """Принять отзыв и поставить его обработку в ARQ очередь."""
+    """Принять отзыв и сохранить событие обработки."""
     service = ReviewApplicationService(
         session=session,
         tenant_id=tenant_id,
-        arq_pool=arq_pool,
     )
     review = await service.create_review(
         platform_id=review_data.platform_id,

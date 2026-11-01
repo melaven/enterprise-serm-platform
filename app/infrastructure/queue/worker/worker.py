@@ -15,14 +15,15 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 
 from arq import create_pool, cron
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.logger import configure_logging, get_logger, set_correlation_id
 from app.core.redis import get_redis_settings
 from app.core.review_privacy import safe_review_summary
 from app.core.security import decrypt_token
-from app.core.tenant_session import get_tenant_session
+from app.core.tenant_session import get_tenant_session, set_tenant_rls_context
 from app.domain.billing import (
     BillingService,
     QuotaExceededError,
@@ -45,6 +46,9 @@ from app.infrastructure.queue.worker.digest import (
 from app.workers.tasks.ingestion import process_review_ingestion
 
 logger = get_logger(__name__)
+
+OUTBOX_BATCH_SIZE = 50
+OUTBOX_ANALYSIS_EVENT = "review.analysis.requested"
 
 
 async def process_review_task(
@@ -253,6 +257,103 @@ async def process_review_task(
         await session.close()
 
 
+async def relay_outbox_events(ctx: dict[str, Any]) -> dict[str, int]:
+    """Deliver committed outbox events to ARQ while holding their row locks."""
+    redis = ctx.get("redis")
+    if redis is None:
+        raise RuntimeError("ARQ Redis connection is missing from worker context")
+
+    delivered = 0
+    failed = 0
+    async with AsyncSessionLocal() as session:
+        tenant_ids = (
+            await session.scalars(
+                text("SELECT tenant_id FROM public.pending_outbox_tenants()")
+            )
+        ).all()
+
+    for tenant_id in tenant_ids:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                await set_tenant_rls_context(session, tenant_id)
+                rows = (
+                    await session.execute(
+                        text(
+                            "SELECT id, event_type, payload "
+                            "FROM public.claim_outbox_events(:batch_size)"
+                        ),
+                        {"batch_size": OUTBOX_BATCH_SIZE},
+                    )
+                ).mappings()
+
+                for event in rows:
+                    payload = event["payload"]
+                    if event["event_type"] != OUTBOX_ANALYSIS_EVENT or not isinstance(
+                        payload, dict
+                    ):
+                        await _set_outbox_status(session, event["id"], "failed")
+                        failed += 1
+                        logger.error(
+                            "outbox_event_invalid",
+                            event_id=str(event["id"]),
+                            event_type=event["event_type"],
+                        )
+                        continue
+
+                    try:
+                        review_id = UUID(str(payload["review_id"]))
+                        event_tenant_id = UUID(str(payload["tenant_id"]))
+                        correlation_id = payload.get("correlation_id")
+                        if event_tenant_id != tenant_id:
+                            raise ValueError("Outbox event tenant does not match claim")
+                        if correlation_id is not None and not isinstance(
+                            correlation_id, str
+                        ):
+                            raise ValueError("Invalid outbox correlation_id")
+                    except (KeyError, TypeError, ValueError) as exc:
+                        await _set_outbox_status(session, event["id"], "failed")
+                        failed += 1
+                        logger.error(
+                            "outbox_event_invalid_payload",
+                            event_id=str(event["id"]),
+                            error=str(exc),
+                        )
+                        continue
+
+                    try:
+                        await redis.enqueue_job(
+                            "process_review_task",
+                            str(review_id),
+                            str(tenant_id),
+                            correlation_id=correlation_id,
+                            _job_id=f"process-review-{review_id}",
+                        )
+                    except Exception:
+                        logger.exception(
+                            "outbox_event_enqueue_failed",
+                            event_id=str(event["id"]),
+                            review_id=str(review_id),
+                        )
+                        raise
+
+                    # ARQ returns None when this stable job ID was already enqueued.
+                    await _set_outbox_status(session, event["id"], "processed")
+                    delivered += 1
+
+    return {"delivered": delivered, "failed": failed}
+
+
+async def _set_outbox_status(
+    session: AsyncSession, event_id: UUID, status: str
+) -> None:
+    updated = await session.scalar(
+        text("SELECT public.set_outbox_event_status(:event_id, :status)"),
+        {"event_id": event_id, "status": status},
+    )
+    if updated is not True:
+        raise RuntimeError(f"Outbox event {event_id} was not pending")
+
+
 class WorkerSettings:
     on_startup: Any
     on_shutdown: Any
@@ -265,6 +366,7 @@ class WorkerSettings:
     # Задачи для выполнения
     functions = [
         process_review_task,
+        relay_outbox_events,
         process_review_ingestion,
         send_company_weekly_digest,
         enqueue_weekly_digests,
@@ -273,6 +375,7 @@ class WorkerSettings:
     cron_jobs = [
         cron(enqueue_weekly_digests, weekday="mon", hour=9, minute=0),
         cron(flush_api_key_usage, second=0),
+        cron(relay_outbox_events, second=set(range(0, 60, 5))),
     ]
     timezone = timezone.utc
 

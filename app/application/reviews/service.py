@@ -16,6 +16,7 @@ from app.core.review_privacy import safe_review_summary
 from app.core.security import decrypt_token, encrypt_token
 from app.domain.reviews.state import ReviewState
 from app.infrastructure.persistence.models.economics import Platform, Review
+from app.infrastructure.persistence.models.outbox_event import OutboxEvent
 from app.infrastructure.persistence.models.review_analysis_payload import (
     ReviewAnalysisPayload,
 )
@@ -43,12 +44,10 @@ class ReviewApplicationService:
         self,
         session: AsyncSession,
         tenant_id: UUID,
-        arq_pool: ReviewQueue | None = None,
         analyzer: ReviewReplyAnalyzer | None = None,
     ) -> None:
         self.session = session
         self.tenant_id = tenant_id
-        self.arq_pool = arq_pool
         self.analyzer = analyzer
 
     async def create_review(
@@ -59,11 +58,6 @@ class ReviewApplicationService:
         review_status: ReviewStatus = ReviewStatus.NEW,
         financial_impact: float = 0.0,
     ) -> Review:
-        if self.arq_pool is None:
-            raise SERMException(
-                "Review processing queue is unavailable",
-                status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
         if not text.strip() or len(text) > 10000:
             raise SERMException(
                 "Review text must contain 1 to 10000 characters",
@@ -101,20 +95,19 @@ class ReviewApplicationService:
                 encrypted_text=encrypt_token(text),
             )
         )
+        self.session.add(
+            OutboxEvent(
+                event_type="review.analysis.requested",
+                payload={
+                    "review_id": str(review.id),
+                    "tenant_id": str(self.tenant_id),
+                    "correlation_id": get_correlation_id(),
+                },
+            )
+        )
         await self.session.flush()
         await self.session.refresh(review)
         await self.session.commit()
-
-        # Get correlation ID from context to propagate to worker
-        correlation_id = get_correlation_id()
-
-        await self.arq_pool.enqueue_job(
-            "process_review_task",
-            str(review.id),
-            str(self.tenant_id),
-            correlation_id=correlation_id,
-            _job_id=f"process-review-{review.id}",
-        )
         return review
 
     async def list_assistant_reviews(

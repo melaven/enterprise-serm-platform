@@ -27,6 +27,12 @@ the privacy-constrained reply fields on `reviews` remain `NULL`. Approval only
 marks the reply as approved; publishing it to an external platform remains a
 separate, disabled operation.
 
+Review analysis requests are written to `outbox_events` in the same database
+transaction as the review. The ARQ worker relays pending events every five
+seconds using tenant-scoped claims and `FOR UPDATE SKIP LOCKED`; transient Redis
+errors roll back the claim so events remain pending for retry. Malformed or
+unsupported events are marked `failed` for investigation.
+
 `scripts/migrate.py` applies the ordered SQL chain transactionally, serializes
 concurrent runners with a PostgreSQL advisory lock, and records successful
 versions in `public.serm_schema_migrations`. It stops on the first error; fix

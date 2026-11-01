@@ -56,8 +56,9 @@ flowchart LR
     Nginx --> API["FastAPI<br/>Ingest / API"]
 
     API --> Sanitize["Deterministic PII<br/>redaction at ingestion"]
-    Sanitize --> DB[("Supabase<br/>PostgreSQL")]
-    Sanitize -->|Enqueue analysis job| Redis[("Redis")]
+    Sanitize --> DB[("Supabase PostgreSQL<br/>(Reviews + outbox_events)")]
+    DB --> Relay["Outbox Relay Worker<br/>(SELECT FOR UPDATE SKIP LOCKED)"]
+    Relay --> Redis[("Redis<br/>(ARQ Queue)")]
     Redis --> Worker["ARQ workers"]
 
     DB -. "Read sanitized review data" .-> Worker
@@ -100,7 +101,7 @@ frontend/src/
 - **State Management:** Zustand manages shared application state with persistence. API calls are centralized in `api/`, where the Axios client normalizes errors and coordinates quota and rate-limit handling.
 - **Zero-Trust Client Security:** Treat the browser as an untrusted environment. Client-side route guards improve navigation but do not replace backend authorization or database-level tenant isolation; never rely on the client to protect secrets or enforce access.
 - **Component-Driven UI:** Shared UI primitives live in `components/`, while business-specific screens and behavior are organized in `features/`. Tailwind CSS v3 and the project theme configuration provide utility classes and design tokens.
-- **Optimistic UI:** For suitable reversible interactions, update the interface before the request completes, then reconcile with the server response and restore the prior state if the request fails.
+- **Deterministic Mutation & Concurrency Control:** Critical flows such as Anti-Crisis Radar use strict idempotency, client-side `409 Conflict` handling as a race-condition guard, and pessimistic database locks on the backend. Together, these controls preserve data consistency across concurrent requests.
 - **Client checks:** From `frontend/`, run `npm run lint`, `npm run typecheck`, `npm run test:run`, and `npm run build` for linting, type checking, tests, and a production build.
 
 ## Core Features

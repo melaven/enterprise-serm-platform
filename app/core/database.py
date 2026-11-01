@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.pool import NullPool
 
+from app.core.tenant_session import track_session_writes
+
 logger = logging.getLogger(__name__)
 
 # Local runs must use the checked-in configuration file rather than inherited
@@ -48,20 +50,58 @@ def _postgresql_url(value: str, setting_name: str) -> URL:
     raise RuntimeError(f"{setting_name} must use the asyncpg PostgreSQL driver.")
 
 
+def _is_explicit_test_or_migration_context() -> bool:
+    environment = os.getenv("ENVIRONMENT", "").lower()
+    migration_mode = os.getenv("SERM_MIGRATION_MODE", "").lower() == "true"
+    return environment in {"test", "testing", "migration", "migrate"} or migration_mode
+
+
+def _runtime_database_url(
+    tenant_dsn: str | None,
+    admin_dsn: str,
+    *,
+    use_tenant_role: bool,
+    allow_admin_runtime: bool,
+) -> URL:
+    if not tenant_dsn:
+        raise RuntimeError("TENANT_DATABASE_URL must be configured explicitly.")
+
+    tenant_url = _postgresql_url(tenant_dsn, "TENANT_DATABASE_URL")
+    if tenant_url.username is None or tenant_url.username.lower() in {
+        "postgres",
+        "service_role",
+    }:
+        raise RuntimeError(
+            "TENANT_DATABASE_URL must use a non-privileged runtime database role."
+        )
+
+    if not use_tenant_role:
+        if not allow_admin_runtime:
+            raise RuntimeError(
+                "USE_TENANT_ROLE must be true outside explicit test or migration "
+                "contexts."
+            )
+        return _postgresql_url(admin_dsn, "DATABASE_URL")
+
+    return tenant_url
+
+
 # Основная DATABASE_URL (для postgres роли - миграции)
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("CRITICAL: DATABASE_URL is missing from the root .env file.")
 _postgresql_url(DATABASE_URL, "DATABASE_URL")
 
-# Tenant DATABASE_URL (для app_tenant роли - runtime)
-TENANT_DATABASE_URL = os.getenv("TENANT_DATABASE_URL", DATABASE_URL)
-_postgresql_url(TENANT_DATABASE_URL, "TENANT_DATABASE_URL")
-
-# Определяем какую URL использовать для runtime.
+# Runtime всегда требует явно заданный tenant DSN. Админский DSN разрешён
+# только в явно обозначенном тестовом или миграционном контексте.
+TENANT_DATABASE_URL = os.getenv("TENANT_DATABASE_URL")
 USE_TENANT_ROLE = os.getenv("USE_TENANT_ROLE", "true").lower() == "true"
-runtime_database_url = TENANT_DATABASE_URL if USE_TENANT_ROLE else DATABASE_URL
-database_url = _postgresql_url(runtime_database_url, "Runtime database URL")
+database_url = _runtime_database_url(
+    TENANT_DATABASE_URL,
+    DATABASE_URL,
+    use_tenant_role=USE_TENANT_ROLE,
+    allow_admin_runtime=_is_explicit_test_or_migration_context(),
+)
 
 # Pgbouncer/Supavisor compatibility: disable prepared statement cache
 # to prevent "prepared statement already exists" errors in transaction pooling mode
@@ -102,8 +142,14 @@ Base = declarative_base()
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
+            track_session_writes(session)
             yield session
-            if session.in_transaction():
+            if (
+                session.new
+                or session.dirty
+                or session.deleted
+                or session.sync_session.info.get("has_writes")
+            ):
                 await session.commit()
         except Exception:
             try:

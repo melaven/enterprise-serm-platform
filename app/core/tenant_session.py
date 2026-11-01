@@ -3,10 +3,12 @@
 import json
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.api.schemas.auth import JWTPayload
 from app.core.auth import tenant_id_from_payload
@@ -17,6 +19,65 @@ SET_RLS_CONTEXT = text(
     "set_config('app.company_id', :company_id, true), "
     "set_config('app.user_id', :user_id, true)"
 )
+RLS_CONTEXT_INFO_KEY = "tenant_rls_context"
+RLS_CONTEXT_LISTENER_INFO_KEY = "tenant_rls_context_listener"
+RLS_CONTEXT_APPLIED_INFO_KEY = "tenant_rls_context_applied"
+SESSION_WRITE_LISTENER_INFO_KEY = "session_write_listener"
+SESSION_HAS_WRITES_INFO_KEY = "has_writes"
+
+
+def _restore_rls_context(
+    session: Session,
+    transaction: Any,
+    connection: Any,
+) -> None:
+    """Reapply tenant-local settings whenever this session starts a transaction."""
+    params = session.info.get(RLS_CONTEXT_INFO_KEY)
+    if params is not None and not session.info.get(RLS_CONTEXT_APPLIED_INFO_KEY):
+        connection.execute(SET_RLS_CONTEXT, params)
+        session.info[RLS_CONTEXT_APPLIED_INFO_KEY] = True
+
+
+def _mark_session_writes(execute_state: Any) -> None:
+    if execute_state.is_insert or execute_state.is_update or execute_state.is_delete:
+        execute_state.session.info[SESSION_HAS_WRITES_INFO_KEY] = True
+
+
+def _reset_transaction_state(session: Session) -> None:
+    session.info.pop(SESSION_HAS_WRITES_INFO_KEY, None)
+    session.info.pop(RLS_CONTEXT_APPLIED_INFO_KEY, None)
+
+
+def track_session_writes(session: AsyncSession) -> None:
+    """Track ORM DML statements so dependency cleanup can commit Core writes."""
+    sync_session = session.sync_session
+    if sync_session.info.get(SESSION_WRITE_LISTENER_INFO_KEY):
+        return
+
+    event.listen(sync_session, "do_orm_execute", _mark_session_writes)
+    event.listen(sync_session, "after_commit", _reset_transaction_state)
+    event.listen(sync_session, "after_rollback", _reset_transaction_state)
+    sync_session.info[SESSION_WRITE_LISTENER_INFO_KEY] = True
+
+
+def _remember_rls_context(
+    session: AsyncSession,
+    payload: JWTPayload,
+    *,
+    user_id: str | None = None,
+) -> None:
+    tenant_id = tenant_id_from_payload(payload)
+    session.sync_session.info[RLS_CONTEXT_INFO_KEY] = {
+        "claims": build_rls_claims(payload),
+        "company_id": str(tenant_id),
+        "user_id": user_id if user_id is not None else str(payload.sub),
+    }
+    sync_session = session.sync_session
+    if not sync_session.info.get(RLS_CONTEXT_LISTENER_INFO_KEY):
+        event.listen(sync_session, "after_begin", _restore_rls_context)
+        event.listen(sync_session, "after_commit", _reset_transaction_state)
+        event.listen(sync_session, "after_rollback", _reset_transaction_state)
+        sync_session.info[RLS_CONTEXT_LISTENER_INFO_KEY] = True
 
 
 def build_rls_claims(payload: JWTPayload) -> str:
@@ -34,16 +95,15 @@ async def set_rls_context(
     *,
     user_id: str | None = None,
 ) -> None:
-    """Устанавливает tenant claims в текущую транзакцию базы данных."""
-    tenant_id = tenant_id_from_payload(payload)
-    await session.execute(
-        SET_RLS_CONTEXT,
-        {
-            "claims": build_rls_claims(payload),
-            "company_id": str(tenant_id),
-            "user_id": user_id if user_id is not None else str(payload.sub),
-        },
-    )
+    """Запоминает tenant claims и устанавливает их, если транзакция уже активна."""
+    _remember_rls_context(session, payload, user_id=user_id)
+    sync_session = session.sync_session
+    if session.in_transaction() and not sync_session.info.get(
+        RLS_CONTEXT_APPLIED_INFO_KEY
+    ):
+        params = sync_session.info[RLS_CONTEXT_INFO_KEY]
+        await session.execute(SET_RLS_CONTEXT, params)
+        sync_session.info[RLS_CONTEXT_APPLIED_INFO_KEY] = True
 
 
 async def set_tenant_rls_context(
@@ -81,10 +141,10 @@ async def tenant_session(
     Yields:
         AsyncSession с установленным RLS контекстом
     """
-    async with factory() as session, session.begin():
-        # Устанавливаем RLS контекст первым statement в транзакции
-        await set_rls_context(session, payload)
-        yield session
+    async with factory() as session:
+        _remember_rls_context(session, payload)
+        async with session.begin():
+            yield session
 
 
 async def get_tenant_session(

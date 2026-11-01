@@ -9,6 +9,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from app.api.schemas.auth import JWTPayload
 from app.core.auth import (
@@ -147,6 +148,7 @@ def test_set_rls_context_sets_all_tenant_claims() -> None:
     log: list[Any] = []
     p = decode_token(token(), CFG)
     session = _Session(log)
+    session.transaction_active = True
 
     run(set_rls_context(session, p))  # type: ignore[arg-type]
 
@@ -159,7 +161,7 @@ def test_set_rls_context_sets_all_tenant_claims() -> None:
     }
 
 
-def test_tenant_db_dependency_sets_rls_context_before_yield(
+def test_tenant_db_dependency_does_not_open_transaction_before_query(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.core import dependencies
@@ -172,30 +174,45 @@ def test_tenant_db_dependency_sets_rls_context_before_yield(
     async def go() -> None:
         generator = dependencies.get_tenant_db(payload=payload)
         assert await anext(generator) is session
-        stmt, params = log[0]
-        assert stmt == SET_RLS_CONTEXT
-        assert json.loads(params["claims"])["tenant_id"] == TENANT
+        assert log == []
         with pytest.raises(StopAsyncIteration):
             await generator.asend(None)
 
     run(go())
-    assert log[-2:] == ["commit", "close"]
+    assert log[-1] == "close"
+    assert "commit" not in log
 
 
 class _Begin:
-    def __init__(self, log: list[Any]) -> None:
+    def __init__(self, session: "_Session", log: list[Any]) -> None:
+        self.session = session
         self.log = log
 
     async def __aenter__(self) -> None:
         self.log.append("begin")
+        self.session.transaction_active = True
+
+        class _Connection:
+            def execute(inner_self, stmt: Any, params: dict[str, str]) -> None:
+                self.log.append((stmt, params))
+
+        self.session.sync_session.dispatch.after_begin(
+            self.session.sync_session, None, _Connection()
+        )
 
     async def __aexit__(self, *exc: Any) -> None:
         self.log.append("commit" if exc[0] is None else "rollback")
+        self.session.transaction_active = False
 
 
 class _Session:
     def __init__(self, log: list[Any]) -> None:
         self.log = log
+        self.sync_session = Session()
+        self.new: set[object] = set()
+        self.dirty: set[object] = set()
+        self.deleted: set[object] = set()
+        self.transaction_active = False
 
     async def __aenter__(self) -> "_Session":
         return self
@@ -204,7 +221,10 @@ class _Session:
         return None
 
     def begin(self) -> _Begin:
-        return _Begin(self.log)
+        return _Begin(self, self.log)
+
+    def in_transaction(self) -> bool:
+        return self.transaction_active
 
     async def execute(self, stmt: Any, params: dict[str, str]) -> None:
         self.log.append((stmt, params))

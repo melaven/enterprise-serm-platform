@@ -32,7 +32,7 @@ from app.infrastructure.persistence.repositories import (
 
 from .auth import get_current_tenant, get_jwt_payload
 from .database import AsyncSessionLocal
-from .tenant_session import set_rls_context
+from .tenant_session import set_rls_context, track_session_writes
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +47,15 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     async with AsyncSessionLocal() as session:
         try:
+            track_session_writes(session)
             yield session
-            await session.commit()
+            if (
+                session.new
+                or session.dirty
+                or session.deleted
+                or session.sync_session.info.get("has_writes")
+            ):
+                await session.commit()
         except Exception:
             await session.rollback()
             raise
@@ -68,13 +75,19 @@ async def get_tenant_db(
     # Создаем tenant-aware session с автоматическим cleanup
     async with AsyncSessionLocal() as session:
         try:
+            track_session_writes(session)
             # Set transaction-local RLS context before yielding the session.
             await set_rls_context(session, payload)
 
             yield session
 
-            # Коммит произойдет автоматически при успешном выходе
-            await session.commit()
+            if (
+                session.new
+                or session.dirty
+                or session.deleted
+                or session.sync_session.info.get("has_writes")
+            ):
+                await session.commit()
         except Exception:
             # Rollback при любой ошибке
             await session.rollback()

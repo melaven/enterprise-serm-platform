@@ -100,3 +100,8 @@ frontend/tests-examples/
 **/*.zip
 
 .kiro/
+
+# Local-only Copilot instructions
+.github/copilot-instructions.md
+.github/copilot-instructions.md
+copilot-instructions.md

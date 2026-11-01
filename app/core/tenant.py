@@ -42,9 +42,11 @@ class TenantSessionFactory:
 
                 yield session
 
-                # Коммит произойдет автоматически при выходе из контекста
-                await session.commit()
-                logger.debug(f"✅ Tenant session committed: company_id={company_id}")
+                if session.new or session.dirty or session.deleted:
+                    await session.commit()
+                    logger.debug(
+                        f"✅ Tenant session committed: company_id={company_id}"
+                    )
 
             except Exception as e:
                 await session.rollback()

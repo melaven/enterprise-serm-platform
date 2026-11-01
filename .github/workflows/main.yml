@@ -103,6 +103,8 @@ jobs:
       - name: Run Unit Tests
         if: matrix.test-group == 'unit'
         env:
+          TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:test_tenant_password@localhost:5432/test_db
+          USE_TENANT_ROLE: "false"
           DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
           SUPABASE_URL: https://test.supabase.co
@@ -117,6 +119,8 @@ jobs:
       - name: Run Integration Tests
         if: matrix.test-group == 'integration'
         env:
+          TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:test_tenant_password@localhost:5432/test_db
+          USE_TENANT_ROLE: "false"
           DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
           SUPABASE_URL: https://test.supabase.co
@@ -131,6 +135,8 @@ jobs:
       - name: Run Tenant Isolation (RLS) Tests
         if: matrix.test-group == 'tenant-isolation'
         env:
+          TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:test_tenant_password@localhost:5432/test_db
+          USE_TENANT_ROLE: "false"
           DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
           SUPABASE_URL: https://test.supabase.co
@@ -150,6 +156,8 @@ jobs:
       - name: Run Security Tests
         if: matrix.test-group == 'security'
         env:
+          TENANT_DATABASE_URL: postgresql+asyncpg://app_tenant:test_tenant_password@localhost:5432/test_db
+          USE_TENANT_ROLE: "false"
           DATABASE_URL: postgresql+asyncpg://test_user:test_password@localhost:5432/test_db
           REDIS_URL: redis://localhost:6379/0
           SUPABASE_URL: https://test.supabase.co

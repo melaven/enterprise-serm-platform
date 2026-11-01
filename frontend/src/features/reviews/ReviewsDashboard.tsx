@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
-import { ArrowLeft, Inbox, Search, Sparkles, Star } from 'lucide-react';
+import { ArrowLeft, Inbox, Loader2, Search, Sparkles, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 
-import { fetchReviews } from '@/api/reviews';
+import { generateReviewReply, fetchReviews } from '@/api/reviews';
+import { RateLimitedApiError } from '@/api/client';
 import { useAuth } from '@/store/useAppStore';
 import type { SanitizedReview } from '@/types/review';
 
@@ -21,7 +23,7 @@ const PLATFORM_FILTERS: readonly { readonly id: PlatformFilter; readonly label: 
   { id: '2gis', label: '2ГИС' },
 ];
 
-/** Подпись кнопки-заглушки вынесена в константу: меняется в одном месте. */
+/** Подпись кнопки вынесена в константу: меняется в одном месте. */
 const REPLY_BUTTON_LABEL = 'Ответить с помощью AI';
 
 // --------------------------------------------------------------------------- //
@@ -79,7 +81,8 @@ export function ReviewsDashboard() {
   const [platform, setPlatform] = useState<PlatformFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mobileDetail, setMobileDetail] = useState(false);
-  const [replyNoticeFor, setReplyNoticeFor] = useState<string | null>(null);
+  const [generatingReplyFor, setGeneratingReplyFor] = useState<string | null>(null);
+  const [generatedReplies, setGeneratedReplies] = useState<Record<string, string>>({});
   const itemRefs = useRef(new Map<string, HTMLButtonElement>());
 
   useEffect(() => {
@@ -119,6 +122,23 @@ export function ReviewsDashboard() {
   function select(id: string): void {
     setSelectedId(id);
     setMobileDetail(true);
+  }
+
+  async function handleGenerateReply(reviewId: string): Promise<void> {
+    setGeneratingReplyFor(reviewId);
+    try {
+      const reply = await generateReviewReply(reviewId);
+      setGeneratedReplies((current) => ({ ...current, [reviewId]: reply }));
+      toast.success('Черновик ответа создан');
+    } catch (cause: unknown) {
+      if (!(cause instanceof RateLimitedApiError)) {
+        toast.error('Не удалось сгенерировать ответ', {
+          description: cause instanceof Error ? cause.message : 'Попробуйте ещё раз.',
+        });
+      }
+    } finally {
+      setGeneratingReplyFor(null);
+    }
   }
 
   function onListKeyDown(event: KeyboardEvent<HTMLUListElement>): void {
@@ -296,14 +316,20 @@ export function ReviewsDashboard() {
               </p>
               <button
                 type="button"
-                onClick={() => setReplyNoticeFor(selected.id)}
-                className={`mt-4 inline-flex h-9 items-center gap-2 rounded-sm bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-700 ${FOCUS}`}
+                onClick={() => void handleGenerateReply(selected.id)}
+                disabled={generatingReplyFor !== null}
+                aria-busy={generatingReplyFor === selected.id}
+                className={`mt-4 inline-flex h-9 items-center gap-2 rounded-sm bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-60 ${FOCUS}`}
               >
-                <Sparkles aria-hidden="true" className="h-4 w-4" />
-                {REPLY_BUTTON_LABEL}
+                {generatingReplyFor === selected.id ? (
+                  <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles aria-hidden="true" className="h-4 w-4" />
+                )}
+                {generatingReplyFor === selected.id ? 'Генерируем ответ…' : REPLY_BUTTON_LABEL}
               </button>
               <p role="status" className="mt-3 min-h-5 text-sm text-neutral-600">
-                {replyNoticeFor === selected.id ? 'Функция в разработке: генерация ответа будет подключена позже.' : ''}
+                {generatedReplies[selected.id] ?? ''}
               </p>
             </section>
           </article>

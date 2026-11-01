@@ -98,3 +98,5 @@ frontend/tests-examples/
 # Temporary archives
 *.zip
 **/*.zip
+
+.kiro/

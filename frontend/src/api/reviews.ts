@@ -25,3 +25,16 @@ export async function fetchReviews(
 
   return response.data.data.items;
 }
+
+interface GenerateReplyResponse {
+  review_id: string;
+  suggested_reply: string;
+}
+
+export async function generateReviewReply(reviewId: string): Promise<string> {
+  const response = await apiClient.post<GenerateReplyResponse>(
+    `/v1/reviews/${reviewId}/generate-reply`,
+  );
+
+  return response.data.suggested_reply;
+}

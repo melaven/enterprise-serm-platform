@@ -57,13 +57,12 @@ flowchart LR
 
     API --> Sanitize["Deterministic PII<br/>redaction at ingestion"]
     Sanitize --> DB[("Supabase PostgreSQL<br/>(Reviews + outbox_events)")]
-    DB --> Relay["Outbox Relay Worker<br/>(SELECT FOR UPDATE SKIP LOCKED)"]
-    Relay --> Redis[("Redis<br/>(ARQ Queue)")]
+    DB --> Relay["Outbox Relay Worker<br/>enumerates pending tenants; sets tenant RLS context<br/>claims via SELECT ... FOR UPDATE SKIP LOCKED"]
+    Relay -->|ARQ job payload includes tenant_id| Redis[("Redis<br/>(ARQ Queue)")]
     Redis --> Worker["ARQ workers"]
 
-    DB -. "Read sanitized review data" .-> Worker
     Worker --> LLM["LLM<br/>Sentiment analysis"]
-    Worker -->|Persist analysis| DB
+    Worker -->|Tenant-scoped reads / writes| DB
     Worker -->|LLM / analysis failure| DLQ[("Dead Letter Queue<br/>persistent failed-task records")]
     DLQ --> DB
 
@@ -74,10 +73,13 @@ flowchart LR
     end
 
     API -. "Tenant context and policies" .-> RLS
-    Worker -. "Tenant context and policies" .-> RLS
+    Relay -. "set_tenant_rls_context before claim / status updates" .-> RLS
+    Worker -. "Restores tenant context from payload<br/>(transaction-local app.company_id)" .-> RLS
 ```
 
 The diagram shows the intended processing flow. RLS policies enforce tenant-scoped access at the database layer; application and worker behavior must also be configured and tested for each deployment.
+
+**Context propagation across the outbox:** The API writes each event to `outbox_events` in the same tenant-scoped transaction as its domain change. The relay enumerates pending tenants, applies that tenant's RLS context, claims rows with `FOR UPDATE SKIP LOCKED`, and enqueues jobs carrying `tenant_id`; the ARQ worker then restores the tenant context (`set_tenant_rls_context`, using transaction-local `app.company_id`) before running domain logic against business tables such as `reviews`, `ai_response_drafts`, and `review_replies`.
 
 ## 🖥️ Frontend Architecture & Client Engineering
 

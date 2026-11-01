@@ -10,6 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.schemas.economics import ReviewStatus
+from app.domain.reviews.risk import RiskLevel
 
 
 class DashboardReview(BaseModel):
@@ -24,6 +25,7 @@ class DashboardReview(BaseModel):
     rating: int
     text: str
     published_at: datetime | None
+    risk_level: RiskLevel
     sentiment: str | None
     tags: list[str] = Field(default_factory=list)
     is_critical: bool

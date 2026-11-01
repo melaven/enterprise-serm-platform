@@ -7,6 +7,10 @@ import { generateReviewReply, fetchReviews } from '@/api/reviews';
 import { RateLimitedApiError } from '@/api/client';
 import { useAuth } from '@/store/useAppStore';
 import type { SanitizedReview } from '@/types/review';
+import { getCompanyRoleFromToken } from './authRole';
+import { AntiCrisisRadar } from './AntiCrisisRadar';
+import { approveDraft } from './approveDraftApi';
+import { useDrafts } from './useDrafts';
 
 // --------------------------------------------------------------------------- //
 // Контракт
@@ -72,8 +76,9 @@ const FOCUS = 'focus-visible:outline focus-visible:outline-2 focus-visible:outli
 // Компонент
 // --------------------------------------------------------------------------- //
 export function ReviewsDashboard() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const companyId = user?.tenant_id ?? null;
+  const userRole = getCompanyRoleFromToken(token) ?? 'member';
   const [reviews, setReviews] = useState<SanitizedReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -118,6 +123,10 @@ export function ReviewsDashboard() {
   }, [reviews, query]);
 
   const selected = visible.find((r) => r.id === selectedId) ?? visible[0] ?? null;
+  const criticalReview =
+    selected !== null && selected.risk_level.toUpperCase() === 'CRITICAL_RISK' ? selected : null;
+  const { drafts, loading: draftsLoading, error: draftsError, retry: retryDrafts } =
+    useDrafts(criticalReview?.id ?? null);
 
   function select(id: string): void {
     setSelectedId(id);
@@ -262,7 +271,37 @@ export function ReviewsDashboard() {
             Выберите отзыв в списке слева.
           </div>
         ) : (
-          <article aria-labelledby="review-title" className="mx-auto w-full max-w-3xl p-6 md:p-10">
+          <>
+            {criticalReview !== null && (
+              <div className="mx-auto w-full max-w-3xl px-6 pt-6 md:px-10">
+                {draftsLoading ? (
+                  <div role="status" className="flex items-center gap-2 rounded-sm border border-neutral-200 px-3 py-3 text-sm text-neutral-600">
+                    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                    Загружаем варианты ответа…
+                  </div>
+                ) : draftsError !== null ? (
+                  <div role="alert" className="rounded-sm border border-neutral-300 px-3 py-3 text-sm text-neutral-700">
+                    <p>Не удалось загрузить варианты ответа: {draftsError}</p>
+                    <button
+                      type="button"
+                      onClick={retryDrafts}
+                      className={`mt-2 rounded-sm border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 ${FOCUS}`}
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                ) : (
+                  <AntiCrisisRadar
+                    review={criticalReview}
+                    drafts={drafts}
+                    onApprove={approveDraft}
+                    userRole={userRole}
+                  />
+                )}
+              </div>
+            )}
+
+            <article aria-labelledby="review-title" className="mx-auto w-full max-w-3xl p-6 md:p-10">
             <button
               type="button"
               onClick={() => setMobileDetail(false)}
@@ -332,7 +371,8 @@ export function ReviewsDashboard() {
                 {generatedReplies[selected.id] ?? ''}
               </p>
             </section>
-          </article>
+            </article>
+          </>
         )}
       </main>
     </div>

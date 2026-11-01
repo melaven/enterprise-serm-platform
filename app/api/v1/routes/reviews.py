@@ -19,6 +19,12 @@ from app.api.schemas.analytics import (
     DashboardReviewsPage,
     DashboardReviewsResponse,
 )
+from app.api.schemas.anti_crisis import (
+    ApproveDraftRequest,
+    ApproveDraftResponse,
+    DraftResponse,
+)
+from app.api.schemas.auth import JWTPayload
 from app.api.schemas.economics import (
     AssistantReviewSchema,
     GenerateReplyResponse,
@@ -29,12 +35,13 @@ from app.api.schemas.economics import (
 from app.api.schemas.ingest import ReviewIngestPayload, ReviewIngestResponse
 from app.api.schemas.review import ReviewCreate, ReviewResponse
 from app.application import SentimentService
+from app.application.reviews.anti_crisis import AntiCrisisService
 from app.application.reviews.service import (
     ReviewApplicationService,
     ReviewQueue,
     ReviewReplyAnalyzer,
 )
-from app.core.auth import get_current_tenant
+from app.core.auth import get_current_tenant, get_jwt_payload
 from app.core.dependencies import (
     get_review_queue,
     get_review_reply_analyzer,
@@ -53,6 +60,15 @@ from app.infrastructure.persistence.repositories.analytics_repo import (
 )
 
 router = APIRouter()
+CRISIS_PUBLISH_ROLES = frozenset({"owner", "admin"})
+
+
+def _require_crisis_publish_role(company_role: str | None) -> None:
+    if company_role not in CRISIS_PUBLISH_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only company owners and admins can approve crisis responses",
+        )
 
 
 @router.post(
@@ -145,6 +161,41 @@ async def approve_ai_response(
     raise HTTPException(
         status_code=status.HTTP_410_GONE,
         detail="AI response approval and automated publication are disabled",
+    )
+
+
+@router.get(
+    "/{review_id}/drafts",
+    response_model=list[DraftResponse],
+    summary="Получить варианты ответа на кризисный отзыв",
+)
+async def list_crisis_drafts(
+    review_id: UUID,
+    session: AsyncSession = Depends(get_tenant_db),
+    tenant_id: UUID = Depends(get_current_tenant),
+) -> list[DraftResponse]:
+    return await AntiCrisisService(session).list_drafts(tenant_id, review_id)
+
+
+@router.post(
+    "/{review_id}/drafts/{draft_id}/approve",
+    response_model=ApproveDraftResponse,
+    summary="Утвердить ответ на кризисный отзыв",
+)
+async def approve_crisis_draft(
+    review_id: UUID,
+    draft_id: UUID,
+    request: ApproveDraftRequest,
+    session: AsyncSession = Depends(get_tenant_db),
+    tenant_id: UUID = Depends(get_current_tenant),
+    auth: JWTPayload = Depends(get_jwt_payload),
+) -> ApproveDraftResponse:
+    _require_crisis_publish_role(auth.company_role)
+    return await AntiCrisisService(session).approve_draft(
+        tenant_id,
+        review_id,
+        draft_id,
+        request.edited_text,
     )
 
 

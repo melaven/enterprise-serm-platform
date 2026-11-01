@@ -1,3 +1,5 @@
+from app.domain.reviews.risk import ResponseStrategyType, RiskLevel
+from app.infrastructure.persistence.models.ai_response_draft import AIResponseDraft
 from app.infrastructure.persistence.models.api_key import APIKey
 from app.infrastructure.persistence.models.billing import (
     SubscriptionPlan,
@@ -13,7 +15,10 @@ from app.infrastructure.persistence.models.economics import (
     Review,
     WebhookEndpoint,
 )
-from app.infrastructure.persistence.models.outbox_event import OutboxEvent
+from app.infrastructure.persistence.models.outbox_event import (
+    OutboxEvent,
+    OutboxEventType,
+)
 from app.infrastructure.persistence.models.review import ReviewState
 from app.infrastructure.persistence.models.review_analysis_payload import (
     ReviewAnalysisPayload,
@@ -22,6 +27,7 @@ from app.infrastructure.persistence.models.review_reply import ReviewReply
 
 __all__ = [
     "APIKey",
+    "AIResponseDraft",
     "AuditLog",
     "Company",
     "Platform",
@@ -29,6 +35,9 @@ __all__ = [
     "PlatformStatistic",
     "Review",
     "OutboxEvent",
+    "OutboxEventType",
+    "ResponseStrategyType",
+    "RiskLevel",
     "ReviewAnalysisPayload",
     "ReviewReply",
     "ReviewState",

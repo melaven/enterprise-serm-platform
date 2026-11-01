@@ -132,6 +132,30 @@ def test_transactional_outbox_migration_is_registered_and_tenant_isolated() -> N
     assert "GRANT EXECUTE ON FUNCTION public.claim_outbox_events(integer)" in sql
 
 
+def test_anti_crisis_radar_migration_is_registered_and_tenant_isolated() -> None:
+    filename = "041_anti_crisis_radar.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "ADD COLUMN IF NOT EXISTS risk_level public.risk_level" in sql
+    assert "'critical_risk'" in sql
+    assert "'legal_strict'" in sql
+    assert "CREATE TABLE IF NOT EXISTS public.ai_response_drafts" in sql
+    assert "FOREIGN KEY (review_id, tenant_id)" in sql
+    assert "ALTER TABLE public.ai_response_drafts FORCE ROW LEVEL SECURITY" in sql
+    assert "tenant_id = app.current_company_id()" in sql
+
+
+def test_anti_crisis_idempotency_migration_adds_unique_guards() -> None:
+    filename = "042_anti_crisis_idempotency.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "ADD COLUMN IF NOT EXISTS idempotency_key varchar(200)" in sql
+    assert "uq_outbox_events_idempotency_key" in sql
+    assert "uq_ai_response_drafts_tenant_review_strategy" in sql
+
+
 def test_schema_cleanup_migration_removes_duplicate_review_pipeline_state() -> None:
     sql = (MIGRATIONS_DIR / "028_schema_cleanup.sql").read_text(encoding="utf-8")
 

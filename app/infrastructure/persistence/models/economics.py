@@ -29,6 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 from app.api.schemas.economics import ReplyModerationStatus, ReviewStatus
 from app.core.database import Base
 from app.core.security import EncryptionError, decrypt_token, encrypt_token
+from app.domain.reviews.risk import RiskLevel
 from app.domain.reviews.state import ReviewState
 
 
@@ -156,6 +157,16 @@ class Review(Base):
         nullable=False,
         default=ReviewState.NEW,
         index=True,
+    )
+    risk_level: Mapped[RiskLevel] = mapped_column(
+        SQLAlchemyEnum(
+            RiskLevel,
+            name="risk_level",
+            values_callable=lambda levels: [level.value for level in levels],
+        ),
+        nullable=False,
+        default=RiskLevel.SAFE,
+        server_default=sql_text("'safe'"),
     )
     financial_impact: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     si_response: Mapped[str | None] = mapped_column(Text, nullable=True)

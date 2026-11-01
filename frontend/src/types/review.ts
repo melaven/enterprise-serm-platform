@@ -7,4 +7,5 @@ export interface SanitizedReview {
   text: string;
   rating: number;
   published_at: string | null;
+  risk_level: string;
 }

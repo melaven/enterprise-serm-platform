@@ -64,6 +64,7 @@ async def serm_exception_handler(request: Request, exc: SERMException) -> JSONRe
         status_code=exc.status_code,
         message="Business operation failed",
         error_type=type(exc).__name__,
+        details=exc.details,
         request_id=getattr(request.state, "correlation_id", None)
         or get_correlation_id(),
     )

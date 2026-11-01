@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import status
@@ -145,6 +146,7 @@ class AntiCrisisService:
         review_id: UUID,
         draft_id: UUID,
         edited_text: str,
+        approved_by: str,
     ) -> ApproveDraftResponse:
         normalized_text = edited_text.strip()
         if not normalized_text or len(normalized_text) > 4000:
@@ -173,9 +175,12 @@ class AntiCrisisService:
                 raise NotFoundError("AI response draft", str(draft_id))
 
             if draft.is_approved:
+                response_draft = self._draft_response(draft)
                 return ApproveDraftResponse(
-                    draft=self._draft_response(draft),
+                    draft=response_draft,
                     idempotent=True,
+                    approved_by=response_draft.approved_by,
+                    approved_at=response_draft.approved_at,
                 )
 
             approved_other = next(
@@ -186,6 +191,7 @@ class AntiCrisisService:
                 raise SERMException(
                     "Another response draft for this review has already been approved",
                     status.HTTP_409_CONFLICT,
+                    details=self._approval_details(approved_other),
                 )
 
             existing_reply = await self.session.get(ReviewReply, review_id)
@@ -197,6 +203,8 @@ class AntiCrisisService:
 
             draft.content = normalized_text
             draft.is_approved = True
+            draft.approved_by = approved_by
+            draft.approved_at = datetime.now(timezone.utc)
             review.moderation_status = ReplyModerationStatus.APPROVED
             self.session.add(
                 ReviewReply(
@@ -221,9 +229,12 @@ class AntiCrisisService:
             )
             await self.session.flush()
             await self.session.refresh(draft)
+            response_draft = self._draft_response(draft)
             return ApproveDraftResponse(
-                draft=self._draft_response(draft),
+                draft=response_draft,
                 idempotent=False,
+                approved_by=response_draft.approved_by,
+                approved_at=response_draft.approved_at,
             )
 
     async def _lock_review(self, tenant_id: UUID, review_id: UUID) -> Review:
@@ -263,11 +274,27 @@ class AntiCrisisService:
 
     @staticmethod
     def _draft_response(draft: AIResponseDraft) -> DraftResponse:
+        approved_at = draft.approved_at
+        if approved_at is not None and approved_at.tzinfo is None:
+            approved_at = approved_at.replace(tzinfo=timezone.utc)
         return DraftResponse(
             id=draft.id,
             strategy=draft.strategy_type,
             body=draft.content,
             is_approved=draft.is_approved,
+            approved_by=draft.approved_by,
+            approved_at=approved_at,
             created_at=draft.created_at,
             updated_at=draft.updated_at,
         )
+
+    @staticmethod
+    def _approval_details(draft: AIResponseDraft) -> dict[str, str | None]:
+        approved_at = draft.approved_at
+        if approved_at is not None and approved_at.tzinfo is None:
+            approved_at = approved_at.replace(tzinfo=timezone.utc)
+        return {
+            "approved_draft_id": str(draft.id),
+            "approved_by": draft.approved_by,
+            "approved_at": approved_at.isoformat() if approved_at is not None else None,
+        }

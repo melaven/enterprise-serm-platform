@@ -27,22 +27,47 @@ export function useDrafts(reviewId: string | null) {
     }
 
     const controller = new AbortController();
-    setState({ reviewId, drafts: [], loading: true, error: null });
-    void fetchReviewDrafts(reviewId, controller.signal)
-      .then((drafts) => {
-        setState({ reviewId, drafts, loading: false, error: null });
-      })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted) return;
-        setState({
+    let active = true;
+    let inFlight = false;
+    setState((current) => ({
+      reviewId,
+      drafts: current.reviewId === reviewId ? current.drafts : [],
+      loading: true,
+      error: null,
+    }));
+
+    const refresh = async (initial = false): Promise<void> => {
+      if ((!initial && document.visibilityState !== 'visible') || inFlight) return;
+      inFlight = true;
+      try {
+        const drafts = await fetchReviewDrafts(reviewId, controller.signal);
+        if (active) setState({ reviewId, drafts, loading: false, error: null });
+      } catch (cause: unknown) {
+        if (!active || controller.signal.aborted) return;
+        setState((current) => ({
           reviewId,
-          drafts: [],
+          drafts: current.reviewId === reviewId ? current.drafts : [],
           loading: false,
           error: cause instanceof Error ? cause.message : 'Не удалось загрузить варианты ответа.',
-        });
-      });
+        }));
+      } finally {
+        inFlight = false;
+      }
+    };
 
-    return () => controller.abort();
+    void refresh(true);
+    const intervalId = window.setInterval(() => void refresh(), 15_000);
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [reviewId, revision]);
 
   const retry = useCallback(() => setRevision((current) => current + 1), []);

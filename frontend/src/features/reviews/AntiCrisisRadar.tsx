@@ -86,6 +86,8 @@ export const MOCK_RESPONSE_DRAFTS: readonly DraftResponse[] = [
       'установленные законодательством. Чтобы идентифицировать ваше обращение, направьте номер договора ' +
       'на privacy@company.example. Просим не публиковать персональные данные в отзыве.',
     is_approved: false,
+    approved_by: null,
+    approved_at: null,
     created_at: '2026-11-01T18:14:00+05:00',
     updated_at: '2026-11-01T18:14:00+05:00',
   },
@@ -98,6 +100,8 @@ export const MOCK_RESPONSE_DRAFTS: readonly DraftResponse[] = [
       'Готовы обсудить компенсацию и обязательно свяжемся с вами лично. Напишите нам удобный способ связи ' +
       'на support@company.example, ответим в течение одного рабочего дня.',
     is_approved: false,
+    approved_by: null,
+    approved_at: null,
     created_at: '2026-11-01T18:14:00+05:00',
     updated_at: '2026-11-01T18:14:00+05:00',
   },
@@ -110,6 +114,8 @@ export const MOCK_RESPONSE_DRAFTS: readonly DraftResponse[] = [
       'support@company.example вместе с номером договора. Персональные данные в публичных комментариях ' +
       'указывать не нужно.',
     is_approved: false,
+    approved_by: null,
+    approved_at: null,
     created_at: '2026-11-01T18:14:00+05:00',
     updated_at: '2026-11-01T18:14:00+05:00',
   },
@@ -197,8 +203,10 @@ type Flow =
       readonly phase: 'approved';
       /** Подтверждённый черновик. null: сервер не назвал его (редкий 409 без approved_draft_id). */
       readonly draftId: string | null;
-      readonly origin: 'self' | 'conflict';
+      readonly origin: 'self' | 'conflict' | 'server';
       readonly outboxQueued: boolean;
+      readonly approvedBy: string | null;
+      readonly approvedAt: string | null;
     }
   | { readonly phase: 'failed'; readonly draftId: string; readonly kind: FailureKind };
 
@@ -260,6 +268,30 @@ export function AntiCrisisRadar({
     };
   }, []);
 
+  useEffect(() => {
+    const approvedDraft = drafts.find((draft) => draft.is_approved);
+    if (approvedDraft === undefined) return;
+
+    setFlow((current) => {
+      if (
+        current.phase === 'approved' &&
+        current.draftId === approvedDraft.id &&
+        current.approvedBy === approvedDraft.approved_by &&
+        current.approvedAt === approvedDraft.approved_at
+      ) {
+        return current;
+      }
+      return {
+        phase: 'approved',
+        draftId: approvedDraft.id,
+        origin: 'server',
+        outboxQueued: true,
+        approvedBy: approvedDraft.approved_by,
+        approvedAt: approvedDraft.approved_at,
+      };
+    });
+  }, [drafts]);
+
   const roleAllowed = canPublishCritical(userRole);
   const readOnly = !roleAllowed || serverForbidden;
   const locked = flow.phase === 'sending' || flow.phase === 'approved';
@@ -283,6 +315,8 @@ export function AntiCrisisRadar({
           draftId: result.approved_draft_id,
           origin: 'self',
           outboxQueued: result.outbox_queued,
+          approvedBy: result.approved_by,
+          approvedAt: result.approved_at,
         });
       } catch (error: unknown) {
         if (!mounted.current) return;
@@ -296,6 +330,8 @@ export function AntiCrisisRadar({
             draftId: error instanceof ApproveError ? error.approvedDraftId : null,
             origin: 'conflict',
             outboxQueued: true,
+            approvedBy: error instanceof ApproveError ? error.approvedBy : null,
+            approvedAt: error instanceof ApproveError ? error.approvedAt : null,
           });
         } else if (kind === 'forbidden') {
           setServerForbidden(true);
@@ -341,11 +377,36 @@ export function AntiCrisisRadar({
           <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-gray-900" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <h2 id="radar-title" className="text-sm font-semibold text-gray-900">
-              Другой администратор уже отправил ответ по этому инциденту
+              {approvedFlow.approvedBy !== null
+                ? `Другой администратор (${approvedFlow.approvedBy}) уже отправил ответ по этому инциденту`
+                : 'Другой администратор уже отправил ответ по этому инциденту'}
             </h2>
             <p className="mt-0.5 text-sm text-gray-700">
               Интерфейс синхронизирован с сервером: ваш ответ не отправлен, повторная публикация не требуется.
             </p>
+            {approvedFlow.approvedAt !== null && (
+              <time className="mt-1 block text-xs text-gray-600" dateTime={approvedFlow.approvedAt}>
+                Утверждено {formatDate(approvedFlow.approvedAt)}
+              </time>
+            )}
+          </div>
+        </div>
+      )}
+
+      {approvedFlow !== null && approvedFlow.origin === 'server' && (
+        <div role="status" className="flex items-start gap-3 rounded-sm border border-gray-900 bg-gray-100 px-3 py-3">
+          <Check className="mt-0.5 h-5 w-5 shrink-0 text-gray-900" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <h2 id="radar-title" className="text-sm font-semibold text-gray-900">
+              {approvedFlow.approvedBy !== null
+                ? `Другой администратор (${approvedFlow.approvedBy}) уже отправил ответ по этому инциденту`
+                : 'Ответ по этому инциденту уже утверждён'}
+            </h2>
+            {approvedFlow.approvedAt !== null && (
+              <time className="mt-1 block text-xs text-gray-600" dateTime={approvedFlow.approvedAt}>
+                Утверждено {formatDate(approvedFlow.approvedAt)}
+              </time>
+            )}
           </div>
         </div>
       )}
@@ -478,13 +539,23 @@ export function AntiCrisisRadar({
                       <Check className="h-4 w-4" aria-hidden="true" />
                       {approvedFlow.origin === 'conflict'
                         ? 'Отправлено другим администратором'
+                        : approvedFlow.origin === 'server'
+                          ? 'Утверждено на сервере'
                         : approvedFlow.outboxQueued
                           ? 'Отправлено в Outbox'
                           : 'Подтверждён'}
                     </p>
-                    {approvedFlow.origin === 'conflict' && (
+                    {(approvedFlow.origin === 'conflict' || approvedFlow.origin === 'server') && (
                       <p className="text-xs text-gray-600">
-                        Опубликованный текст мог отличаться от показанного здесь.
+                        {approvedFlow.approvedBy !== null
+                          ? `Подтвердил: ${approvedFlow.approvedBy}.`
+                          : 'Автор подтверждения не указан.'}
+                        {approvedFlow.approvedAt !== null
+                          ? ` Время: ${formatDate(approvedFlow.approvedAt)}.`
+                          : ''}
+                        {approvedFlow.origin === 'conflict'
+                          ? ' Опубликованный текст мог отличаться от показанного здесь.'
+                          : ''}
                       </p>
                     )}
                   </div>

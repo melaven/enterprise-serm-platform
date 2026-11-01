@@ -60,6 +60,7 @@ MIGRATIONS: Final = (
     "040_transactional_outbox.sql",
     "041_anti_crisis_radar.sql",
     "042_anti_crisis_idempotency.sql",
+    "043_anti_crisis_approval_audit.sql",
 )
 _DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _TRANSACTION_COMMANDS = {"BEGIN", "COMMIT", "ROLLBACK"}

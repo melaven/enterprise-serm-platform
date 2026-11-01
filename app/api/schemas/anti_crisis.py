@@ -60,6 +60,8 @@ class DraftResponse(BaseModel):
     strategy: ResponseStrategyType
     body: str
     is_approved: bool
+    approved_by: str | None
+    approved_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
@@ -85,6 +87,8 @@ class ApproveDraftRequest(BaseModel):
 class ApproveDraftResponse(BaseModel):
     draft: DraftResponse
     idempotent: bool
+    approved_by: str | None
+    approved_at: datetime | None
     publication_status: Literal["outbox_pending"] = "outbox_pending"
 
 

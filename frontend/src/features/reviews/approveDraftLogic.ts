@@ -4,7 +4,7 @@
  *
  * POST /api/v1/reviews/{review_id}/drafts/{draft_id}/approve  { edited_text }
  *   200 { draft, idempotent, publication_status: "outbox_pending" }
- *   409 { detail }  другой менеджер уже подтвердил иной черновик
+ *   409 { error: { details: { approved_draft_id, approved_by, approved_at } } }
  *   403                                роль без прав (нужен owner/admin)
  *   400/422                            пустой текст / ошибка валидации
  *   5xx / сеть                         ответ не отправлен
@@ -27,20 +27,32 @@ export interface ApproveResult {
   readonly approved_draft_id: string;
   readonly status: 'approved';
   readonly outbox_queued: boolean;
+  readonly approved_by: string | null;
+  readonly approved_at: string | null;
 }
 
 export type ApproveErrorKind = 'conflict' | 'forbidden' | 'validation' | 'network' | 'server';
 
 export class ApproveError extends Error {
   readonly kind: ApproveErrorKind;
-  /** Только для conflict: черновик, который уже подтвердил другой менеджер. */
+  /** Только для conflict: сведения о ранее подтверждённом черновике. */
   readonly approvedDraftId: string | null;
+  readonly approvedBy: string | null;
+  readonly approvedAt: string | null;
 
-  constructor(kind: ApproveErrorKind, message: string, approvedDraftId: string | null = null) {
+  constructor(
+    kind: ApproveErrorKind,
+    message: string,
+    approvedDraftId: string | null = null,
+    approvedBy: string | null = null,
+    approvedAt: string | null = null,
+  ) {
     super(message);
     this.name = 'ApproveError';
     this.kind = kind;
     this.approvedDraftId = approvedDraftId;
+    this.approvedBy = approvedBy;
+    this.approvedAt = approvedAt;
   }
 }
 
@@ -57,6 +69,8 @@ export function interpretApproveResponse(status: number, body: unknown): Approve
 
   if (status === 200) {
     const draft = data === null ? null : asRecord(data.draft);
+    const approvedBy = data !== null && typeof data.approved_by === 'string' ? data.approved_by : null;
+    const approvedAt = data !== null && typeof data.approved_at === 'string' ? data.approved_at : null;
     if (
       draft !== null &&
       typeof draft.id === 'string' &&
@@ -64,23 +78,39 @@ export function interpretApproveResponse(status: number, body: unknown): Approve
       draft.is_approved === true &&
       data?.idempotent !== undefined &&
       typeof data.idempotent === 'boolean' &&
-      data.publication_status === 'outbox_pending'
+      data.publication_status === 'outbox_pending' &&
+      (data.approved_by === null || typeof data.approved_by === 'string') &&
+      (data.approved_at === null || typeof data.approved_at === 'string')
     ) {
       return {
         approved_draft_id: draft.id,
         status: 'approved',
         outbox_queued: true,
+        approved_by: approvedBy,
+        approved_at: approvedAt,
       };
     }
     throw new ApproveError('server', 'Сервер вернул ответ неожиданного формата');
   }
 
   if (status === 409) {
+    const error = data === null ? null : asRecord(data.error);
+    const details = error === null ? null : asRecord(error.details);
     const approvedId =
-      data !== null && typeof data.approved_draft_id === 'string' && data.approved_draft_id !== ''
-        ? data.approved_draft_id
+      details !== null && typeof details.approved_draft_id === 'string' && details.approved_draft_id !== ''
+        ? details.approved_draft_id
+        : data !== null && typeof data.approved_draft_id === 'string' && data.approved_draft_id !== ''
+          ? data.approved_draft_id
         : null;
-    throw new ApproveError('conflict', 'Another draft is already approved for this review', approvedId);
+    const approvedBy = details !== null && typeof details.approved_by === 'string' ? details.approved_by : null;
+    const approvedAt = details !== null && typeof details.approved_at === 'string' ? details.approved_at : null;
+    throw new ApproveError(
+      'conflict',
+      'Another draft is already approved for this review',
+      approvedId,
+      approvedBy,
+      approvedAt,
+    );
   }
 
   if (status === 403) throw new ApproveError('forbidden', 'Недостаточно прав для публикации ответа');

@@ -196,6 +196,7 @@ async def approve_crisis_draft(
         review_id,
         draft_id,
         request.edited_text,
+        str(auth.sub),
     )
 
 

@@ -58,9 +58,14 @@ function renderDashboard() {
   );
 }
 
+function setVisibilityState(state: DocumentVisibilityState): void {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, value: state });
+}
+
 describe('ReviewsDashboard reply generation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setVisibilityState('visible');
     mocks.token = null;
     mocks.fetchReviews.mockResolvedValue([review]);
     mocks.fetchReviewDrafts.mockResolvedValue([]);
@@ -112,6 +117,8 @@ describe('ReviewsDashboard reply generation', () => {
         strategy: 'LEGAL_STRICT',
         body: 'Backend draft text',
         is_approved: false,
+        approved_by: null,
+        approved_at: null,
         created_at: '2026-10-30T00:00:00Z',
         updated_at: '2026-10-30T00:00:00Z',
       },
@@ -135,6 +142,8 @@ describe('ReviewsDashboard reply generation', () => {
         strategy: 'LEGAL_STRICT',
         body: 'Keep this draft unchanged',
         is_approved: false,
+        approved_by: null,
+        approved_at: null,
         created_at: '2026-10-30T00:00:00Z',
         updated_at: '2026-10-30T00:00:00Z',
       },
@@ -169,5 +178,76 @@ describe('ReviewsDashboard reply generation', () => {
     expect(mocks.toastError).toHaveBeenCalledWith('Не удалось подтвердить ответ', {
       description: 'Попробуйте ещё раз.',
     });
+  });
+
+  it('polls reviews only while visible and discovers newly critical reviews', async () => {
+    mocks.fetchReviews
+      .mockResolvedValueOnce([review])
+      .mockResolvedValueOnce([{ ...review, risk_level: 'critical_risk' }]);
+
+    renderDashboard();
+    expect(await screen.findByRole('button', { name: /Review author/ })).toBeInTheDocument();
+
+    setVisibilityState('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    expect(mocks.fetchReviews).toHaveBeenCalledTimes(1);
+
+    setVisibilityState('visible');
+    fireEvent(document, new Event('visibilitychange'));
+    expect(await screen.findByText('Перехвачен отзыв с риском CRITICAL_RISK')).toBeInTheDocument();
+    expect(await screen.findByText('Критический риск')).toBeInTheDocument();
+    expect(mocks.fetchReviews).toHaveBeenCalledTimes(2);
+  });
+
+  it('synchronizes approved drafts in the background without replacing active edits', async () => {
+    const payload = window.btoa(JSON.stringify({ company_role: 'admin' }));
+    mocks.token = `header.${payload}.signature`;
+    mocks.fetchReviews.mockResolvedValue([{ ...review, risk_level: 'critical_risk' }]);
+    let anotherManagerApproved = false;
+    const currentDrafts = [
+      {
+        id: 'draft-1',
+        strategy: 'LEGAL_STRICT' as const,
+        body: 'Server response draft',
+        is_approved: false,
+        approved_by: null,
+        approved_at: null,
+        created_at: '2026-10-30T00:00:00Z',
+        updated_at: '2026-10-30T00:00:00Z',
+      },
+    ];
+    const approvedDrafts = [
+      {
+        ...currentDrafts[0],
+        is_approved: true,
+        approved_by: 'colleague@example.com',
+        approved_at: '2026-11-02T00:00:00Z',
+        updated_at: '2026-11-02T00:00:00Z',
+      },
+    ];
+    mocks.fetchReviewDrafts.mockImplementation(() =>
+      Promise.resolve(anotherManagerApproved ? approvedDrafts : currentDrafts),
+    );
+
+    renderDashboard();
+    fireEvent.click(await screen.findByRole('button', { name: 'Редактировать: Юридически строгий' }));
+    const editor = await screen.findByRole('textbox', { name: 'Текст ответа: Юридически строгий' });
+    fireEvent.change(editor, { target: { value: 'Local unsaved changes' } });
+
+    setVisibilityState('hidden');
+    fireEvent(document, new Event('visibilitychange'));
+    const requestsBeforeVisible = mocks.fetchReviewDrafts.mock.calls.length;
+
+    setVisibilityState('visible');
+    anotherManagerApproved = true;
+    fireEvent(document, new Event('visibilitychange'));
+    expect(await screen.findByText(/colleague@example\.com.*уже отправил ответ/)).toBeInTheDocument();
+    expect(await screen.findByRole('textbox', { name: 'Текст ответа: Юридически строгий' })).toHaveValue(
+      'Local unsaved changes',
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Апрув и Отправка (Approve & Send): Юридически строгий' }),
+    ).not.toBeInTheDocument();
+    expect(mocks.fetchReviewDrafts).toHaveBeenCalledTimes(requestsBeforeVisible + 1);
   });
 });

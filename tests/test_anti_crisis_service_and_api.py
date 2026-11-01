@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import httpx
@@ -203,6 +204,7 @@ async def test_approval_edits_reply_and_is_idempotent_for_same_draft(
             review_id,
             selected.id,
             "  Manager-edited response  ",
+            "manager-user-id",
         )
 
     async with factory() as session:
@@ -212,6 +214,7 @@ async def test_approval_edits_reply_and_is_idempotent_for_same_draft(
             review_id,
             selected.id,
             "Different text from a retry",
+            "different-manager-id",
         )
 
     async with factory() as session:
@@ -233,7 +236,13 @@ async def test_approval_edits_reply_and_is_idempotent_for_same_draft(
     assert first_result.draft.body == "Manager-edited response"
     assert second_result.idempotent is True
     assert second_result.draft.body == "Manager-edited response"
+    assert first_result.approved_by == "manager-user-id"
+    assert first_result.approved_at is not None
+    assert second_result.approved_by == "manager-user-id"
+    assert second_result.approved_at == first_result.approved_at
     assert draft is not None and draft.is_approved
+    assert draft.approved_by == "manager-user-id"
+    assert draft.approved_at.replace(tzinfo=timezone.utc) == first_result.approved_at
     assert reply is not None and reply.reply_text == "Manager-edited response"
     assert review is not None
     assert review.moderation_status is ReplyModerationStatus.APPROVED
@@ -269,6 +278,7 @@ async def test_approval_conflicts_when_another_draft_was_approved(
             review_id,
             escalation.drafts[0].id,
             "First approved response",
+            "first-manager-id",
         )
 
     async with factory() as session:
@@ -279,9 +289,14 @@ async def test_approval_conflicts_when_another_draft_was_approved(
                 review_id,
                 escalation.drafts[1].id,
                 "Another response",
+                "second-manager-id",
             )
 
     assert getattr(error.value, "status_code", None) == 409
+    assert error.value.details["approved_draft_id"] == str(escalation.drafts[0].id)
+    assert error.value.details["approved_by"] == "first-manager-id"
+    approved_at = datetime.fromisoformat(error.value.details["approved_at"])
+    assert approved_at.utcoffset() == timezone.utc.utcoffset(approved_at)
     await close()
 
 
@@ -314,6 +329,7 @@ async def test_approval_cannot_access_another_tenants_draft(
                 review_id,
                 escalation.drafts[0].id,
                 "Attempted cross-tenant response",
+                "other-manager-id",
             )
 
     assert getattr(error.value, "status_code", None) == 404
@@ -343,9 +359,12 @@ async def test_api_lists_drafts_and_rejects_non_admin_approval(
     async def payload_from_headers(
         x_test_tenant: UUID = Header(),
         x_test_role: str = Header(default="member"),
+        x_test_actor: UUID = Header(
+            default=UUID("d41eaf1d-631b-47b6-a30d-7a7c13f46270")
+        ),
     ) -> JWTPayload:
         return JWTPayload(
-            sub=x_test_tenant,
+            sub=x_test_actor,
             tenant_id=x_test_tenant,
             company_role=x_test_role,
         )
@@ -395,13 +414,31 @@ async def test_api_lists_drafts_and_rejects_non_admin_approval(
             admin_headers = {**headers, "x-test-role": "admin"}
             approved = await client.post(
                 f"/api/v1/reviews/{review_id}/drafts/{escalation.drafts[0].id}/approve",
-                headers=admin_headers,
+                headers={
+                    **admin_headers,
+                    "x-test-actor": "d41eaf1d-631b-47b6-a30d-7a7c13f46270",
+                },
                 json={"edited_text": "Manager approved response"},
+            )
+            updated_listing = await client.get(
+                f"/api/v1/reviews/{review_id}/drafts",
+                headers=headers,
             )
             retried = await client.post(
                 f"/api/v1/reviews/{review_id}/drafts/{escalation.drafts[0].id}/approve",
-                headers=admin_headers,
+                headers={
+                    **admin_headers,
+                    "x-test-actor": "d41eaf1d-631b-47b6-a30d-7a7c13f46270",
+                },
                 json={"edited_text": "Changed text on retry"},
+            )
+            conflicted = await client.post(
+                f"/api/v1/reviews/{review_id}/drafts/{escalation.drafts[1].id}/approve",
+                headers={
+                    **admin_headers,
+                    "x-test-actor": "ec37a9ce-a8c0-4b93-b285-b42aeb2815ef",
+                },
+                json={"edited_text": "Another manager's response"},
             )
             assert listing.status_code == 200, listing.text
             assert len(listing.json()) == 3
@@ -414,8 +451,43 @@ async def test_api_lists_drafts_and_rejects_non_admin_approval(
             assert approved.json()["draft"]["body"] == "Manager approved response"
             assert approved.json()["idempotent"] is False
             assert approved.json()["publication_status"] == "outbox_pending"
+            assert (
+                approved.json()["approved_by"] == "d41eaf1d-631b-47b6-a30d-7a7c13f46270"
+            )
+            assert (
+                approved.json()["approved_at"]
+                == approved.json()["draft"]["approved_at"]
+            )
+            assert (
+                approved.json()["draft"]["approved_by"]
+                == approved.json()["approved_by"]
+            )
+            assert approved.json()["draft"]["approved_at"] is not None
+            approved_from_listing = next(
+                draft for draft in updated_listing.json() if draft["is_approved"]
+            )
+            assert (
+                approved_from_listing["approved_by"] == approved.json()["approved_by"]
+            )
+            assert (
+                approved_from_listing["approved_at"] == approved.json()["approved_at"]
+            )
             assert retried.status_code == 200
             assert retried.json()["idempotent"] is True
+            assert retried.json()["approved_by"] == approved.json()["approved_by"]
+            assert retried.json()["approved_at"] == approved.json()["approved_at"]
+            assert conflicted.status_code == 409
+            conflict_details = conflicted.json()["error"]["details"]
+            assert conflict_details["approved_draft_id"] == str(escalation.drafts[0].id)
+            assert (
+                conflict_details["approved_by"]
+                == "d41eaf1d-631b-47b6-a30d-7a7c13f46270"
+            )
+            assert datetime.fromisoformat(
+                conflict_details["approved_at"]
+            ) == datetime.fromisoformat(
+                approved.json()["approved_at"].replace("Z", "+00:00")
+            )
     finally:
         if previous_payload is None:
             app.dependency_overrides.pop(get_jwt_payload, None)

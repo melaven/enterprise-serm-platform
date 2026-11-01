@@ -156,6 +156,21 @@ def test_anti_crisis_idempotency_migration_adds_unique_guards() -> None:
     assert "uq_ai_response_drafts_tenant_review_strategy" in sql
 
 
+def test_anti_crisis_approval_audit_migration_is_idempotent() -> None:
+    filename = "043_anti_crisis_approval_audit.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert (
+        "ALTER TABLE public.ai_response_drafts\n"
+        "    ADD COLUMN IF NOT EXISTS approved_by text"
+    ) in sql
+    assert (
+        "ALTER TABLE public.ai_response_drafts\n"
+        "    ADD COLUMN IF NOT EXISTS approved_at timestamptz"
+    ) in sql
+
+
 def test_schema_cleanup_migration_removes_duplicate_review_pipeline_state() -> None:
     sql = (MIGRATIONS_DIR / "028_schema_cleanup.sql").read_text(encoding="utf-8")
 

@@ -7,6 +7,8 @@ export interface DraftResponse {
   readonly strategy: DraftStrategy;
   readonly body: string;
   readonly is_approved: boolean;
+  readonly approved_by: string | null;
+  readonly approved_at: string | null;
   readonly created_at: string;
   readonly updated_at: string;
 }

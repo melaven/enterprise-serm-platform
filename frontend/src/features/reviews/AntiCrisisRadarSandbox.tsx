@@ -39,7 +39,13 @@ export function createMockApprove(scenario: MockScenario): ApproveHandler {
     await wait(MOCK_LATENCY_MS);
     switch (scenario) {
       case 'ok':
-        return { approved_draft_id: draftId, status: 'approved', outbox_queued: true };
+        return {
+          approved_draft_id: draftId,
+          status: 'approved',
+          outbox_queued: true,
+          approved_by: 'sandbox-admin',
+          approved_at: new Date().toISOString(),
+        };
       case 'conflict': {
         const other = MOCK_RESPONSE_DRAFTS.find((d) => d.id !== draftId);
         throw new ApproveError(

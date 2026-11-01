@@ -99,20 +99,46 @@ export function ReviewsDashboard() {
     }
 
     const controller = new AbortController();
+    let active = true;
+    let inFlight = false;
     setLoading(true);
     setError(null);
-    void fetchReviews(companyId, platform === 'all' ? null : platform, controller.signal)
-      .then(setReviews)
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(cause instanceof Error ? cause.message : 'Не удалось загрузить отзывы.');
-        setReviews([]);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
 
-    return () => controller.abort();
+    const refresh = async (initial = false): Promise<void> => {
+      if ((!initial && document.visibilityState !== 'visible') || inFlight) return;
+      inFlight = true;
+      try {
+        const nextReviews = await fetchReviews(
+          companyId,
+          platform === 'all' ? null : platform,
+          controller.signal,
+        );
+        if (!active) return;
+        setReviews(nextReviews);
+        setError(null);
+      } catch (cause: unknown) {
+        if (!active || controller.signal.aborted) return;
+        setError(cause instanceof Error ? cause.message : 'Не удалось загрузить отзывы.');
+        if (initial) setReviews([]);
+      } finally {
+        inFlight = false;
+        if (active && initial) setLoading(false);
+      }
+    };
+
+    void refresh(true);
+    const intervalId = window.setInterval(() => void refresh(), 15_000);
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [companyId, platform]);
 
   const visible = useMemo(() => {
@@ -216,7 +242,7 @@ export function ReviewsDashboard() {
           <div role="status" className="flex flex-1 items-center justify-center p-8 text-sm text-neutral-500">
             Загружаем отзывы…
           </div>
-        ) : error !== null ? (
+        ) : error !== null && reviews.length === 0 ? (
           <div role="alert" className="flex flex-1 items-center justify-center p-8 text-center text-sm text-red-700">
             {error}
           </div>
@@ -227,6 +253,11 @@ export function ReviewsDashboard() {
           </div>
         ) : (
           <ul onKeyDown={onListKeyDown} className="flex-1 divide-y divide-neutral-200 overflow-y-auto">
+            {error !== null && (
+              <li role="alert" className="px-4 py-2 text-xs text-neutral-600">
+                Не удалось обновить список: {error}
+              </li>
+            )}
             {visible.map((review) => {
               const active = review.id === selected?.id;
               return (
@@ -254,6 +285,11 @@ export function ReviewsDashboard() {
                     <span className="mt-1 flex items-center gap-2">
                       <Stars value={review.rating} />
                       <span className="text-xs text-neutral-500">{getPlatformLabel(review.platform)}</span>
+                      {review.risk_level.toUpperCase() === 'CRITICAL_RISK' && (
+                        <span className="rounded-sm border border-neutral-900 px-1.5 py-0.5 text-[10px] font-medium uppercase text-neutral-900">
+                          Критический риск
+                        </span>
+                      )}
                     </span>
                     <span className="mt-1.5 line-clamp-2 block text-sm text-neutral-600">{review.text}</span>
                   </button>
@@ -279,7 +315,7 @@ export function ReviewsDashboard() {
                     <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
                     Загружаем варианты ответа…
                   </div>
-                ) : draftsError !== null ? (
+                ) : draftsError !== null && drafts.length === 0 ? (
                   <div role="alert" className="rounded-sm border border-neutral-300 px-3 py-3 text-sm text-neutral-700">
                     <p>Не удалось загрузить варианты ответа: {draftsError}</p>
                     <button
@@ -291,12 +327,19 @@ export function ReviewsDashboard() {
                     </button>
                   </div>
                 ) : (
-                  <AntiCrisisRadar
-                    review={criticalReview}
-                    drafts={drafts}
-                    onApprove={approveDraft}
-                    userRole={userRole}
-                  />
+                  <>
+                    {draftsError !== null && (
+                      <p role="status" className="mb-3 rounded-sm border border-neutral-200 px-3 py-2 text-xs text-neutral-600">
+                        Не удалось обновить статусы черновиков: {draftsError}
+                      </p>
+                    )}
+                    <AntiCrisisRadar
+                      review={criticalReview}
+                      drafts={drafts}
+                      onApprove={approveDraft}
+                      userRole={userRole}
+                    />
+                  </>
                 )}
               </div>
             )}

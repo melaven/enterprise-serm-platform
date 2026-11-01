@@ -23,11 +23,15 @@ describe('approve draft response', () => {
       draft: { id: 'd1', is_approved: true },
       idempotent: true,
       publication_status: 'outbox_pending',
+      approved_by: 'admin@example.com',
+      approved_at: '2026-11-02T00:00:00Z',
     };
     expect(interpretApproveResponse(200, body)).toEqual({
       approved_draft_id: 'd1',
       status: 'approved',
       outbox_queued: true,
+      approved_by: 'admin@example.com',
+      approved_at: '2026-11-02T00:00:00Z',
     });
   });
 
@@ -38,6 +42,8 @@ describe('approve draft response', () => {
       draft: { id: '', is_approved: true },
       idempotent: false,
       publication_status: 'outbox_pending',
+      approved_by: null,
+      approved_at: null,
     }).kind).toBe('server');
   });
 
@@ -45,6 +51,23 @@ describe('approve draft response', () => {
     const error = catchApproveError(409, { detail: 'Another response draft was approved' });
     expect(error.kind).toBe('conflict');
     expect(error.approvedDraftId).toBeNull();
+  });
+
+  it('extracts approval audit metadata from the standard conflict error response', () => {
+    const error = catchApproveError(409, {
+      success: false,
+      error: {
+        type: 'SERMException',
+        details: {
+          approved_draft_id: 'approved-1',
+          approved_by: 'manager-user-id',
+          approved_at: '2026-11-02T00:00:00Z',
+        },
+      },
+    });
+    expect(error.approvedDraftId).toBe('approved-1');
+    expect(error.approvedBy).toBe('manager-user-id');
+    expect(error.approvedAt).toBe('2026-11-02T00:00:00Z');
   });
 
   it('maps forbidden, validation, and server errors', () => {

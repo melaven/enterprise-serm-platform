@@ -18,6 +18,8 @@ describe('approveDraft API', () => {
         draft: { id: 'draft-1', is_approved: true },
         idempotent: false,
         publication_status: 'outbox_pending',
+        approved_by: null,
+        approved_at: null,
       },
     });
 
@@ -27,6 +29,8 @@ describe('approveDraft API', () => {
       approved_draft_id: 'draft-1',
       status: 'approved',
       outbox_queued: true,
+      approved_by: null,
+      approved_at: null,
     });
 
     const [url, body, config] = mocks.post.mock.calls[0] as [

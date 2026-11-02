@@ -21,7 +21,7 @@ Tenable wandelt zur Verarbeitung freigegebene Bewertungsdaten in strukturierte B
 - Stellt autorisierten Unternehmensnutzern Trends und Analysen bereit.
 - Unterstützt asynchrone Analyseprozesse, ohne API-Anfragen zu blockieren.
 
-Tenable ist ein Analysewerkzeug. Es dient nicht der Manipulation von Reputation, verspricht nicht die Entfernung legitimer Bewertungen und veröffentlicht keine Antworten autonom.
+Tenable ist ein Analysewerkzeug. Es dient nicht der Manipulation von Reputation, verspricht nicht die Entfernung legitimer Bewertungen und veröffentlicht Antworten nicht ohne ausdrückliche menschliche Freigabe (Human-in-the-Loop-Moderation).
 
 ## Datenschutz und Compliance
 
@@ -62,6 +62,11 @@ flowchart LR
     Worker -->|Analyseergebnisse speichern| DB
     Worker -->|LLM- / Analysefehler| DLQ[("Warteschlange für fehlgeschlagene Aufgaben<br/>DLQ")]
     DLQ --> DB
+    Worker -->|Egress, Phase 1<br/>Antwort lesen und Zugangsdaten entschlüsseln<br/>Kurze Mandantentransaktion| DB
+    Worker -->|Egress, Phase 2<br/>HTTP außerhalb der DB-Transaktion| Adapters["Yandex- / Google-Adapter"]
+    Adapters -->|Antwort veröffentlichen / OAuth aktualisieren| Platforms["Bewertungsplattformen"]
+    Adapters -->|Permanenter Integrationsfehler| DLQ
+    Worker -->|Egress, Phase 3<br/>external_reply_id und Status speichern<br/>Kurze Mandantentransaktion| DB
 
     subgraph TenantBoundary["Mandantenbezogener Datenzugriff"]
         DB
@@ -105,7 +110,8 @@ frontend/src/
 - **Mandantenübergreifende Datenisolierung:** PostgreSQL-Row-Level-Security-Richtlinien (RLS) beschränken Geschäftsdaten auf den authentifizierten Mandanten.
 - **Deterministische Schwärzung personenbezogener Daten:** Unterstützte Muster werden während der Ingestion aus Bewertungstexten entfernt, bevor diese gespeichert oder einer LLM-Analyse zugeführt werden.
 - **Asynchrone Verarbeitung:** Redis und ARQ-Worker verarbeiten Hintergrundaufgaben außerhalb des synchronen API-Anfragepfads.
-- **Dead Letter Queue (DLQ):** Fehlgeschlagene KI-Analyseaufgaben können zur späteren Prüfung und kontrollierten Wiederaufnahme gespeichert werden, statt unbemerkt verworfen zu werden.
+- **B2B Egress Engine:** Das Transactional-Outbox-Muster ermöglicht eine zuverlässige, zustandsverwaltete Zustellung an Bewertungsplattformen (Yandex/Google).
+- **Dead Letter Queue (DLQ):** Sowohl fehlgeschlagene SI-Analyseaufgaben als auch permanente Egress-Integrationsfehler (z. B. abgelaufene OAuth-Tokens / 401 Unauthorized) können zur späteren Prüfung und kontrollierten Wiederaufnahme gespeichert werden, statt unbemerkt verworfen zu werden.
 - **Strukturierte KI-Analyse:** Stimmungs- und Problemklassifizierungen werden anhand typisierter Modelle validiert.
 - **Betriebliche Schutzmaßnahmen:** Die Codebasis enthält Komponenten für Mandantenkontext, Request-Tracing, Ratenbegrenzung, Wiederholungsversuche und Kontingente. Konfiguration und Verifikation sind für jede Bereitstellung gesondert erforderlich.
 
@@ -117,6 +123,7 @@ frontend/src/
 | **Backend-API** | Python 3.10+, FastAPI, Pydantic |
 | **Datenbank** | Supabase-gehostetes PostgreSQL, PostgreSQL RLS |
 | **Asynchrone Verarbeitung** | Redis, ARQ |
+| **Tenant-API-Token-Vault** | Verschlüsselung gespeicherter Plattform-Zugangsdaten auf Anwendungsebene mit `cryptography.fernet` |
 | **KI-Analyse** | LLM-Integration über den konfigurierten Anbieter; Verhalten und Bedingungen hängen von der Bereitstellung ab |
 | **Web / Laufzeit** | Nginx, Docker, Docker Compose |
 | **Abrechnungskomponenten** | Das Repository enthält Stripe-Integrationskomponenten; diese müssen separat aktiviert und geprüft werden |
@@ -138,4 +145,4 @@ frontend/src/
 
 ## Lizenz
 
-Diese README räumt keine Lizenzrechte ein. Die geltenden Bedingungen sind, sofern vorhanden, der Lizenzdatei des Repositorys zu entnehmen.
+Diese README räumt keine Lizenzrechte ein. Die geltenden Bedingungen stehen in der Datei `LICENSE` im Stammverzeichnis des Repositorys.

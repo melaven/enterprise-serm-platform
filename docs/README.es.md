@@ -21,7 +21,7 @@ Tenable está diseñado para convertir datos de opiniones cuyo tratamiento está
 - Presenta tendencias y análisis a usuarios autorizados de la empresa.
 - Admite cargas de análisis asíncronas sin bloquear las solicitudes de la API.
 
-Tenable es una herramienta de análisis. No es un servicio para manipular la reputación, no promete eliminar opiniones legítimas y no publica respuestas de forma autónoma.
+Tenable es una herramienta de análisis. No es un servicio para manipular la reputación, no promete eliminar opiniones legítimas y no publica respuestas sin aprobación humana explícita (moderación con intervención humana).
 
 ## Privacidad de datos y cumplimiento
 
@@ -62,6 +62,11 @@ flowchart LR
     Worker -->|Guardar resultados del análisis| DB
     Worker -->|Fallo de LLM / análisis| DLQ[("Cola de tareas fallidas<br/>DLQ")]
     DLQ --> DB
+    Worker -->|Egress, fase 1<br/>Leer respuesta y descifrar credenciales<br/>Transacción breve del tenant| DB
+    Worker -->|Egress, fase 2<br/>HTTP fuera de la transacción de BD| Adapters["Adaptadores de Yandex / Google"]
+    Adapters -->|Publicar respuesta / actualizar OAuth| Platforms["Plataformas de opiniones"]
+    Adapters -->|Error permanente de integración| DLQ
+    Worker -->|Egress, fase 3<br/>Guardar external_reply_id y estado<br/>Transacción breve del tenant| DB
 
     subgraph TenantBoundary["Acceso limitado al tenant"]
         DB
@@ -105,7 +110,8 @@ frontend/src/
 - **Aislamiento de datos multi-tenant:** las políticas de PostgreSQL Row Level Security (RLS) limitan los registros empresariales al tenant autenticado.
 - **Redacción determinista de datos personales:** los patrones compatibles se redactan del texto de las opiniones durante la ingesta, antes de guardarlo y antes del análisis mediante LLM.
 - **Procesamiento asíncrono:** Redis y los workers ARQ procesan tareas en segundo plano, fuera del ciclo síncrono de la API.
-- **Dead Letter Queue (DLQ):** las tareas fallidas de análisis de IA pueden registrarse para su revisión y recuperación controlada, en lugar de descartarse silenciosamente.
+- **B2B Egress Engine:** el patrón Transactional Outbox proporciona una entrega fiable y con estado a las plataformas de opiniones (Yandex/Google).
+- **Dead Letter Queue (DLQ):** permite registrar tanto las tareas fallidas de análisis SI como los errores permanentes de integración egress (p. ej., tokens OAuth caducados / 401 Unauthorized) para su revisión y recuperación controlada, en lugar de descartarlos silenciosamente.
 - **Análisis de IA estructurado:** las clasificaciones de sentimiento y de incidencias se validan mediante modelos tipados.
 - **Controles operativos:** el código incluye componentes para el contexto del tenant, el rastreo de solicitudes, la limitación de frecuencia, los reintentos y las cuotas. Su configuración y verificación dependen de cada despliegue.
 
@@ -117,6 +123,7 @@ frontend/src/
 | **API backend** | Python 3.10+, FastAPI, Pydantic |
 | **Base de datos** | PostgreSQL alojado en Supabase, PostgreSQL RLS |
 | **Procesamiento asíncrono** | Redis, ARQ |
+| **Bóveda de tokens API de tenants** | Cifrado en la capa de aplicación para datos almacenados mediante `cryptography.fernet` |
 | **Análisis de IA** | Integración con LLM mediante el proveedor configurado; el comportamiento y las condiciones dependen del despliegue |
 | **Web / ejecución** | Nginx, Docker, Docker Compose |
 | **Componentes de facturación** | El repositorio contiene componentes de integración con Stripe; habilítelos y valídelos por separado |
@@ -138,4 +145,4 @@ frontend/src/
 
 ## Licencia
 
-Este README no concede derechos de licencia. Consulte el archivo de licencia del repositorio, si existe, para conocer las condiciones aplicables.
+Este README no concede derechos de licencia. Consulte el archivo `LICENSE` en la raíz del repositorio para conocer las condiciones aplicables.

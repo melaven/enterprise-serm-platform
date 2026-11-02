@@ -24,7 +24,7 @@ Tenable is designed to turn authorized review data into structured business inte
 - Present trends and analytics to authorized business users.
 - Support asynchronous analysis workloads without blocking API requests.
 
-Tenable is an analytics tool. It is not a reputation-manipulation service, does not promise the removal of legitimate reviews, and does not autonomously publish replies.
+Tenable is an analytics tool. It is not a reputation-manipulation service, does not promise the removal of legitimate reviews, and does not publish replies without explicit human approval (human-in-the-loop moderation).
 
 ## Data Privacy & Compliance
 
@@ -68,6 +68,7 @@ flowchart LR
     Worker -->|Egress Phase 1<br/>read reply + decrypt credentials<br/>short tenant transaction| DB
     Worker -->|Egress Phase 2<br/>HTTP outside DB transaction| Adapters["Yandex / Google Adapters"]
     Adapters -->|Publish reply / refresh OAuth| Platforms["Review platforms"]
+    Adapters -->|PermanentAPIError| DLQ
     Worker -->|Egress Phase 3<br/>persist external_reply_id + status<br/>short tenant transaction| DB
 
     subgraph TenantBoundary["Tenant-scoped data access"]
@@ -115,7 +116,8 @@ frontend/src/
 - **Multi-tenant data isolation:** PostgreSQL Row Level Security (RLS) policies scope business records to the authenticated tenant.
 - **Deterministic PII redaction:** Supported personal-data patterns in review text are redacted during ingestion, before persistence and downstream LLM analysis.
 - **Asynchronous processing:** Redis and ARQ workers handle background analysis outside the request-response path.
-- **Dead Letter Queue (DLQ):** Failed SI analysis tasks can be recorded for later inspection and controlled recovery instead of being silently discarded.
+- **B2B Egress Engine:** The transactional outbox pattern provides reliable, state-managed delivery to review platforms (Yandex/Google).
+- **Dead Letter Queue (DLQ):** Failed SI analysis tasks and permanent egress integration failures (e.g., expired OAuth tokens / 401 Unauthorized) can be recorded for later inspection and controlled recovery instead of being silently discarded.
 - **Structured SI analysis:** Sentiment and issue classifications use typed output models and validation.
 - **Operational safeguards:** The codebase includes tenant-aware database access, request tracing, rate limiting, retries, and quota-related components. Their configuration and verification remain deployment-specific.
 
@@ -127,6 +129,7 @@ frontend/src/
 | **Backend API** | Python 3.10+, FastAPI, Pydantic |
 | **Database** | Supabase-hosted PostgreSQL, PostgreSQL RLS |
 | **Async processing** | Redis, ARQ |
+| **Tenant API Token Vault** | Application-layer encryption at rest using `cryptography.fernet` for stored platform credentials |
 | **SI analysis** | LLM integration through the configured provider; provider behavior and terms depend on deployment |
 | **Web / runtime** | Nginx, Docker, Docker Compose |
 | **Billing components** | Stripe integration components are present in the repository; enable and validate them separately |
@@ -148,4 +151,4 @@ frontend/src/
 
 ## License
 
-No license grant is made by this README. Refer to the repository’s license file, if present, for the applicable terms.
+No license grant is made by this README. Refer to the `LICENSE` file in the root of the repository for applicable terms.

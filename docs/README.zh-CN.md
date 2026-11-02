@@ -21,7 +21,7 @@ Tenable 旨在将获准处理的评价数据转化为结构化商业洞察：
 - 向获授权的业务用户展示趋势和分析结果。
 - 支持异步分析任务，避免阻塞 API 请求。
 
-Tenable 是一款分析工具，不用于操纵声誉，不承诺删除真实评价，也不会自主发布回复。
+Tenable 是一款分析工具，不用于操纵声誉，不承诺删除真实评价，也不会在未经人工明确批准的情况下发布回复（人工参与审核）。
 
 ## 数据隐私与合规
 
@@ -62,6 +62,11 @@ flowchart LR
     Worker -->|保存分析结果| DB
     Worker -->|LLM / 分析失败| DLQ[("失败任务队列<br/>DLQ")]
     DLQ --> DB
+    Worker -->|Egress 阶段 1<br/>读取回复并解密凭据<br/>租户范围内的短事务| DB
+    Worker -->|Egress 阶段 2<br/>在数据库事务之外执行 HTTP| Adapters["Yandex / Google 适配器"]
+    Adapters -->|发布回复 / 刷新 OAuth| Platforms["评价平台"]
+    Adapters -->|永久集成错误| DLQ
+    Worker -->|Egress 阶段 3<br/>保存 external_reply_id 和状态<br/>租户范围内的短事务| DB
 
     subgraph TenantBoundary["租户范围内的数据访问"]
         DB
@@ -105,7 +110,8 @@ frontend/src/
 - **多租户数据隔离：** PostgreSQL 行级安全（RLS）策略将业务数据限制在已认证的租户范围内。
 - **确定性个人信息脱敏：** 在接入阶段对评价文本中受支持的个人信息模式进行清理，先于数据持久化和下游 LLM 分析。
 - **异步处理：** Redis 与 ARQ 工作进程在后台处理任务，不占用同步 API 请求路径。
-- **失败任务队列（DLQ）：** SI 分析失败的任务可以记录下来，供后续检查和受控恢复，而不是被静默丢弃。
+- **B2B Egress Engine：** Transactional Outbox 模式为评价平台（Yandex/Google）提供可靠且具有状态管理的投递。
+- **失败任务队列（DLQ）：** 可记录 SI 分析失败任务以及永久性 egress 集成错误（例如 OAuth 令牌过期 / 401 Unauthorized），以便后续检查和受控恢复，而非静默丢弃。
 - **结构化 SI 分析：** 通过类型化输出模型和校验机制验证情感及问题分类。
 - **运维保护措施：** 代码库包含租户上下文、请求追踪、速率限制、重试和配额相关组件。具体配置与验证需针对各部署环境完成。
 
@@ -117,6 +123,7 @@ frontend/src/
 | **后端 API** | Python 3.10+、FastAPI、Pydantic |
 | **数据库** | Supabase 托管的 PostgreSQL、PostgreSQL RLS |
 | **异步处理** | Redis、ARQ |
+| **租户 API 令牌保险库** | 使用 `cryptography.fernet` 在应用层加密静态存储的平台凭据 |
 | **SI 分析** | 通过已配置提供商集成 LLM；具体行为和条款取决于部署配置 |
 | **Web / 运行环境** | Nginx、Docker、Docker Compose |
 | **计费组件** | 仓库中包含 Stripe 集成组件；请单独启用并验证 |
@@ -138,4 +145,4 @@ frontend/src/
 
 ## 许可证
 
-本 README 不授予任何许可权利。适用条款请参阅仓库中的许可证文件（如有）。
+本 README 不授予任何许可权利。适用条款请参阅仓库根目录中的 `LICENSE` 文件。

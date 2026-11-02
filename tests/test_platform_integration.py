@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from app.api.v1.routes.platforms import router
 from app.core.auth import get_current_tenant
 from app.core.dependencies import get_tenant_db
-from app.infrastructure.persistence.models import economics
 
 
 class FakeIntegrationSession:
@@ -54,16 +53,10 @@ async def integration_client() -> (
 
 
 @pytest.mark.asyncio
-async def test_google_business_integration_encrypts_and_hides_token(
+async def test_google_business_integration_uses_plain_tokens_and_hides_them(
     integration_client: tuple[httpx.AsyncClient, FakeIntegrationSession, UUID],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     client, session, tenant_id = integration_client
-    monkeypatch.setattr(
-        economics,
-        "encrypt_token",
-        lambda token: f"encrypted:{token}",
-    )
 
     response = await client.put(
         "/api/v1/platforms/integrations/google-business",
@@ -84,8 +77,8 @@ async def test_google_business_integration_encrypts_and_hides_token(
     }
     assert "oauth-access-token" not in response.text
     assert session.record.company_id == tenant_id
-    assert session.record.encrypted_api_key == "encrypted:oauth-access-token"
-    assert session.record.encrypted_refresh_token == "encrypted:oauth-refresh-token"
+    assert session.record.access_token == "oauth-access-token"
+    assert session.record.refresh_token == "oauth-refresh-token"
     assert "oauth-refresh-token" not in response.text
 
 

@@ -178,9 +178,7 @@ def _publication() -> reply_tasks.ReplyPublication:
         reply_text="Thank you",
         platform="yandex",
         api_key="secret-token",
-        encrypted_api_key="encrypted-secret-token",
         refresh_token=None,
-        encrypted_refresh_token=None,
         expires_at=None,
         meta_config={},
     )

@@ -93,12 +93,12 @@ async def upsert_google_business_integration(
         integration = PlatformIntegration(
             company_id=tenant_id,
             platform="google_business",
-            encrypted_api_key="pending-encryption",
+            access_token=body.access_token.get_secret_value(),
             is_active=True,
         )
         db.add(integration)
-
-    integration.api_key = body.access_token.get_secret_value()
+    else:
+        integration.api_key = body.access_token.get_secret_value()
     if body.refresh_token is not None:
         integration.refresh_token = body.refresh_token.get_secret_value()
     integration.external_account_id = body.external_account_id.strip()

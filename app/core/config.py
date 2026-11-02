@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://127.0.0.1:6379/0"
     groq_api_key: SecretStr | None = None
     groq_model: str = DEFAULT_GROQ_MODEL
+    encryption_secret_key: SecretStr | None = None
+    encryption_key: SecretStr | None = None
     # Только для legacy-проектов с HS256. Пусто -> проверка подписи через JWKS.
     supabase_jwt_secret: str | None = None
     jwt_audience: str = "authenticated"

@@ -10,7 +10,6 @@ from sqlalchemy import select, text
 
 from app.core.database import AsyncSessionLocal
 from app.core.logger import get_logger
-from app.core.security import decrypt_token
 from app.core.tenant_session import set_tenant_rls_context
 from app.domain.reviews.publication import ReplyPublicationStatus
 from app.infrastructure.integrations.review_platforms.base import (
@@ -38,9 +37,7 @@ class ReplyPublication:
     reply_text: str
     platform: str
     api_key: str
-    encrypted_api_key: str
     refresh_token: str | None
-    encrypted_refresh_token: str | None
     expires_at: datetime | None
     meta_config: dict[str, object]
 
@@ -107,14 +104,8 @@ async def _load_reply_publication(
                 review_external_id=review.external_id,
                 reply_text=reply.reply_text,
                 platform=review.platform.strip().lower(),
-                api_key=decrypt_token(integration.encrypted_api_key),
-                encrypted_api_key=integration.encrypted_api_key,
-                refresh_token=(
-                    decrypt_token(integration.encrypted_refresh_token)
-                    if integration.encrypted_refresh_token
-                    else None
-                ),
-                encrypted_refresh_token=integration.encrypted_refresh_token,
+                api_key=integration.api_key,
+                refresh_token=integration.refresh_token,
                 expires_at=integration.expires_at,
                 meta_config=integration.meta_config,
             )
@@ -128,8 +119,8 @@ async def _record_publish_result(
     external_reply_id: str | None = None,
     failure_reason: str | None = None,
     integration_id: UUID | None = None,
-    original_encrypted_api_key: str | None = None,
-    original_encrypted_refresh_token: str | None = None,
+    original_api_key: str | None = None,
+    original_refresh_token: str | None = None,
     original_expires_at: datetime | None = None,
     refreshed_credentials: RefreshedCredentials | None = None,
 ) -> bool:
@@ -151,9 +142,8 @@ async def _record_publish_result(
                         f"Platform integration {integration_id} was not found"
                     )
                 if (
-                    integration.encrypted_api_key == original_encrypted_api_key
-                    and integration.encrypted_refresh_token
-                    == original_encrypted_refresh_token
+                    integration.api_key == original_api_key
+                    and integration.refresh_token == original_refresh_token
                     and integration.expires_at == original_expires_at
                 ):
                     integration.api_key = refreshed_credentials.api_key
@@ -260,8 +250,8 @@ async def publish_review_reply(
             status=ReplyPublicationStatus.QUEUED_OUTBOX,
             failure_reason=str(exc),
             integration_id=publication.integration_id,
-            original_encrypted_api_key=publication.encrypted_api_key,
-            original_encrypted_refresh_token=publication.encrypted_refresh_token,
+            original_api_key=publication.api_key,
+            original_refresh_token=publication.refresh_token,
             original_expires_at=publication.expires_at,
             refreshed_credentials=_get_refreshed_credentials(adapter, publication),
         )
@@ -293,8 +283,8 @@ async def publish_review_reply(
                 else str(exc)
             ),
             integration_id=publication.integration_id,
-            original_encrypted_api_key=publication.encrypted_api_key,
-            original_encrypted_refresh_token=publication.encrypted_refresh_token,
+            original_api_key=publication.api_key,
+            original_refresh_token=publication.refresh_token,
             original_expires_at=publication.expires_at,
             refreshed_credentials=_get_refreshed_credentials(adapter, publication),
         )
@@ -316,8 +306,8 @@ async def publish_review_reply(
             status=ReplyPublicationStatus.PUBLISH_FAILED,
             failure_reason=f"Неожиданная ошибка: {type(exc).__name__}",
             integration_id=publication.integration_id,
-            original_encrypted_api_key=publication.encrypted_api_key,
-            original_encrypted_refresh_token=publication.encrypted_refresh_token,
+            original_api_key=publication.api_key,
+            original_refresh_token=publication.refresh_token,
             original_expires_at=publication.expires_at,
             refreshed_credentials=_get_refreshed_credentials(adapter, publication),
         )
@@ -339,8 +329,8 @@ async def publish_review_reply(
             status=ReplyPublicationStatus.PUBLISH_FAILED,
             failure_reason=error,
             integration_id=publication.integration_id,
-            original_encrypted_api_key=publication.encrypted_api_key,
-            original_encrypted_refresh_token=publication.encrypted_refresh_token,
+            original_api_key=publication.api_key,
+            original_refresh_token=publication.refresh_token,
             original_expires_at=publication.expires_at,
             refreshed_credentials=_get_refreshed_credentials(adapter, publication),
         )
@@ -353,8 +343,8 @@ async def publish_review_reply(
         status=ReplyPublicationStatus.PUBLISHED,
         external_reply_id=external_reply_id,
         integration_id=publication.integration_id,
-        original_encrypted_api_key=publication.encrypted_api_key,
-        original_encrypted_refresh_token=publication.encrypted_refresh_token,
+        original_api_key=publication.api_key,
+        original_refresh_token=publication.refresh_token,
         original_expires_at=publication.expires_at,
         refreshed_credentials=_get_refreshed_credentials(adapter, publication),
     )

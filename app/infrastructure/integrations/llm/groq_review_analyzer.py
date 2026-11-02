@@ -25,6 +25,7 @@ from app.api.schemas.review_analysis import (
     ReviewFlag,
     Sentiment,
 )
+from app.core.ai.errors import LLMPermanentError, LLMTransientError
 from app.core.config import DEFAULT_GROQ_MODEL, get_settings
 
 if TYPE_CHECKING:
@@ -44,18 +45,6 @@ PREFERRED_TAGS: Final = (
     "доставка", "качество", "поддержка", "цена", "обслуживание", "персонал", "сроки",
     "ожидание", "чистота", "ассортимент", "оплата", "возврат", "приложение", "атмосфера",
 )  # fmt: skip
-
-
-class LLMTransientError(RuntimeError):
-    """Временный сбой провайдера (429, 5xx, таймаут, обрыв соединения): воркер повторит задачу позже."""
-
-    def __init__(self, message: str, retry_after_s: float | None = None) -> None:
-        super().__init__(message)
-        self.retry_after_s = retry_after_s
-
-
-class LLMPermanentError(RuntimeError):
-    """Постоянная ошибка запроса (401/403/404/422, неверная модель): повтор не поможет, нужен алерт."""
 
 
 class _BadModelOutput(Exception):

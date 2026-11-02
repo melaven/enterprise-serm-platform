@@ -1,7 +1,4 @@
-"""
-Security utilities for encryption/decryption of sensitive data
-Uses Fernet symmetric encryption from cryptography library
-"""
+"""Security utilities for encryption/decryption of sensitive data."""
 
 import base64
 import os

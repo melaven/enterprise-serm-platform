@@ -171,6 +171,34 @@ def test_anti_crisis_approval_audit_migration_is_idempotent() -> None:
     ) in sql
 
 
+def test_tenant_ai_context_migration_adds_company_profile_fields() -> None:
+    filename = "045_add_tenant_ai_context.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "ALTER TABLE public.companies" in sql
+    assert "ADD COLUMN IF NOT EXISTS tone_of_voice text DEFAULT NULL" in sql
+    assert "ADD COLUMN IF NOT EXISTS compensation_policy text DEFAULT NULL" in sql
+    assert "ADD COLUMN IF NOT EXISTS support_channel varchar DEFAULT NULL" in sql
+
+
+def test_generator_draft_migration_preserves_anti_crisis_drafts() -> None:
+    filename = "046_ai_response_generator_drafts.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert (
+        "ALTER TABLE public.ai_response_drafts RENAME TO anti_crisis_response_drafts"
+        in sql
+    )
+    assert "DEFAULT app.current_company_id()" in sql
+    assert "REFERENCES public.reviews (id, company_id)" in sql
+    assert "company_id = (SELECT app.current_company_id())" in sql
+    assert MIGRATIONS.index("044_review_reply_publication.sql") < MIGRATIONS.index(
+        filename
+    )
+
+
 def test_schema_cleanup_migration_removes_duplicate_review_pipeline_state() -> None:
     sql = (MIGRATIONS_DIR / "028_schema_cleanup.sql").read_text(encoding="utf-8")
 

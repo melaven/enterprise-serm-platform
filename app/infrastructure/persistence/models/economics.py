@@ -28,7 +28,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, synonym
 
 from app.api.schemas.economics import ReplyModerationStatus, ReviewStatus
 from app.core.database import Base
-from app.core.security import EncryptionError, decrypt_token, encrypt_token
+from app.core.security.encryption import EncryptedString
 from app.domain.reviews.risk import RiskLevel
 from app.domain.reviews.state import ReviewState
 
@@ -44,6 +44,9 @@ class Company(Base):
     margin_percent: Mapped[float] = mapped_column(Float, nullable=False)
     cac: Mapped[float] = mapped_column(Float, nullable=False)
     base_ltv: Mapped[float] = mapped_column(Float, nullable=False)
+    tone_of_voice: Mapped[str | None] = mapped_column(Text, nullable=True)
+    compensation_policy: Mapped[str | None] = mapped_column(Text, nullable=True)
+    support_channel: Mapped[str | None] = mapped_column(String, nullable=True)
     notification_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -365,10 +368,12 @@ class PlatformIntegration(Base):
     platform: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # 'google_business', 'trustpilot', 'yelp'
-    encrypted_api_key: Mapped[str] = mapped_column(
-        Text, nullable=False
-    )  # Encrypted API token
-    encrypted_refresh_token: Mapped[str | None] = mapped_column(String, nullable=True)
+    access_token: Mapped[str] = mapped_column(
+        "encrypted_api_key", EncryptedString(), nullable=False
+    )
+    refresh_token: Mapped[str | None] = mapped_column(
+        "encrypted_refresh_token", EncryptedString(), nullable=True
+    )
     expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -398,79 +403,15 @@ class PlatformIntegration(Base):
 
     company: Mapped[Company] = relationship()
 
-    # Property for transparent encryption/decryption
     @property
     def api_key(self) -> str:
-        """Decrypt and return the API key"""
-        try:
-            return decrypt_token(self.encrypted_api_key)
-        except EncryptionError as e:
-            from app.core.logger import get_logger
-
-            logger = get_logger("platform_integration")
-            logger.error(
-                "Failed to decrypt API key",
-                integration_id=str(self.id),
-                platform=self.platform,
-                error=str(e),
-            )
-            raise
+        """Return the API key, decrypted by its SQLAlchemy column type."""
+        return self.access_token
 
     @api_key.setter
     def api_key(self, plain_token: str) -> None:
-        """Encrypt and store the API key"""
-        try:
-            self.encrypted_api_key = encrypt_token(plain_token)
-        except EncryptionError as e:
-            from app.core.logger import get_logger
-
-            logger = get_logger("platform_integration")
-            logger.error(
-                "Failed to encrypt API key",
-                integration_id=str(self.id),
-                platform=self.platform,
-                error=str(e),
-            )
-            raise
-
-    @property
-    def refresh_token(self) -> str | None:
-        """Decrypt and return the OAuth refresh token."""
-        if self.encrypted_refresh_token is None:
-            return None
-        try:
-            return decrypt_token(self.encrypted_refresh_token)
-        except EncryptionError as e:
-            from app.core.logger import get_logger
-
-            logger = get_logger("platform_integration")
-            logger.error(
-                "Failed to decrypt refresh token",
-                integration_id=str(self.id),
-                platform=self.platform,
-                error=str(e),
-            )
-            raise
-
-    @refresh_token.setter
-    def refresh_token(self, plain_token: str | None) -> None:
-        """Encrypt and store the OAuth refresh token."""
-        if plain_token is None:
-            self.encrypted_refresh_token = None
-            return
-        try:
-            self.encrypted_refresh_token = encrypt_token(plain_token)
-        except EncryptionError as e:
-            from app.core.logger import get_logger
-
-            logger = get_logger("platform_integration")
-            logger.error(
-                "Failed to encrypt refresh token",
-                integration_id=str(self.id),
-                platform=self.platform,
-                error=str(e),
-            )
-            raise
+        """Set the API key; encryption is applied when SQLAlchemy persists it."""
+        self.access_token = plain_token
 
     __table_args__ = (
         Index("ix_platform_integrations_company_id", "company_id"),

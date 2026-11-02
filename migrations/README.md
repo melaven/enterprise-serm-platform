@@ -21,11 +21,24 @@ generation and is deleted when its parent review is deleted. Configure
 payloads exist; without it, review creation fails explicitly rather than
 storing plaintext.
 
+OAuth access and refresh tokens in `platform_integrations` are encrypted
+automatically by the SQLAlchemy column type. Set `ENCRYPTION_SECRET_KEY` to a
+valid Fernet key and keep it stable; while upgrading existing installations,
+use the same value as the current `ENCRYPTION_KEY` so existing integration
+ciphertext remains readable. No schema migration is required: the current
+token columns are unbounded text/varchar columns.
+
 Moderated reply text is stored separately in the tenant-isolated
 `review_replies` table. `reviews.moderation_status` tracks the workflow while
 the privacy-constrained reply fields on `reviews` remain `NULL`. Approval only
 marks the reply as approved; publishing it to an external platform remains a
 separate, disabled operation.
+
+The AI response generator reads tenant-specific tone, compensation, and
+support-channel settings from `companies`. Migration `045_add_tenant_ai_context`
+adds these nullable fields. Migration `046_ai_response_generator_drafts`
+preserves the original anti-crisis records as `anti_crisis_response_drafts`
+and creates the separate `ai_response_drafts` table used by the generator.
 
 Review analysis requests are written to `outbox_events` in the same database
 transaction as the review. The ARQ worker relays pending events every five

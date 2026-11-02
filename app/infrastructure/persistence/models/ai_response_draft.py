@@ -22,7 +22,7 @@ from app.domain.reviews.risk import ResponseStrategyType
 
 
 class AIResponseDraft(Base):
-    __tablename__ = "ai_response_drafts"
+    __tablename__ = "anti_crisis_response_drafts"
 
     id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True), primary_key=True, default=uuid4
@@ -69,10 +69,10 @@ class AIResponseDraft(Base):
             ["review_id", "tenant_id"],
             ["reviews.id", "reviews.company_id"],
             ondelete="CASCADE",
-            name="fk_ai_response_drafts_review_tenant",
+            name="fk_anti_crisis_response_drafts_review_tenant",
         ),
         Index(
-            "uq_ai_response_drafts_tenant_review_strategy",
+            "uq_anti_crisis_response_drafts_tenant_review_strategy",
             "tenant_id",
             "review_id",
             "strategy_type",

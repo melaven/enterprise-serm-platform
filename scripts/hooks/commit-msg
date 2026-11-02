@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+message_file=$1
+temporary_file="${message_file}.tmp.$$"
+trap 'rm -f "$temporary_file"' EXIT HUP INT TERM
+
+awk 'tolower($0) !~ /^[[:space:]]*co-authored-by[[:space:]]*:/' "$message_file" > "$temporary_file"
+cat "$temporary_file" > "$message_file"
+
+rm -f "$temporary_file"
+trap - EXIT HUP INT TERM

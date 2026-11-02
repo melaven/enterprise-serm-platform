@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package tenable.serm.crawler.v1;
+package sentiguard.serm.crawler.v1;
 
-option go_package = "github.com/tenable/serm/crawler/v1;crawlerv1";
+option go_package = "github.com/sentiguard/serm/crawler/v1;crawlerv1";
 
 // Crawler Service - gRPC interface for Go crawler
 service CrawlerService {

@@ -75,7 +75,7 @@ test.describe('Billing: Quota Enforcement & Paywall', () => {
         },
         version: 0,
       };
-      localStorage.setItem('tenable-serm-storage', JSON.stringify(zustandState));
+      localStorage.setItem('sentiguard-storage', JSON.stringify(zustandState));
     }, authToken);
 
     // Reload to apply auth
@@ -121,7 +121,7 @@ test.describe('Billing: Quota Enforcement & Paywall', () => {
         },
         version: 0,
       };
-      localStorage.setItem('tenable-serm-storage', JSON.stringify(zustandState));
+      localStorage.setItem('sentiguard-storage', JSON.stringify(zustandState));
     }, authToken);
 
     await page.reload();
@@ -195,7 +195,7 @@ test.describe('Billing: Quota Enforcement & Paywall', () => {
         },
         version: 0,
       };
-      localStorage.setItem('tenable-serm-storage', JSON.stringify(zustandState));
+      localStorage.setItem('sentiguard-storage', JSON.stringify(zustandState));
     }, authToken);
 
     await page.reload();
@@ -258,7 +258,7 @@ test.describe('Billing: Quota Enforcement & Paywall', () => {
         },
         version: 0,
       };
-      localStorage.setItem('tenable-serm-storage', JSON.stringify(zustandState));
+      localStorage.setItem('sentiguard-storage', JSON.stringify(zustandState));
     }, authToken);
 
     await page.reload();

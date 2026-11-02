@@ -247,7 +247,7 @@ async def apply_migrations() -> None:
             async with engine.begin() as connection:
                 await connection.execute(
                     text("SELECT pg_advisory_xact_lock(hashtext(:lock_name)::bigint)"),
-                    {"lock_name": "tenable-serm-schema-migrations"},
+                    {"lock_name": "sentiguard-schema-migrations"},
                 )
                 already_applied = await connection.scalar(
                     text(

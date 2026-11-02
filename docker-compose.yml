@@ -1,10 +1,10 @@
-name: tenable-serm-local
+name: sentiguard-local
 
 x-app: &app
   build:
     context: .
     dockerfile: Dockerfile
-  image: tenable-serm-local:latest
+  image: sentiguard-local:latest
   init: true
   restart: unless-stopped
   environment: &app-environment
@@ -97,7 +97,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: tenable-serm-local:latest
+    image: sentiguard-local:latest
     command: ["true"]
     restart: "no"
     environment:

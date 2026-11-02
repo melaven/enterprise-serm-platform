@@ -1,4 +1,4 @@
-# Tenable SERM Quick Start
+# SentiGuard Quick Start
 
 ## Requirements
 

@@ -25,8 +25,8 @@ RUN npm run build
 FROM nginx:1.25-alpine
 
 # Metadata
-LABEL maintainer="Tenable SERM Team"
-LABEL description="Tenable SERM Frontend - Production Image"
+LABEL maintainer="SentiGuard Team"
+LABEL description="SentiGuard Frontend - Production Image"
 
 # Устанавливаем curl для healthcheck
 RUN apk add --no-cache curl

@@ -1,4 +1,4 @@
-# Production Deployment Guide - Tenable SERM
+# Production Deployment Guide - SentiGuard
 
 ## Overview
 
@@ -454,7 +454,7 @@ docker-compose -f docker-compose.prod.yml exec -T postgres psql -U serm_user ser
 ```bash
 # Redis использует AOF persistence
 # Backup volume
-docker run --rm -v tenable-serm-prod_redis-data:/data -v $(pwd):/backup alpine tar czf /backup/redis-backup.tar.gz -C /data .
+docker run --rm -v sentiguard-prod_redis-data:/data -v $(pwd):/backup alpine tar czf /backup/redis-backup.tar.gz -C /data .
 ```
 
 ## Update Strategy
@@ -483,4 +483,4 @@ docker-compose -f docker-compose.prod.yml up -d --no-deps worker
 
 **Версия:** 1.0
 **Последнее обновление:** 2026-10-13
-**Мейнтейнер:** Tenable SERM Team
+**Мейнтейнер:** SentiGuard Team

@@ -167,7 +167,7 @@ async def test_dispatch_sends_hmac_signed_payload(
         body,
         hashlib.sha256,
     ).hexdigest()
-    assert headers["X-Tenable-Signature"] == f"sha256={expected}"
+    assert headers["X-SentiGuard-Signature"] == f"sha256={expected}"
 
 
 @pytest.mark.asyncio

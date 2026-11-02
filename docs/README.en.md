@@ -1,4 +1,4 @@
-# Tenable SERM
+# SentiGuard
 
 **B2B SaaS dashboard for analytics on public business ratings and service-quality alerts.**
 
@@ -246,7 +246,7 @@ cd frontend && npm run lint  # TypeScript
 
 ## Load Testing: What We Will Prove and How
 
-`infra/devops/loadtest/k6-tenable.js` — 1000 virtual users and four invariants: exactly one `202` for duplicate URL, `used ≤ limit` after quota race, no `5xx` on connection pool exhaustion, no data leakage between tenants. Thresholds are initial hypotheses; results will be published here after staging run.
+`infra/devops/loadtest/k6-sentiguard.js` — 1000 virtual users and four invariants: exactly one `202` for duplicate URL, `used ≤ limit` after quota race, no `5xx` on connection pool exhaustion, no data leakage between tenants. Thresholds are initial hypotheses; results will be published here after staging run.
 
 ## License and Contacts
 

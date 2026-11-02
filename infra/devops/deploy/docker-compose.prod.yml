@@ -1,7 +1,7 @@
-name: tenable-serm
+name: sentiguard
 # Образы приходят из GHCR (тег = git SHA). Build на сервере не выполняется.
 x-app: &app
-  image: ${IMAGE:?IMAGE=ghcr.io/org/tenable-serm@sha256:...}
+  image: ${IMAGE:?IMAGE=ghcr.io/org/sentiguard@sha256:...}
   env_file: .env
   environment: &env
     REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379/0
@@ -58,11 +58,11 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
-      POSTGRES_DB: tenable
+      POSTGRES_DB: sentiguard
     command: ["postgres", "-c", "max_connections=100", "-c", "shared_buffers=512MB", "-c", "idle_in_transaction_session_timeout=15s", "-c", "statement_timeout=30s"]
     volumes: ["/srv/data/postgres:/var/lib/postgresql/data"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d tenable"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sentiguard"]
       interval: 5s
       retries: 10
     logging: *log

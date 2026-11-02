@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Релизный деплой Tenable SERM на Ubuntu VPS.
+# Релизный деплой SentiGuard на Ubuntu VPS.
 #
 # Сделать исполняемым (один раз):   chmod +x scripts/deploy.sh
 # Запуск:                           ./scripts/deploy.sh [--clean] [-h|--help]
@@ -50,7 +50,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$ROOT_DIR"
 
 # Один деплой за раз.
-exec 9>/tmp/tenable-deploy.lock
+exec 9>/tmp/sentiguard-deploy.lock
 flock -n 9 || fail "Другой деплой уже выполняется."
 
 # --- 1. окружение ---

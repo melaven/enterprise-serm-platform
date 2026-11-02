@@ -1,4 +1,4 @@
-# Build Manifest — Tenable SERM Frontend
+# Build Manifest — SentiGuard Frontend
 
 **Дата аудита**: 2026-10-13  
 **Версия**: 1.0.0  
@@ -264,7 +264,7 @@ content: ['./index.html', './src/**/*.{ts,tsx}'],
 
 ```bash
 # .env.production
-VITE_API_URL=https://api.tenable-serm.com
+VITE_API_URL=https://api.sentiguard.com
 VITE_APP_VERSION=1.0.0
 ```
 

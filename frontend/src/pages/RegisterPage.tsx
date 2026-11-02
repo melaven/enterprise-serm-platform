@@ -57,7 +57,7 @@ export function RegisterPage() {
       
       if (success) {
         toast.success('Регистрация завершена', {
-          description: `Добро пожаловать в Tenable SERM!`,
+          description: `Добро пожаловать в SentiGuard!`,
         });
         navigate('/');
       } else {
@@ -80,7 +80,7 @@ export function RegisterPage() {
         {/* Логотип / Название */}
         <div className="text-center">
           <h1 className="text-4xl font-bold text-white">
-            Tenable <span className="bg-plum px-2 text-white">SERM</span>
+            SentiGuard <span className="bg-plum px-2 text-white">SERM</span>
           </h1>
           <p className="mt-3 text-chrome-400">Аналитика оценок и качества сервиса</p>
         </div>
@@ -190,7 +190,7 @@ export function RegisterPage() {
         </div>
 
         <p className="text-center text-xs text-chrome-500">
-          © 2026 Tenable SERM. Все права защищены.
+          © 2026 SentiGuard. Все права защищены.
         </p>
       </div>
     </div>

@@ -159,7 +159,7 @@ export const useAppStore = create<AppState>()(
         } finally {
           get().invalidateAuth();
           if (typeof localStorage !== 'undefined') {
-            localStorage.removeItem('tenable-serm-storage');
+            localStorage.removeItem('sentiguard-storage');
           }
         }
       },
@@ -254,7 +254,7 @@ export const useAppStore = create<AppState>()(
         set({ activeNavItem: item }),
     }),
     {
-      name: 'tenable-serm-storage',
+      name: 'sentiguard-storage',
       partialize: (state) => ({
         // Сохраняем только важные данные
         token: state.token,

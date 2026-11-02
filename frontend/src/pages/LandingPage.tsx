@@ -51,7 +51,7 @@ export function LandingPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Shield className="h-8 w-8 text-[#C5FF4A]" />
-              <span className="text-xl font-bold text-white">Tenable</span>
+              <span className="text-xl font-bold text-white">SentiGuard</span>
             </div>
             <div className="flex items-center gap-6">
               <a href="/login" className="text-sm font-medium text-gray-400 hover:text-white transition-colors">
@@ -335,7 +335,7 @@ export function LandingPage() {
               Ready to Transform Your Review Management?
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-400">
-              Join hundreds of businesses using Tenable to protect and enhance their online reputation.
+              Join hundreds of businesses using SentiGuard to protect and enhance their online reputation.
             </p>
             <div className="mt-8">
               <motion.a
@@ -359,10 +359,10 @@ export function LandingPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Shield className="h-6 w-6 text-[#C5FF4A]" />
-              <span className="text-lg font-bold text-white">Tenable</span>
+              <span className="text-lg font-bold text-white">SentiGuard</span>
             </div>
             <p className="text-sm text-gray-400">
-              © {new Date().getFullYear()} Tenable. All rights reserved.
+              © {new Date().getFullYear()} SentiGuard. All rights reserved.
             </p>
           </div>
         </div>

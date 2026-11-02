@@ -1,7 +1,7 @@
 {
   "version": "0.4",
   "project": {
-    "name": "Tenable SERM API",
+    "name": "SentiGuard API",
     "baseUrl": "http://localhost:8000",
     "description": "End-to-end API testing for SERM pipeline - PARSER ENGINE INTEGRATION COMPLETED",
     "createdAt": "2026-10-09T20:17:00Z"
@@ -25,7 +25,7 @@
     "status": "COMPLETED",
     "changes": [
       "✅ Updated DLQ schema with strict ConfigDict validation",
-      "✅ Replaced DLQ repository with Tenable SERM Supabase implementation",
+      "✅ Replaced DLQ repository with SentiGuard Supabase implementation",
       "✅ COMPLETED: Custom hooks integration with @dlq_protected decorator",
       "✅ COMPLETED: Worker startup function with service role authentication",
       "✅ COMPLETED: Critical task wrapping with DLQ protection",
@@ -142,7 +142,7 @@
         "authentication_tests": {
           "status": "⚠️ EMAIL_CONFIRMATION_REQUIRED",
           "health_check": "✅ HTTP 503 - Service responding",
-          "user_registration": "✅ User already exists (admin@tenable.com)",
+          "user_registration": "✅ User already exists (admin@sentiguard.com)",
           "user_login": "❌ HTTP 401 - Email not confirmed",
           "error_details": "x-sb-error-code: email_not_confirmed",
           "supabase_response": "Email not confirmed",
@@ -181,7 +181,7 @@
       "✅ Supabase Auth SDK интегрирован и работает",
       "✅ Все environment переменные настроены корректно",
       "✅ Email confirmation отключен в Supabase Dashboard",
-      "✅ User registration работает (admin@tenable.com)",
+      "✅ User registration работает (admin@sentiguard.com)",
       "✅ Login успешен: OAuth2 flow + JWT token generation",
       "✅ Protected endpoint /me работает с Bearer token",
       "✅ Logout успешен: session cleanup",

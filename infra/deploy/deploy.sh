@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Production Deployment Script for Tenable SERM
+# Production Deployment Script for SentiGuard
 # Usage: ./deploy.sh
 
 set -e
@@ -16,7 +16,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DEPLOY_DIR="$PROJECT_ROOT/infra/deploy"
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Tenable SERM Production Deployment${NC}"
+echo -e "${GREEN}SentiGuard Production Deployment${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 

@@ -27,7 +27,7 @@ interface DashboardLayoutProps {
 
 const FOCUS = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-gray-900';
 
-/** Каркас кабинета Tenable: боковое меню (на мобильных выезжает), шапка, контент. Только gray-палитра, без теней. */
+/** Каркас кабинета SentiGuard: боковое меню (на мобильных выезжает), шапка, контент. Только gray-палитра, без теней. */
 export function DashboardLayout({
   title,
   children,
@@ -75,7 +75,7 @@ export function DashboardLayout({
   const sidebar = (
     <div className="flex h-full w-60 flex-col border-r border-gray-200 bg-white">
       <div className="flex h-12 items-center border-b border-gray-200 px-3">
-        <span className="text-base font-bold tracking-tight text-gray-900">Tenable</span>
+        <span className="text-base font-bold tracking-tight text-gray-900">SentiGuard</span>
       </div>
       {menu}
       <div className="border-t border-gray-200 px-3 py-2">

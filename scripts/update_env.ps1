@@ -27,12 +27,12 @@ $redisPassword = -join ($alphabet | Get-Random -Count 32 | ForEach-Object { [cha
 
 $newContent = @(
     "# Local PostgreSQL"
-    "POSTGRES_USER=tenable"
+    "POSTGRES_USER=sentiguard"
     "POSTGRES_PASSWORD=$postgresPassword"
-    "POSTGRES_DB=tenable"
+    "POSTGRES_DB=sentiguard"
     "APP_TENANT_PASSWORD=$tenantPassword"
-    "DATABASE_URL=postgresql+asyncpg://tenable:$postgresPassword@db:5432/tenable"
-    "TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:$tenantPassword@db:5432/tenable"
+    "DATABASE_URL=postgresql+asyncpg://sentiguard:$postgresPassword@db:5432/sentiguard"
+    "TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:$tenantPassword@db:5432/sentiguard"
     "USE_TENANT_ROLE=true"
     ""
     "# Local Redis"

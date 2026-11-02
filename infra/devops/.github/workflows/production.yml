@@ -94,7 +94,7 @@ jobs:
         with:
           context: .
           load: true
-          tags: tenable-serm:ci
+          tags: sentiguard:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -102,7 +102,7 @@ jobs:
       - name: Trivy image scan (gate)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: tenable-serm:ci
+          image-ref: sentiguard:ci
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           vuln-type: os,library
@@ -156,12 +156,12 @@ jobs:
           HOST: ${{ secrets.DEPLOY_HOST }}
           ENV_FILE: ${{ secrets.PROD_ENV_FILE }}     # весь .env одним секретом
         run: |
-          scp -o StrictHostKeyChecking=yes infra/devops/deploy/docker-compose.prod.yml infra/devops/deploy/Caddyfile infra/devops/deploy/deploy.sh "deploy@${HOST}:/opt/tenable/"
-          printf '%s\n' "$ENV_FILE" "DOMAIN=${{ vars.DOMAIN }}" | ssh -o StrictHostKeyChecking=yes "deploy@${HOST}" 'umask 077; cat > /opt/tenable/.env'
+          scp -o StrictHostKeyChecking=yes infra/devops/deploy/docker-compose.prod.yml infra/devops/deploy/Caddyfile infra/devops/deploy/deploy.sh "deploy@${HOST}:/opt/sentiguard/"
+          printf '%s\n' "$ENV_FILE" "DOMAIN=${{ vars.DOMAIN }}" | ssh -o StrictHostKeyChecking=yes "deploy@${HOST}" 'umask 077; cat > /opt/sentiguard/.env'
       - name: Deploy (auto-rollback on failed healthcheck)
         run: |
           ssh -o StrictHostKeyChecking=yes "deploy@${{ secrets.DEPLOY_HOST }}" \
-            "echo '${{ secrets.GHCR_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && /opt/tenable/deploy.sh '${{ needs.build.outputs.image }}'"
+            "echo '${{ secrets.GHCR_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin && /opt/sentiguard/deploy.sh '${{ needs.build.outputs.image }}'"
       - name: Smoke test
         run: |
           for i in $(seq 1 12); do

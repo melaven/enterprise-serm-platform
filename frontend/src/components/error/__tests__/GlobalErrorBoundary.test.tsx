@@ -95,10 +95,10 @@ describe('GlobalErrorBoundary', () => {
     );
 
     const emailLink = screen.getByRole('link', {
-      name: /support@tenable-serm\.com/i,
+      name: /support@sentiguard\.com/i,
     });
     expect(emailLink).toBeInTheDocument();
-    expect(emailLink).toHaveAttribute('href', 'mailto:support@tenable-serm.com');
+    expect(emailLink).toHaveAttribute('href', 'mailto:support@sentiguard.com');
   });
 
   it('should display error icon with Royal Plum styling', () => {

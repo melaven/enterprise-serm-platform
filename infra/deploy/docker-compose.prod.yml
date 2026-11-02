@@ -1,4 +1,4 @@
-name: tenable-serm-prod
+name: sentiguard-prod
 
 services:
   # PostgreSQL Database
@@ -57,7 +57,7 @@ services:
       dockerfile: Dockerfile
       args:
         PYTHON_VERSION: "3.12"
-    image: tenable-serm:latest
+    image: sentiguard:latest
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-serm_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-serm}
       APP_TENANT_PASSWORD: ${APP_TENANT_PASSWORD:?Set APP_TENANT_PASSWORD in .env}
@@ -77,7 +77,7 @@ services:
       dockerfile: Dockerfile
       args:
         PYTHON_VERSION: "3.12"
-    image: tenable-serm:latest
+    image: sentiguard:latest
     env_file:
       - ../../.env
     environment:
@@ -129,7 +129,7 @@ services:
       dockerfile: Dockerfile
       args:
         PYTHON_VERSION: "3.12"
-    image: tenable-serm:latest
+    image: sentiguard:latest
     env_file:
       - ../../.env
     environment:
@@ -177,7 +177,7 @@ services:
     build:
       context: ../../frontend
       dockerfile: Dockerfile
-    image: tenable-serm-frontend:latest
+    image: sentiguard-frontend:latest
     restart: unless-stopped
     depends_on:
       backend:

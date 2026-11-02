@@ -26,7 +26,7 @@ function mapModerationStatus(
 
 export const MOCK_USER: UserProfile = {
   id: 'demo-user-001',
-  email: 'demo@tenable-serm.com',
+  email: 'demo@sentiguard.com',
   tenant_id: 'demo-tenant-001',
   created_at: '2026-01-01T00:00:00Z',
 };

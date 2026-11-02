@@ -118,7 +118,7 @@ async def dispatch_review_analyzed_event(
                         content=body,
                         headers={
                             "Content-Type": "application/json",
-                            "X-Tenable-Signature": f"sha256={signature}",
+                            "X-SentiGuard-Signature": f"sha256={signature}",
                         },
                     )
                 response.raise_for_status()

@@ -23,7 +23,8 @@ from app.core.database import Base
 from app.infrastructure.persistence.models.economics import Company, Platform, Review
 
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or os.environ.get(
-    "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/tenable_test"
+    "DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/sentiguard_test",
 )
 TENANT_HEADER = "X-Test-Tenant"
 ClientFactory = Callable[[UUID], httpx.AsyncClient]

@@ -8,7 +8,7 @@ interface ImportMetaEnv {
   /** 
    * Base URL для API запросов
    * @example 'http://127.0.0.1:8000' (dev)
-   * @example 'https://api.tenable-serm.com' (prod)
+   * @example 'https://api.sentiguard.com' (prod)
    */
   readonly VITE_API_BASE_URL?: string;
   

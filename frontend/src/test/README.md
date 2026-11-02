@@ -1,6 +1,6 @@
 # Frontend Test Suite
 
-Надежный тестовый контур для Tenable SERM Frontend.
+Надежный тестовый контур для SentiGuard Frontend.
 
 ## 🎯 Охват тестирования
 

@@ -7,7 +7,7 @@ node_modules/
 **/.venv/
 venv/
 **/venv/
-tenable-engine/venv/
+sentiguard-engine/venv/
 __pycache__/
 **/__pycache__/
 *.pyc
@@ -71,9 +71,9 @@ server_output.log
 
 # Project specific
 Laurent Nexus Operation backend_backup/
-Tenable_backend/
+SentiGuard_backend/
 portfolio-site/
-tenable-engine/
+sentiguard-engine/
 
 # Backup files
 *.backup

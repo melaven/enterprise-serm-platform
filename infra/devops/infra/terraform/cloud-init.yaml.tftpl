@@ -43,10 +43,10 @@ runcmd:
   - mkdir -p /srv/data
   - echo "/dev/disk/by-id/scsi-0HC_Volume_${volume_id} /srv/data ext4 discard,nofail,defaults 0 2" >> /etc/fstab
   - mount -a
-  - mkdir -p /srv/data/redis /srv/data/postgres /srv/data/caddy /opt/tenable
+  - mkdir -p /srv/data/redis /srv/data/postgres /srv/data/caddy /opt/sentiguard
   - chown -R 999:999 /srv/data/redis    # uid redis-alpine
   - chown -R 999:999 /srv/data/postgres # uid postgres-образа
-  - chown -R deploy:deploy /opt/tenable
+  - chown -R deploy:deploy /opt/sentiguard
   # хостовый файрвол (вторая линия за Hetzner Firewall); docker обходит ufw для published-портов, поэтому
   # наружу публикуем только 80/443 в compose, остальное — внутренняя сеть
   - ufw default deny incoming && ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw allow 443/udp && ufw --force enable

@@ -134,11 +134,11 @@ export class GlobalErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoun
             {/* Support */}
             <p className="mt-6 text-xs text-chrome-500">
               Если проблема повторяется, свяжитесь с технической поддержкой:{' '}
-              <a 
-                href="mailto:support@tenable-serm.com" 
+              <a
+                href="mailto:support@sentiguard.com"
                 className="text-plum hover:underline"
               >
-                support@tenable-serm.com
+                support@sentiguard.com
               </a>
             </p>
           </div>

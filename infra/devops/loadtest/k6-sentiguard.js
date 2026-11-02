@@ -1,4 +1,4 @@
-// k6 run -e BASE_URL=https://staging.example.com -e PROFILE=smoke loadtest/k6-tenable.js
+// k6 run -e BASE_URL=https://staging.example.com -e PROFILE=smoke loadtest/k6-sentiguard.js
 // TOKENS_JSON='["<jwt tenant A>","<jwt tenant B>",...]'  (токены разных компаний; у каждого свой company_id в claims)
 //
 // Что доказываем (честно про архитектуру: Advisory Locks в коде нет; гарантии такие):

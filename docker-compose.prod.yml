@@ -1,4 +1,4 @@
-name: tenable-serm
+name: sentiguard
 
 # Запуск:  docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 # Все секреты и адреса берутся ТОЛЬКО из .env (шаблон: .env.example). Без обязательных переменных compose не стартует.
@@ -9,7 +9,7 @@ x-app: &app
     target: runtime
     args:
       PYTHON_VERSION: "3.12"
-  image: tenable-serm:${APP_VERSION:-latest}
+  image: sentiguard:${APP_VERSION:-latest}
   env_file:
     - path: .env
       required: true
@@ -52,7 +52,7 @@ services:
       target: runtime
       args:
         PYTHON_VERSION: "3.12"
-    image: tenable-serm:${APP_VERSION:-latest}
+    image: sentiguard:${APP_VERSION:-latest}
     env_file:
       - path: .env
         required: true

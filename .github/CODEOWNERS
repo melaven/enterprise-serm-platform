@@ -2,35 +2,35 @@
 # https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
 
 # Default owners for everything
-* @tenable-serm/core-team
+* @sentiguard/core-team
 
 # Frontend
-/frontend/ @tenable-serm/frontend-team
-/frontend/src/components/ @tenable-serm/ui-team
-/frontend/src/features/ @tenable-serm/frontend-team
-/frontend/src/api/ @tenable-serm/api-team
+/frontend/ @sentiguard/frontend-team
+/frontend/src/components/ @sentiguard/ui-team
+/frontend/src/features/ @sentiguard/frontend-team
+/frontend/src/api/ @sentiguard/api-team
 
 # Backend
-/app/ @tenable-serm/backend-team
-/app/routers/ @tenable-serm/api-team
-/app/services/ @tenable-serm/backend-team
-/app/models/ @tenable-serm/database-team
+/app/ @sentiguard/backend-team
+/app/routers/ @sentiguard/api-team
+/app/services/ @sentiguard/backend-team
+/app/models/ @sentiguard/database-team
 
 # Infrastructure
-/.github/ @tenable-serm/devops-team
-/docker-compose.yml @tenable-serm/devops-team
-/Dockerfile @tenable-serm/devops-team
+/.github/ @sentiguard/devops-team
+/docker-compose.yml @sentiguard/devops-team
+/Dockerfile @sentiguard/devops-team
 
 # Documentation
-/docs/ @tenable-serm/documentation-team
-/*.md @tenable-serm/documentation-team
+/docs/ @sentiguard/documentation-team
+/*.md @sentiguard/documentation-team
 
 # Configuration
-/frontend/vite.config.ts @tenable-serm/frontend-lead
-/frontend/tailwind.config.js @tenable-serm/ui-team
-/app/core/config.py @tenable-serm/backend-lead
+/frontend/vite.config.ts @sentiguard/frontend-lead
+/frontend/tailwind.config.js @sentiguard/ui-team
+/app/core/config.py @sentiguard/backend-lead
 
 # Security sensitive files
-/app/core/auth.py @tenable-serm/security-team
-/app/auth/ @tenable-serm/security-team
-/.env.example @tenable-serm/security-team
+/app/core/auth.py @sentiguard/security-team
+/app/auth/ @sentiguard/security-team
+/.env.example @sentiguard/security-team

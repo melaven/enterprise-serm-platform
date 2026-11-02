@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Запускается на сервере пользователем deploy (из CI). Идемпотентен, откатывается при провале healthcheck.
 set -euo pipefail
-cd /opt/tenable
+cd /opt/sentiguard
 NEW_IMAGE="${1:?usage: deploy.sh <image@digest>}"
 PREV_IMAGE="$(grep -E '^IMAGE=' .deploy_state 2>/dev/null | cut -d= -f2- || true)"
 

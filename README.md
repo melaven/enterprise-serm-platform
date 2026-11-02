@@ -1,4 +1,4 @@
-# Tenable | Enterprise SI & SERM Engine
+# SentiGuard
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -11,26 +11,26 @@
 
 🇬🇧 [English](README.md) | 🇷🇺 [Русский](docs/README.ru.md) | 🇪🇸 [Español](docs/README.es.md) | 🇨🇳 [简体中文](docs/README.zh-CN.md) | 🇩🇪 [Deutsch](docs/README.de.md)
 
-Tenable is a B2B Sentiment Intelligence (SI) and Search Engine Reputation Management (SERM) platform for analyzing lawfully obtained public business feedback. It helps organizations understand sentiment, identify service-quality risks, and track reputation trends through tenant-isolated analytics.
+SentiGuard is a B2B Sentiment Intelligence (SI) and Search Engine Reputation Management (SERM) platform for analyzing lawfully obtained public business feedback. It helps organizations understand sentiment, identify service-quality risks, and track reputation trends through tenant-isolated analytics.
 
 > **Project status:** This repository contains an evolving MVP. Features and integrations may have different implementation and verification status. Do not interpret the architecture or this README as a claim of production readiness; validate the deployment, integrations, security controls, and operational procedures in your environment.
 
 ## Product Scope
 
-Tenable is designed to turn authorized review data into structured business intelligence:
+SentiGuard is designed to turn authorized review data into structured business intelligence:
 
 - Classify sentiment and recurring service themes.
 - Highlight feedback that may require timely human attention.
 - Present trends and analytics to authorized business users.
 - Support asynchronous analysis workloads without blocking API requests.
 
-Tenable is an analytics tool. It is not a reputation-manipulation service, does not promise the removal of legitimate reviews, and does not publish replies without explicit human approval (human-in-the-loop moderation).
+SentiGuard is an analytics tool. It is not a reputation-manipulation service, does not promise the removal of legitimate reviews, and does not publish replies without explicit human approval (human-in-the-loop moderation).
 
 ## Data Privacy & Compliance
 
 ### Permitted use and data sources
 
-Tenable is intended **exclusively for lawful Sentiment Intelligence and reputation analytics**. It is not designed or authorized for “gray” scraping, access-control circumvention, or collection that violates applicable law, platform terms, or contractual restrictions.
+SentiGuard is intended **exclusively for lawful Sentiment Intelligence and reputation analytics**. It is not designed or authorized for “gray” scraping, access-control circumvention, or collection that violates applicable law, platform terms, or contractual restrictions.
 
 Use only data that the customer is authorized to process, such as data supplied by the customer or obtained through an authorized official integration. Confirm that each source and collection method is permitted before enabling it. Public availability alone does not establish a lawful basis for processing or override a platform’s terms.
 
@@ -44,7 +44,7 @@ This is a data-minimization safeguard, **not a guarantee of complete anonymizati
 
 ### Responsibilities and legal notice
 
-This README describes technical controls, not legal advice, a compliance certification, or a determination that any particular processing is lawful. Customers are responsible for establishing and documenting an appropriate lawful basis, providing required notices, respecting data-subject rights, and ensuring that submitted data may be shared with Tenable and any configured subprocessors. The operator must separately assess its own obligations, including security, retention, access control, incident response, and any international data transfers.
+This README describes technical controls, not legal advice, a compliance certification, or a determination that any particular processing is lawful. Customers are responsible for establishing and documenting an appropriate lawful basis, providing required notices, respecting data-subject rights, and ensuring that submitted data may be shared with SentiGuard and any configured subprocessors. The operator must separately assess its own obligations, including security, retention, access control, incident response, and any international data transfers.
 
 Before production use, review applicable laws and platform terms, establish appropriate contractual arrangements, and assess the configured LLM provider’s data-processing terms, retention, and processing locations. The legal roles of the customer, operator, and service providers depend on the actual deployment and processing.
 

@@ -46,7 +46,7 @@ test.describe('Smoke Test: Auth & Dashboard', () => {
         state: authData.state,
         version: 0,
       };
-      localStorage.setItem('tenable-serm-storage', JSON.stringify(zustandState));
+      localStorage.setItem('sentiguard-storage', JSON.stringify(zustandState));
     }, {
       state: {
         token: authToken,
@@ -73,7 +73,7 @@ test.describe('Smoke Test: Auth & Dashboard', () => {
       // Debug: check what's in localStorage
       const storage = await page.evaluate(() => {
         return {
-          zustand: localStorage.getItem('tenable-serm-storage'),
+          zustand: localStorage.getItem('sentiguard-storage'),
           allKeys: Object.keys(localStorage),
         };
       });

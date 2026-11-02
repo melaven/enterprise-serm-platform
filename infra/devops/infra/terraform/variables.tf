@@ -6,7 +6,7 @@ variable "hcloud_token" {
 
 variable "project" {
   type    = string
-  default = "tenable"
+  default = "sentiguard"
 }
 
 variable "environment" {

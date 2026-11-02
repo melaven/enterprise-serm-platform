@@ -1,4 +1,4 @@
-# Tenable SERM Frontend
+# SentiGuard Frontend
 
 B2B SaaS Dashboard с premium Glassmorphism дизайном и строгой цветовой палитрой.
 
@@ -40,8 +40,8 @@ npm run preview
 ```bash
 # Из корня проекта
 cd frontend
-docker build -t tenable-serm-frontend:latest .
-docker run -p 8080:80 tenable-serm-frontend:latest
+docker build -t sentiguard-frontend:latest .
+docker run -p 8080:80 sentiguard-frontend:latest
 ```
 
 Приложение доступно на `http://localhost:8080`
@@ -59,7 +59,7 @@ docker-compose up -d frontend
 docker run -p 8080:80 \
   -e VITE_API_BASE_URL=https://api.your-domain.com \
   -e VITE_DEMO_MODE=false \
-  tenable-serm-frontend:latest
+  sentiguard-frontend:latest
 ```
 
 **Health Check:**
@@ -446,10 +446,10 @@ CMD ["nginx", "-g", "daemon off;"]
 
 ```bash
 # 1. Build Docker image
-docker build -t tenable-serm-frontend:v1.0.0 .
+docker build -t sentiguard-frontend:v1.0.0 .
 
 # 2. Tag для registry
-docker tag tenable-serm-frontend:v1.0.0 registry.example.com/serm-frontend:v1.0.0
+docker tag sentiguard-frontend:v1.0.0 registry.example.com/serm-frontend:v1.0.0
 
 # 3. Push to registry
 docker push registry.example.com/serm-frontend:v1.0.0
@@ -478,7 +478,7 @@ npm run lint
 
 ## 📄 License
 
-Proprietary - Tenable SERM
+Proprietary - SentiGuard
 
 
 ## 📚 Документация
@@ -497,7 +497,7 @@ Proprietary - Tenable SERM
 
 ## 📄 License
 
-Proprietary - Tenable SERM © 2026
+Proprietary - SentiGuard © 2026
 
 ---
 

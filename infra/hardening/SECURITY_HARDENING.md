@@ -1,6 +1,6 @@
-# Tenable — Zero Trust Hardening (приоритизированный чеклист)
+# SentiGuard — Zero Trust Hardening (приоритизированный чеклист)
 
-Файлы: `app_core/` (security_headers, cookie_auth, pii, ssrf, security_patch.md), `nginx/tenable.conf`, `ops/` (isolation.md, opsec_parsers.py).
+Файлы: `app_core/` (security_headers, cookie_auth, pii, ssrf, security_patch.md), `nginx/sentiguard.conf`, `ops/` (isolation.md, opsec_parsers.py).
 Статус проверки: pure-Python части (`pii`, `ssrf`, `opsec_parsers`) прогнаны; `security_headers`/`cookie_auth` и nginx-конфиг **не запускались** (нет fastapi/nginx в песочнице) — прогнать `nginx -t` и интеграционный тест до выката.
 
 ## CRITICAL (блокируют релиз)
@@ -15,7 +15,7 @@
 
 ## HIGH
 - [ ] **H1. SecurityMiddleware** (`security_headers.py`): CSP `default-src 'none'` для API, HSTS, nosniff, X-Frame-Options, COOP/CORP, `Cache-Control: no-store`. SPA-CSP — в nginx (`script-src 'self'`).
-- [ ] **H2. Nginx L7** (`tenable.conf`): `limit_req` (api/auth/expensive), `limit_conn`, таймауты против slowloris, блок сканеров по UA/пути (444), `real_ip` только от доверенного LB. UA-фильтр — шумоподавление; от целевых атак нужен WAF/Cloudflare.
+- [ ] **H2. Nginx L7** (`sentiguard.conf`): `limit_req` (api/auth/expensive), `limit_conn`, таймауты против slowloris, блок сканеров по UA/пути (444), `real_ip` только от доверенного LB. UA-фильтр — шумоподавление; от целевых атак нужен WAF/Cloudflare.
 - [ ] **H3. PII-стратегия** (`pii.py`): HMAC-SHA256+pepper (версии ключа) для username/авторов, сырые значения — TTL 30 дней (`PURGE_SQL`, ARQ cron раз в сутки), `suppression_list` только из хешей (opt-out «Стоп»). Логи парсинга — TTL 7–14 дней. Миграция — `MIGRATION_SQL`.
 - [ ] **H4. Rate limit на уровне приложения** (Redis, per-user + per-company) под nginx: защита от обхода по IP-пулу и от расхода платной квоты.
 - [ ] **H5. Brute-force/enumeration**: единый ответ `Invalid credentials`, lockout/captcha после N попыток (Supabase Auth rate limits + `auth` zone).

@@ -41,7 +41,7 @@ function Logo() {
       >
         T
       </span>
-      <span className="text-sm font-semibold uppercase tracking-wider text-white">Tenable SERM</span>
+      <span className="text-sm font-semibold uppercase tracking-wider text-white">SentiGuard</span>
     </div>
   );
 }
@@ -110,7 +110,7 @@ export function DashboardLayout({
                   >
                     T
                   </span>
-                  <span className="text-sm font-semibold uppercase tracking-wider text-white">Tenable SERM</span>
+                  <span className="text-sm font-semibold uppercase tracking-wider text-white">SentiGuard</span>
                 </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}

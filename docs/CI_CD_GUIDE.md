@@ -1,4 +1,4 @@
-# CI/CD Pipeline Guide - Tenable SERM
+# CI/CD Pipeline Guide - SentiGuard
 
 ## Overview
 
@@ -227,9 +227,9 @@ async def test_tenant_isolation():
 ### Manual Deployment
 For manual server deployment:
 ```bash
-docker pull your-username/tenable-serm-backend:latest
-docker pull your-username/tenable-serm-worker:latest
-docker pull your-username/tenable-serm-frontend:latest
+docker pull your-username/sentiguard-backend:latest
+docker pull your-username/sentiguard-worker:latest
+docker pull your-username/sentiguard-frontend:latest
 docker-compose up -d
 ```
 
@@ -346,4 +346,4 @@ If pipeline fails:
 
 **Version:** 1.0  
 **Last Updated:** 2026-10-13  
-**Maintainer:** Tenable SERM Team
+**Maintainer:** SentiGuard Team

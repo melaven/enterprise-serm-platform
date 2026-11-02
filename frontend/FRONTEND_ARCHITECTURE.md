@@ -1,4 +1,4 @@
-# Frontend Architecture — Tenable SERM
+# Frontend Architecture — SentiGuard
 
 ## 📁 Структура директорий
 

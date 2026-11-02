@@ -275,7 +275,7 @@ PLATFORMS: tuple[PlatformName, ...] = ("yandex", "2gis", "google", "zoon")
 
 
 def _branch_id(branch_name: str) -> UUID:
-    return uuid5(NAMESPACE_URL, f"tenable-demo-branch:{branch_name}")
+    return uuid5(NAMESPACE_URL, f"sentiguard-demo-branch:{branch_name}")
 
 
 def generate_reviews(rng: random.Random | None = None) -> list[ReviewRecord]:

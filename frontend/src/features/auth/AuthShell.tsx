@@ -41,7 +41,7 @@ export const AuthShell = ({ children, title, subtitle }: AuthShellProps) => {
 
         {/* Footer */}
         <p className="text-center text-xs text-chrome-500 mt-6">
-          Tenable SERM © 2026 · Design System v1.0
+          SentiGuard © 2026 · Design System v1.0
         </p>
       </div>
     </div>

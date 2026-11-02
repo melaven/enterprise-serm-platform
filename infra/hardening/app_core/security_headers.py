@@ -9,7 +9,7 @@ from __future__ import annotations
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-# API отдаёт только JSON: запрещаем всё. SPA-CSP живёт в nginx (см. nginx/tenable.conf).
+# API отдаёт только JSON: запрещаем всё. SPA-CSP живёт в nginx (см. nginx/sentiguard.conf).
 API_CSP = (
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 )

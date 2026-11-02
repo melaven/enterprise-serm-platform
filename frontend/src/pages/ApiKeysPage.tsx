@@ -494,7 +494,7 @@ export function ApiKeysPage() {
                 API Ключи
               </h1>
               <p className="text-chrome-400">
-                Управляйте ключами для доступа к API Tenable SERM
+                Управляйте ключами для доступа к API SentiGuard
               </p>
             </div>
 

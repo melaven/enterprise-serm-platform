@@ -1,4 +1,4 @@
-# Local Development Guide - Tenable SERM
+# Local Development Guide - SentiGuard
 
 ## Docker Compose (PostgreSQL, Redis, API, and worker)
 
@@ -12,8 +12,8 @@ Edit `.env` and set unique PostgreSQL, tenant-role, and Redis passwords. The
 template includes local container URLs for the migration role and `app_tenant`:
 
 ```text
-DATABASE_URL=postgresql+asyncpg://tenable:<URL-encoded-POSTGRES_PASSWORD>@db:5432/tenable
-TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:<URL-encoded-APP_TENANT_PASSWORD>@db:5432/tenable
+DATABASE_URL=postgresql+asyncpg://sentiguard:<URL-encoded-POSTGRES_PASSWORD>@db:5432/sentiguard
+TENANT_DATABASE_URL=postgresql+asyncpg://app_tenant:<URL-encoded-APP_TENANT_PASSWORD>@db:5432/sentiguard
 ```
 
 Set `APP_TENANT_PASSWORD` to the same password used in the tenant URL. In
@@ -38,7 +38,7 @@ Redis data remain in named volumes.
 
 ### Overview
 
-This guide covers setting up a local development environment for Tenable SERM without using Docker. This is useful when:
+This guide covers setting up a local development environment for SentiGuard without using Docker. This is useful when:
 - Docker is not available
 - Disk space is limited
 - You want faster iteration cycles
@@ -517,4 +517,4 @@ If you encounter issues:
 
 **Version:** 1.0
 **Last Updated:** 2026-10-14
-**Maintainer:** Tenable SERM Team
+**Maintainer:** SentiGuard Team

@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "enterprise-serm-platform"
+name = "sentiguard"
 version = "0.1.0"
-description = "Autonomous B2B SERM & Lead Engine"
+description = "SentiGuard - Autonomous B2B SERM & Lead Engine"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.104.0",

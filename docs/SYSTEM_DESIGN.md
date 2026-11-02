@@ -1,4 +1,4 @@
-# System Design: Tenable SERM
+# System Design: SentiGuard
 
 Technical interview and due diligence document. Format: goals → architecture → invariants → security → failures → tradeoffs.
 Status notation: **[impl]** implemented in code, **[draft]** written but not connected/not run, **[plan]** designed.
@@ -247,7 +247,7 @@ Telegram event -> prefilter (regex: length, topic, intent, stopwords)
 
 **Hot quota row:** atomic `UPDATE` serializes concurrent deductions for one tenant. This is deliberate tradeoff: correctness over single-company throughput; batch reserve (`reserve_reviews` takes `min(n, remaining)` in one call) reduces calls.
 
-**Load numbers:** absent. Scenario `infra/devops/loadtest/k6-tenable.js` verifies invariants (dedup, quota, pool, isolation) at 1000 VU; results will be added after staging run. Until then we don't claim RPS/p95.
+**Load numbers:** absent. Scenario `infra/devops/loadtest/k6-sentiguard.js` verifies invariants (dedup, quota, pool, isolation) at 1000 VU; results will be added after staging run. Until then we don't claim RPS/p95.
 
 ---
 

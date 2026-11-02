@@ -3,7 +3,7 @@ import colors from 'tailwindcss/colors';
 const channelColor = (token) => `rgb(var(${token}) / <alpha-value>)`;
 
 /**
- * Tenable SERM: enterprise flat. Plum is the branded surface; Lime is reserved for CTAs and small accents.
+ * SentiGuard: enterprise flat. Plum is the branded surface; Lime is reserved for CTAs and small accents.
  *
  *   Ink     plum-tinted charcoal surfaces
  *   Chrome  accessible borders and secondary text

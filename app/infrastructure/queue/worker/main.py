@@ -1,6 +1,6 @@
 """
 ARQ Worker с инициализацией Supabase service role для DLQ
-и зависимостей Tenable SERM парсеров
+и зависимостей SentiGuard парсеров
 """
 
 import asyncio

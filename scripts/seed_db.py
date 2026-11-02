@@ -588,7 +588,7 @@ async def _seed_cache(session: Any) -> None:
             "sentiment_score": score,
             "tags": ["demo", "service"],
             "suggested_response": response,
-            "metadata": json.dumps({"seed": "tenable-serm-demo"}, ensure_ascii=False),
+            "metadata": json.dumps({"seed": "sentiguard-demo"}, ensure_ascii=False),
             "created_at": DEMO_NOW,
             "expires_at": DEMO_NOW + timedelta(days=365),
         }

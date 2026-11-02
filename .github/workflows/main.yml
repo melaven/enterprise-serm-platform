@@ -201,11 +201,11 @@ jobs:
 
       - name: Build application image
         run: |
-          docker build -f Dockerfile -t tenable-serm:latest .
+          docker build -f Dockerfile -t sentiguard:latest .
 
       - name: Build frontend image
         run: |
-          docker build -f frontend/Dockerfile -t tenable-serm-frontend:latest frontend
+          docker build -f frontend/Dockerfile -t sentiguard-frontend:latest frontend
 
       - name: Test docker-compose build
         run: |
@@ -238,10 +238,10 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         run: |
-          docker tag tenable-serm:latest ${{ secrets.DOCKER_USERNAME }}/tenable-serm:latest
-          docker tag tenable-serm-frontend:latest ${{ secrets.DOCKER_USERNAME }}/tenable-serm-frontend:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm:latest
-          docker push ${{ secrets.DOCKER_USERNAME }}/tenable-serm-frontend:latest
+          docker tag sentiguard:latest ${{ secrets.DOCKER_USERNAME }}/sentiguard:latest
+          docker tag sentiguard-frontend:latest ${{ secrets.DOCKER_USERNAME }}/sentiguard-frontend:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/sentiguard:latest
+          docker push ${{ secrets.DOCKER_USERNAME }}/sentiguard-frontend:latest
 
       - name: Create deployment tag
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -258,6 +258,6 @@ jobs:
           echo "**Deployment Time:** \`${DEPLOYMENT_TIME}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Images pushed to Docker Hub:" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ secrets.DOCKER_USERNAME }}/tenable-serm-backend:latest\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ secrets.DOCKER_USERNAME }}/tenable-serm-worker:latest\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ secrets.DOCKER_USERNAME }}/tenable-serm-frontend:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ secrets.DOCKER_USERNAME }}/sentiguard-backend:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ secrets.DOCKER_USERNAME }}/sentiguard-worker:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ secrets.DOCKER_USERNAME }}/sentiguard-frontend:latest\`" >> $GITHUB_STEP_SUMMARY

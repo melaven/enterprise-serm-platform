@@ -49,7 +49,7 @@
 
 1. **Запусти backend:**
    ```powershell
-   cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\Tenable SERM"
+   cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\SentiGuard"
    .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
    ```
 

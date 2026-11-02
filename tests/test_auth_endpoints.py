@@ -8,7 +8,7 @@ from typing import Any
 import requests
 
 BASE_URL = "http://localhost:8000"
-TEST_EMAIL = "admin@tenable.com"
+TEST_EMAIL = "admin@sentiguard.com"
 TEST_PASSWORD = "admin123"
 
 

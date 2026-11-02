@@ -1,8 +1,8 @@
 # Нагрузочный тест (k6)
 ```bash
 export TOKENS_JSON='["<jwt A>","<jwt B>", ...]'     # >= 20 токенов разных tenant'ов; токен [1] — tenant с малой квотой (50)
-k6 run -e BASE_URL=https://staging.example.com -e PROFILE=smoke loadtest/k6-tenable.js   # сначала smoke (50 VU)
-k6 run -e BASE_URL=https://staging.example.com -e PROFILE=full  loadtest/k6-tenable.js   # 1000 VU
+k6 run -e BASE_URL=https://staging.example.com -e PROFILE=smoke loadtest/k6-sentiguard.js   # сначала smoke (50 VU)
+k6 run -e BASE_URL=https://staging.example.com -e PROFILE=full  loadtest/k6-sentiguard.js   # 1000 VU
 ```
 Условия, без которых цифры бессмысленны:
 - Только staging. Воркер на staging должен работать со стабом скрапера (иначе нагрузка уйдёт на реальные площадки).

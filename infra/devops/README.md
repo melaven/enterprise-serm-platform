@@ -1,11 +1,11 @@
-# Tenable — Infra & CI/CD
+# SentiGuard — Infra & CI/CD
 
 ```
 infra/terraform/   Hetzner: сервер + firewall + volume + cloud-init (docker, ssh-hardening, fail2ban, ufw)
 deploy/            docker-compose.prod.yml (api, worker, redis, [postgres], caddy-TLS), deploy.sh (авто-rollback)
 .github/workflows/ production.yml (ruff -> pytest -> terraform validate/Trivy config -> build -> Trivy image gate -> cosign -> deploy)
                    loadtest.yml  (ручной k6 против staging)
-loadtest/          k6-tenable.js
+loadtest/          k6-sentiguard.js
 ```
 
 ## Запуск «одной командой»

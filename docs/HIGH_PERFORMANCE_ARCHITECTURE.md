@@ -1,9 +1,9 @@
-# High-Performance Architecture - Tenable SERM
+# High-Performance Architecture - SentiGuard
 ## FAANG-Level Engineering Design
 
 ### Overview
 
-Эта документация описывает высоконагруженную архитектуру Tenable SERM с фокусом на:
+Эта документация описывает высоконагруженную архитектуру SentiGuard с фокусом на:
 - Асинхронное парсинг (ARQ + Redis)
 - Семантический кэш LLM (pgvector)
 - Микросервисная архитектура (Python + Go)
@@ -451,7 +451,7 @@ curl http://localhost/api/v1/parsers/queue/stats
 curl http://localhost/api/v1/parsers/cache/stats
 
 # Crawler health (gRPC)
-grpcurl -plaintext localhost:50051 tenable.serm.crawler.v1.CrawlerService/HealthCheck
+grpcurl -plaintext localhost:50051 sentiguard.serm.crawler.v1.CrawlerService/HealthCheck
 ```
 
 ---

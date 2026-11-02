@@ -1,4 +1,4 @@
-# Design System Rules — Tenable SERM B2B Dashboard
+# Design System Rules — SentiGuard B2B Dashboard
 
 ## Философия дизайна
 
@@ -466,4 +466,4 @@ auth.clearToken();
 
 **Версия:** 1.0  
 **Последнее обновление:** 2026-10-11  
-**Мейнтейнер:** Tenable SERM Team
+**Мейнтейнер:** SentiGuard Team

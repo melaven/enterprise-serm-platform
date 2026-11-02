@@ -1,5 +1,5 @@
 """
-Rate Limiter для защиты критичных API эндпоинтов Tenable SERM.
+Rate Limiter для защиты критичных API эндпоинтов SentiGuard.
 
 Двухуровневая защита:
 1. Rate Limiting (429) — защита от спама: X запросов в Y секунд на tenant_id

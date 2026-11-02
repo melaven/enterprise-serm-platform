@@ -1,6 +1,6 @@
 /**
  * Glassmorphism Components
- * Premium matted glass UI components для Tenable SERM
+ * Premium matted glass UI components для SentiGuard
  */
 
 export {

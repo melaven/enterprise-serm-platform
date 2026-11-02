@@ -1,11 +1,11 @@
-# 🧪 Tenable SERM - Testing Guide
+# 🧪 SentiGuard - Testing Guide
 
 ## 🚀 Quick Start (для тестирования)
 
 ### 1. Backend
 ```bash
 # В терминале 1
-cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\Tenable SERM"
+cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\SentiGuard"
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # API starts with the Docker Compose stack described in docs/QUICKSTART.md.
@@ -14,7 +14,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ### 2. ARQ Worker (опционально)
 ```bash
 # В терминале 2
-cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\Tenable SERM"
+cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\SentiGuard"
 python worker.py
 
 # Start the worker with: docker compose up worker
@@ -23,7 +23,7 @@ python worker.py
 ### 3. Frontend
 ```bash
 # В терминале 3
-cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\Tenable SERM\frontend"
+cd "c:\Users\Malyarenko17\Desktop\ОСНОВНЫЕ ПРОЕКТЫ\SentiGuard\frontend"
 npm run dev
 
 # Install dependencies with npm install, then run npm run dev.
@@ -42,7 +42,7 @@ npm run dev
 4. Введите:
 ```json
 {
-  "email": "admin@tenable.com",
+  "email": "admin@sentiguard.com",
   "password": "admin123",
   "tenant_id": "tenant-001"
 }
@@ -54,7 +54,7 @@ npm run dev
 curl -X POST "http://localhost:8000/api/v1/auth/register" \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@tenable.com",
+    "email": "admin@sentiguard.com",
     "password": "admin123",
     "tenant_id": "tenant-001"
   }'
@@ -75,7 +75,7 @@ http://localhost:3000
 
 ### Шаг 2: Авторизация
 **Данные:**
-- Email: `admin@tenable.com`
+- Email: `admin@sentiguard.com`
 - Password: `admin123`
 
 **Ожидание:**

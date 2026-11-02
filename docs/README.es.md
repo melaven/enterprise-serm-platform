@@ -1,4 +1,4 @@
-# Tenable | Enterprise SI & SERM Engine
+# SentiGuard
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -8,26 +8,26 @@
 
 🇬🇧 [English](../README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
 
-Tenable es una plataforma B2B de Sentiment Intelligence (SI) y gestión de la reputación en buscadores (SERM) para analizar opiniones públicas sobre empresas obtenidas de forma lícita. Ayuda a las organizaciones a comprender el sentimiento, detectar riesgos relacionados con la calidad del servicio y seguir la evolución de su reputación mediante análisis con aislamiento entre tenants.
+SentiGuard es una plataforma B2B de Sentiment Intelligence (SI) y gestión de la reputación en buscadores (SERM) para analizar opiniones públicas sobre empresas obtenidas de forma lícita. Ayuda a las organizaciones a comprender el sentimiento, detectar riesgos relacionados con la calidad del servicio y seguir la evolución de su reputación mediante análisis con aislamiento entre tenants.
 
 > **Estado del proyecto:** Este repositorio contiene un MVP en evolución. El grado de implementación y verificación puede variar entre funciones e integraciones. La arquitectura y este README no deben interpretarse como una declaración de preparación para producción. Valide el despliegue, las integraciones, los controles de seguridad y los procedimientos operativos en su propio entorno.
 
 ## Alcance del producto
 
-Tenable está diseñado para convertir datos de opiniones cuyo tratamiento está autorizado en inteligencia empresarial estructurada:
+SentiGuard está diseñado para convertir datos de opiniones cuyo tratamiento está autorizado en inteligencia empresarial estructurada:
 
 - Clasifica el sentimiento y los temas recurrentes relacionados con el servicio.
 - Señala opiniones que pueden requerir atención humana oportuna.
 - Presenta tendencias y análisis a usuarios autorizados de la empresa.
 - Admite cargas de análisis asíncronas sin bloquear las solicitudes de la API.
 
-Tenable es una herramienta de análisis. No es un servicio para manipular la reputación, no promete eliminar opiniones legítimas y no publica respuestas sin aprobación humana explícita (moderación con intervención humana).
+SentiGuard es una herramienta de análisis. No es un servicio para manipular la reputación, no promete eliminar opiniones legítimas y no publica respuestas sin aprobación humana explícita (moderación con intervención humana).
 
 ## Privacidad de datos y cumplimiento
 
 ### Uso permitido y fuentes de datos
 
-Tenable está destinado **exclusivamente al análisis lícito de sentimiento (Sentiment Intelligence) y reputación**. No está diseñado ni autorizado para realizar scraping «gris», eludir controles de acceso o recopilar datos infringiendo la legislación aplicable, las condiciones de las plataformas o las restricciones contractuales.
+SentiGuard está destinado **exclusivamente al análisis lícito de sentimiento (Sentiment Intelligence) y reputación**. No está diseñado ni autorizado para realizar scraping «gris», eludir controles de acceso o recopilar datos infringiendo la legislación aplicable, las condiciones de las plataformas o las restricciones contractuales.
 
 Utilice únicamente datos cuyo tratamiento esté autorizado para el cliente, por ejemplo, datos proporcionados por el propio cliente u obtenidos mediante una integración oficial debidamente autorizada. Antes de habilitar una fuente, confirme que tanto la fuente como el método de recopilación están permitidos. Que los datos sean públicos no establece por sí solo una base jurídica para su tratamiento ni invalida las condiciones de la plataforma.
 
@@ -41,7 +41,7 @@ Esta es una medida de minimización de datos, **no una garantía de anonimizaci�
 
 ### Responsabilidades y aviso legal
 
-Este README describe controles técnicos; no constituye asesoramiento jurídico, una certificación de cumplimiento ni una determinación de que un tratamiento concreto sea lícito. El cliente es responsable de establecer y documentar una base jurídica adecuada, proporcionar los avisos exigidos, respetar los derechos de los interesados y asegurarse de que puede compartir los datos enviados con Tenable y con los subencargados configurados. El operador debe evaluar por separado sus propias obligaciones, incluidas la seguridad, la conservación, el control de acceso, la respuesta a incidentes y las posibles transferencias internacionales de datos.
+Este README describe controles técnicos; no constituye asesoramiento jurídico, una certificación de cumplimiento ni una determinación de que un tratamiento concreto sea lícito. El cliente es responsable de establecer y documentar una base jurídica adecuada, proporcionar los avisos exigidos, respetar los derechos de los interesados y asegurarse de que puede compartir los datos enviados con SentiGuard y con los subencargados configurados. El operador debe evaluar por separado sus propias obligaciones, incluidas la seguridad, la conservación, el control de acceso, la respuesta a incidentes y las posibles transferencias internacionales de datos.
 
 Antes de utilizar el sistema en producción, revise la legislación aplicable y las condiciones de las plataformas, formalice los acuerdos contractuales necesarios y evalúe las condiciones de tratamiento, la conservación y las ubicaciones de procesamiento del proveedor de LLM configurado. Las funciones jurídicas del cliente, del operador y de los proveedores dependen del despliegue y del tratamiento reales.
 

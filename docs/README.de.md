@@ -1,4 +1,4 @@
-# Tenable | Enterprise SI & SERM Engine
+# SentiGuard
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -8,26 +8,26 @@
 
 🇬🇧 [English](../README.md) | 🇷🇺 [Русский](README.ru.md) | 🇪🇸 [Español](README.es.md) | 🇨🇳 [简体中文](README.zh-CN.md) | 🇩🇪 [Deutsch](README.de.md)
 
-Tenable ist eine B2B-Plattform für Sentiment Intelligence (SI) und Suchmaschinen-Reputationsmanagement (SERM), die rechtmäßig erhobene öffentliche Unternehmensbewertungen analysiert. Sie unterstützt Unternehmen dabei, Stimmungen zu verstehen, Risiken für die Servicequalität zu erkennen und Reputationsentwicklungen mit Mandantentrennung auszuwerten.
+SentiGuard ist eine B2B-Plattform für Sentiment Intelligence (SI) und Suchmaschinen-Reputationsmanagement (SERM), die rechtmäßig erhobene öffentliche Unternehmensbewertungen analysiert. Sie unterstützt Unternehmen dabei, Stimmungen zu verstehen, Risiken für die Servicequalität zu erkennen und Reputationsentwicklungen mit Mandantentrennung auszuwerten.
 
 > **Projektstatus:** Dieses Repository enthält ein sich weiterentwickelndes MVP. Implementierungs- und Prüfstatus können sich je nach Funktion und Integration unterscheiden. Die Architektur und diese README sind keine Aussage über Produktionsreife. Prüfen Sie Bereitstellung, Integrationen, Sicherheitskontrollen und Betriebsabläufe in Ihrer eigenen Umgebung.
 
 ## Produktumfang
 
-Tenable wandelt zur Verarbeitung freigegebene Bewertungsdaten in strukturierte Business Intelligence um:
+SentiGuard wandelt zur Verarbeitung freigegebene Bewertungsdaten in strukturierte Business Intelligence um:
 
 - Klassifiziert Stimmungen und wiederkehrende Servicethemen.
 - Hebt Rückmeldungen hervor, die zeitnahe menschliche Aufmerksamkeit erfordern könnten.
 - Stellt autorisierten Unternehmensnutzern Trends und Analysen bereit.
 - Unterstützt asynchrone Analyseprozesse, ohne API-Anfragen zu blockieren.
 
-Tenable ist ein Analysewerkzeug. Es dient nicht der Manipulation von Reputation, verspricht nicht die Entfernung legitimer Bewertungen und veröffentlicht Antworten nicht ohne ausdrückliche menschliche Freigabe (Human-in-the-Loop-Moderation).
+SentiGuard ist ein Analysewerkzeug. Es dient nicht der Manipulation von Reputation, verspricht nicht die Entfernung legitimer Bewertungen und veröffentlicht Antworten nicht ohne ausdrückliche menschliche Freigabe (Human-in-the-Loop-Moderation).
 
 ## Datenschutz und Compliance
 
 ### Zulässige Nutzung und Datenquellen
 
-Tenable ist **ausschließlich für rechtmäßige Sentiment-Intelligence- und Reputationsanalysen** vorgesehen. Das System ist weder für „Grauzonen“-Scraping noch für die Umgehung von Zugriffskontrollen oder eine Datenerhebung unter Verstoß gegen geltendes Recht, Plattformbedingungen oder vertragliche Beschränkungen konzipiert oder autorisiert.
+SentiGuard ist **ausschließlich für rechtmäßige Sentiment-Intelligence- und Reputationsanalysen** vorgesehen. Das System ist weder für „Grauzonen“-Scraping noch für die Umgehung von Zugriffskontrollen oder eine Datenerhebung unter Verstoß gegen geltendes Recht, Plattformbedingungen oder vertragliche Beschränkungen konzipiert oder autorisiert.
 
 Verwenden Sie ausschließlich Daten, die der Kunde verarbeiten darf, beispielsweise vom Kunden bereitgestellte Daten oder Daten aus einer ordnungsgemäß autorisierten offiziellen Integration. Vergewissern Sie sich vor der Aktivierung einer Quelle, dass sowohl die Quelle als auch die Erhebungsmethode zulässig sind. Die öffentliche Verfügbarkeit von Daten begründet für sich allein keine Rechtsgrundlage für deren Verarbeitung und setzt Plattformbedingungen nicht außer Kraft.
 
@@ -41,7 +41,7 @@ Dies ist eine Maßnahme zur Datenminimierung und **keine Garantie für vollstän
 
 ### Verantwortlichkeiten und rechtlicher Hinweis
 
-Diese README beschreibt technische Kontrollen. Sie stellt weder eine Rechtsberatung noch eine Compliance-Zertifizierung oder eine Feststellung der Rechtmäßigkeit einer konkreten Verarbeitung dar. Der Kunde ist dafür verantwortlich, eine geeignete Rechtsgrundlage festzustellen und zu dokumentieren, erforderliche Hinweise bereitzustellen, die Rechte betroffener Personen zu wahren und sicherzustellen, dass Daten an Tenable und konfigurierte Unterauftragsverarbeiter weitergegeben werden dürfen. Der Betreiber muss seine eigenen Pflichten gesondert bewerten, darunter Sicherheit, Aufbewahrung, Zugriffskontrolle, Reaktion auf Sicherheitsvorfälle und etwaige internationale Datentransfers.
+Diese README beschreibt technische Kontrollen. Sie stellt weder eine Rechtsberatung noch eine Compliance-Zertifizierung oder eine Feststellung der Rechtmäßigkeit einer konkreten Verarbeitung dar. Der Kunde ist dafür verantwortlich, eine geeignete Rechtsgrundlage festzustellen und zu dokumentieren, erforderliche Hinweise bereitzustellen, die Rechte betroffener Personen zu wahren und sicherzustellen, dass Daten an SentiGuard und konfigurierte Unterauftragsverarbeiter weitergegeben werden dürfen. Der Betreiber muss seine eigenen Pflichten gesondert bewerten, darunter Sicherheit, Aufbewahrung, Zugriffskontrolle, Reaktion auf Sicherheitsvorfälle und etwaige internationale Datentransfers.
 
 Prüfen Sie vor dem Produktiveinsatz das anwendbare Recht und die Plattformbedingungen, schließen Sie erforderliche vertragliche Vereinbarungen und bewerten Sie die Datenverarbeitungsbedingungen, Aufbewahrungsfristen und Verarbeitungsstandorte des konfigurierten LLM-Anbieters. Die rechtlichen Rollen des Kunden, des Betreibers und der Dienstleister hängen von der tatsächlichen Bereitstellung und Verarbeitung ab.
 

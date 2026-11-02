@@ -9,7 +9,7 @@ terraform {
 
   # Remote state обязателен для команды (state содержит IP/ID; не храни локально в git).
   # backend "s3" {   # любой S3-совместимый (Hetzner Object Storage, R2, MinIO)
-  #   bucket = "tenable-tfstate"
+  #   bucket = "sentiguard-tfstate"
   #   key    = "production/terraform.tfstate"
   #   region = "eu-central"
   #   endpoints = { s3 = "https://fsn1.your-objectstorage.com" }

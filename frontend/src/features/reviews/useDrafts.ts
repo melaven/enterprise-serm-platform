@@ -16,6 +16,15 @@ const EMPTY_STATE: DraftsState = {
   error: null,
 };
 
+const TRANSIT_POLL_INTERVAL_MS = 4_000;
+const IDLE_POLL_INTERVAL_MS = 20_000;
+
+function hasPendingPublication(drafts: readonly DraftResponse[]): boolean {
+  return drafts.some(
+    (draft) => draft.status === 'queued_outbox' || draft.status === 'publishing',
+  );
+}
+
 export function useDrafts(reviewId: string | null) {
   const [state, setState] = useState<DraftsState>(EMPTY_STATE);
   const [revision, setRevision] = useState(0);
@@ -29,6 +38,8 @@ export function useDrafts(reviewId: string | null) {
     const controller = new AbortController();
     let active = true;
     let inFlight = false;
+    let pollingTimeout: number | undefined;
+    let currentDrafts: readonly DraftResponse[] = [];
     setState((current) => ({
       reviewId,
       drafts: current.reviewId === reviewId ? current.drafts : [],
@@ -36,12 +47,24 @@ export function useDrafts(reviewId: string | null) {
       error: null,
     }));
 
-    const refresh = async (initial = false): Promise<void> => {
-      if ((!initial && document.visibilityState !== 'visible') || inFlight) return;
+    const scheduleNextPoll = (): void => {
+      if (!active || document.visibilityState !== 'visible') return;
+      window.clearTimeout(pollingTimeout);
+      const interval = hasPendingPublication(currentDrafts)
+        ? TRANSIT_POLL_INTERVAL_MS
+        : IDLE_POLL_INTERVAL_MS;
+      pollingTimeout = window.setTimeout(() => void refresh(), interval);
+    };
+
+    const refresh = async (): Promise<void> => {
+      if (document.visibilityState !== 'visible' || inFlight) return;
       inFlight = true;
       try {
         const drafts = await fetchReviewDrafts(reviewId, controller.signal);
-        if (active) setState({ reviewId, drafts, loading: false, error: null });
+        if (active) {
+          currentDrafts = drafts;
+          setState({ reviewId, drafts, loading: false, error: null });
+        }
       } catch (cause: unknown) {
         if (!active || controller.signal.aborted) return;
         setState((current) => ({
@@ -52,20 +75,24 @@ export function useDrafts(reviewId: string | null) {
         }));
       } finally {
         inFlight = false;
+        scheduleNextPoll();
       }
     };
 
-    void refresh(true);
-    const intervalId = window.setInterval(() => void refresh(), 15_000);
+    void refresh();
     const handleVisibilityChange = (): void => {
-      if (document.visibilityState === 'visible') void refresh();
+      if (document.visibilityState === 'visible') {
+        void refresh();
+      } else {
+        window.clearTimeout(pollingTimeout);
+      }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       active = false;
       controller.abort();
-      window.clearInterval(intervalId);
+      window.clearTimeout(pollingTimeout);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [reviewId, revision]);

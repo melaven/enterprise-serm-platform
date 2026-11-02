@@ -65,6 +65,10 @@ flowchart LR
     Worker -->|Tenant-scoped reads / writes| DB
     Worker -->|LLM / analysis failure| DLQ[("Dead Letter Queue<br/>persistent failed-task records")]
     DLQ --> DB
+    Worker -->|Egress Phase 1<br/>read reply + decrypt credentials<br/>short tenant transaction| DB
+    Worker -->|Egress Phase 2<br/>HTTP outside DB transaction| Adapters["Yandex / Google Adapters"]
+    Adapters -->|Publish reply / refresh OAuth| Platforms["Review platforms"]
+    Worker -->|Egress Phase 3<br/>persist external_reply_id + status<br/>short tenant transaction| DB
 
     subgraph TenantBoundary["Tenant-scoped data access"]
         DB

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   fetchReviews: vi.fn(),
   fetchReviewDrafts: vi.fn(),
+  retryReplyPublication: vi.fn(),
   generateReviewReply: vi.fn(),
   approveDraft: vi.fn(),
   token: null as string | null,
@@ -19,6 +20,7 @@ vi.mock('@/api/reviews', () => ({
 
 vi.mock('./draftsApi', () => ({
   fetchReviewDrafts: mocks.fetchReviewDrafts,
+  retryReplyPublication: mocks.retryReplyPublication,
 }));
 
 vi.mock('./approveDraftApi', () => ({
@@ -69,6 +71,7 @@ describe('ReviewsDashboard reply generation', () => {
     mocks.token = null;
     mocks.fetchReviews.mockResolvedValue([review]);
     mocks.fetchReviewDrafts.mockResolvedValue([]);
+    mocks.retryReplyPublication.mockResolvedValue(undefined);
   });
 
   it('shows a blocking loader and displays the generated reply only after success', async () => {
@@ -117,6 +120,9 @@ describe('ReviewsDashboard reply generation', () => {
         strategy: 'LEGAL_STRICT',
         body: 'Backend draft text',
         is_approved: false,
+        status: null,
+        external_reply_id: null,
+        failure_reason: null,
         approved_by: null,
         approved_at: null,
         created_at: '2026-10-30T00:00:00Z',
@@ -142,6 +148,9 @@ describe('ReviewsDashboard reply generation', () => {
         strategy: 'LEGAL_STRICT',
         body: 'Keep this draft unchanged',
         is_approved: false,
+        status: null,
+        external_reply_id: null,
+        failure_reason: null,
         approved_by: null,
         approved_at: null,
         created_at: '2026-10-30T00:00:00Z',
@@ -210,6 +219,9 @@ describe('ReviewsDashboard reply generation', () => {
         strategy: 'LEGAL_STRICT' as const,
         body: 'Server response draft',
         is_approved: false,
+        status: null,
+        external_reply_id: null,
+        failure_reason: null,
         approved_by: null,
         approved_at: null,
         created_at: '2026-10-30T00:00:00Z',
@@ -220,6 +232,7 @@ describe('ReviewsDashboard reply generation', () => {
       {
         ...currentDrafts[0],
         is_approved: true,
+        status: 'queued_outbox' as const,
         approved_by: 'colleague@example.com',
         approved_at: '2026-11-02T00:00:00Z',
         updated_at: '2026-11-02T00:00:00Z',
@@ -249,5 +262,44 @@ describe('ReviewsDashboard reply generation', () => {
       screen.queryByRole('button', { name: 'Апрув и Отправка (Approve & Send): Юридически строгий' }),
     ).not.toBeInTheDocument();
     expect(mocks.fetchReviewDrafts).toHaveBeenCalledTimes(requestsBeforeVisible + 1);
+  });
+
+  it('renders publication states and offers a retry for a failed publication', async () => {
+    const payload = window.btoa(JSON.stringify({ company_role: 'admin' }));
+    mocks.token = `header.${payload}.signature`;
+    mocks.fetchReviews.mockResolvedValue([{ ...review, risk_level: 'CRITICAL_RISK' }]);
+    let publicationStatus: 'queued_outbox' | 'publish_failed' = 'publish_failed';
+    const draft = {
+      id: 'draft-1',
+      strategy: 'LEGAL_STRICT' as const,
+      body: 'Approved response',
+      is_approved: true,
+      status: publicationStatus,
+      external_reply_id: null,
+      failure_reason: 'Токен доступа истёк или недействителен.',
+      approved_by: 'admin',
+      approved_at: '2026-11-02T00:00:00Z',
+      created_at: '2026-10-30T00:00:00Z',
+      updated_at: '2026-11-02T00:00:00Z',
+    };
+    mocks.fetchReviewDrafts.mockImplementation(() =>
+      Promise.resolve([{ ...draft, status: publicationStatus }]),
+    );
+    mocks.retryReplyPublication.mockImplementation(async () => {
+      publicationStatus = 'queued_outbox';
+    });
+
+    renderDashboard();
+    expect(await screen.findByText(/🔴 Ошибка: Токен доступа истёк/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Апрув и Отправка/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+
+    await waitFor(() => {
+      expect(mocks.retryReplyPublication).toHaveBeenCalledWith('review-1', 'draft-1');
+      expect(screen.getByText('🟡 В очереди на отправку')).toBeInTheDocument();
+    });
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('Публикация повторно поставлена в очередь');
   });
 });

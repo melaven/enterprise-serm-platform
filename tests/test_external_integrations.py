@@ -1,28 +1,17 @@
 import json
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import httpx
 import pytest
 
-from app.infrastructure.external.base import (
-    BasePlatformAdapter,
+from app.domain.reviews.publication import ReplyPublicationStatus
+from app.infrastructure.integrations.review_platforms.base import (
     PermanentAPIError,
-    PlatformAdapterRegistry,
     TransientAPIError,
 )
-from app.infrastructure.external.yandex import YandexBusinessAdapter
-from app.infrastructure.queue.worker import integration_tasks
-
-
-def test_platform_adapter_registry_normalizes_and_creates_adapters() -> None:
-    registry = PlatformAdapterRegistry()
-    registry.register("yandex", YandexBusinessAdapter)
-
-    assert isinstance(registry.get_adapter(" YANDEX "), YandexBusinessAdapter)
-    with pytest.raises(ValueError, match="Unsupported platform"):
-        registry.get_adapter("unknown")
+from app.infrastructure.integrations.review_platforms.yandex import (
+    YandexBusinessAdapter,
+)
+from app.infrastructure.queue.worker import reply_tasks
 
 
 @pytest.mark.asyncio
@@ -37,17 +26,16 @@ async def test_yandex_adapter_publishes_reply_and_returns_external_id(
 
     original_async_client = httpx.AsyncClient
     monkeypatch.setattr(
-        "app.infrastructure.external.yandex.httpx.AsyncClient",
+        "app.infrastructure.integrations.review_platforms.yandex.httpx.AsyncClient",
         lambda **kwargs: original_async_client(
             transport=httpx.MockTransport(handle_request),
             **kwargs,
         ),
     )
 
-    reply_id = await YandexBusinessAdapter().publish_reply(
+    reply_id = await YandexBusinessAdapter("secret-token", {}).publish_reply(
         "review-123",
         "Thank you",
-        {"access_token": "secret-token"},
     )
 
     assert reply_id == "reply-123"
@@ -79,7 +67,7 @@ async def test_yandex_adapter_maps_http_errors(
 
     original_async_client = httpx.AsyncClient
     monkeypatch.setattr(
-        "app.infrastructure.external.yandex.httpx.AsyncClient",
+        "app.infrastructure.integrations.review_platforms.yandex.httpx.AsyncClient",
         lambda **kwargs: original_async_client(
             transport=httpx.MockTransport(handle_request),
             **kwargs,
@@ -87,10 +75,9 @@ async def test_yandex_adapter_maps_http_errors(
     )
 
     with pytest.raises(error_type) as caught:
-        await YandexBusinessAdapter().publish_reply(
+        await YandexBusinessAdapter("secret-token", {}).publish_reply(
             "review-123",
             "Thank you",
-            {"access_token": "secret-token"},
         )
 
     if status_code == 429:
@@ -98,113 +85,132 @@ async def test_yandex_adapter_maps_http_errors(
         assert caught.value.retry_after == 12.0
 
 
-class _FakeSession:
-    def __init__(self) -> None:
-        self.queries: list[tuple[object, object]] = []
-
-    async def __aenter__(self) -> "_FakeSession":
-        return self
-
-    async def __aexit__(self, _exc_type, _exc, _traceback) -> None:
-        return None
-
-    async def execute(self, query: object, params: object) -> SimpleNamespace:
-        self.queries.append((query, params))
-        return SimpleNamespace(scalar_one_or_none=lambda: "encrypted-token")
-
-
-class _RecordingAdapter(BasePlatformAdapter):
-    def __init__(self, calls: list[tuple[str, str, dict[str, object]]]) -> None:
-        self.calls = calls
-
-    async def publish_reply(
-        self,
-        review_external_id: str,
-        text: str,
-        credentials: dict[str, object],
-    ) -> str:
-        self.calls.append((review_external_id, text, credentials))
-        return "reply-123"
+def _publication() -> reply_tasks.ReplyPublication:
+    return reply_tasks.ReplyPublication(
+        review_external_id="external-review-123",
+        reply_text="Thank you",
+        platform="yandex",
+        api_key="secret-token",
+        refresh_token=None,
+        expires_at=None,
+        meta_config={},
+    )
 
 
 @pytest.mark.asyncio
-async def test_integration_job_restores_tenant_context_and_publishes(
+async def test_reply_task_runs_db_http_db_phases_in_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tenant_id = uuid4()
-    session = _FakeSession()
-    context_calls: list[object] = []
-    adapter_calls: list[tuple[str, str, dict[str, object]]] = []
-    registry = PlatformAdapterRegistry()
-    registry.register("yandex", lambda: _RecordingAdapter(adapter_calls))
+    events: list[str] = []
 
-    async def set_context(_session: object, actual_tenant_id: object) -> None:
-        context_calls.append(actual_tenant_id)
+    async def load(_tenant_id, _review_id):
+        events.append("phase-1-db")
+        return _publication()
 
-    monkeypatch.setattr(integration_tasks, "AsyncSessionLocal", lambda: session)
-    monkeypatch.setattr(integration_tasks, "set_tenant_rls_context", set_context)
-    monkeypatch.setattr(
-        integration_tasks,
-        "decrypt_token",
-        lambda _ciphertext: json.dumps({"access_token": "secret-token"}),
-    )
-    monkeypatch.setattr(integration_tasks, "PLATFORM_ADAPTER_REGISTRY", registry)
+    class _Adapter:
+        async def publish_reply(self, _review_id: str, _text: str) -> str:
+            events.append("phase-2-http")
+            return "external-reply-123"
 
-    await integration_tasks.process_outbox_integration_job(
+    def get_adapter(*_args, **_kwargs):
+        return _Adapter()
+
+    async def record(_tenant_id, _review_id, **kwargs):
+        assert kwargs["status"] is ReplyPublicationStatus.PUBLISHED
+        assert kwargs["external_reply_id"] == "external-reply-123"
+        events.append("phase-3-db")
+
+    monkeypatch.setattr(reply_tasks, "_load_reply_publication", load)
+    monkeypatch.setattr(reply_tasks.PlatformAdapterFactory, "get_adapter", get_adapter)
+    monkeypatch.setattr(reply_tasks, "_record_publish_result", record)
+
+    tenant_id = "11111111-1111-1111-1111-111111111111"
+    review_id = "22222222-2222-2222-2222-222222222222"
+    await reply_tasks.publish_review_reply(
         {},
-        str(uuid4()),
-        str(tenant_id),
-        {
-            "tenant_id": str(tenant_id),
-            "platform": " YANDEX ",
-            "review_external_id": "review-123",
-            "text": "Thank you",
-        },
+        "33333333-3333-3333-3333-333333333333",
+        tenant_id,
+        {"tenant_id": tenant_id, "review_id": review_id},
     )
 
-    assert context_calls == [tenant_id]
-    assert adapter_calls == [
-        ("review-123", "Thank you", {"access_token": "secret-token"})
+    assert events == ["phase-1-db", "phase-2-http", "phase-3-db"]
+
+
+@pytest.mark.asyncio
+async def test_reply_task_retries_transient_errors_after_recording_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from arq import Retry
+
+    recorded_results = []
+    monkeypatch.setattr(reply_tasks, "_load_reply_publication", _load_publication)
+
+    class _RetryingAdapter:
+        async def publish_reply(self, _review_id: str, _text: str) -> str:
+            raise TransientAPIError("temporary failure", retry_after=17)
+
+    monkeypatch.setattr(
+        reply_tasks.PlatformAdapterFactory,
+        "get_adapter",
+        lambda *_args, **_kwargs: _RetryingAdapter(),
+    )
+
+    async def record(_tenant_id, _review_id, **kwargs):
+        recorded_results.append(kwargs)
+
+    monkeypatch.setattr(reply_tasks, "_record_publish_result", record)
+    tenant_id = "11111111-1111-1111-1111-111111111111"
+    review_id = "22222222-2222-2222-2222-222222222222"
+
+    with pytest.raises(Retry):
+        await reply_tasks.publish_review_reply(
+            {},
+            "33333333-3333-3333-3333-333333333333",
+            tenant_id,
+            {"tenant_id": tenant_id, "review_id": review_id},
+        )
+
+    assert recorded_results[0]["status"] is ReplyPublicationStatus.QUEUED_OUTBOX
+    assert recorded_results[0]["failure_reason"] == "temporary failure"
+
+
+@pytest.mark.asyncio
+async def test_reply_task_marks_permanent_error_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    results = []
+    monkeypatch.setattr(reply_tasks, "_load_reply_publication", _load_publication)
+
+    class _PermanentAdapter:
+        async def publish_reply(self, _review_id: str, _text: str) -> str:
+            raise PermanentAPIError("Yandex returned 401", status_code=401)
+
+    monkeypatch.setattr(
+        reply_tasks.PlatformAdapterFactory,
+        "get_adapter",
+        lambda *_args, **_kwargs: _PermanentAdapter(),
+    )
+
+    async def record(_tenant_id, _review_id, **kwargs):
+        results.append(kwargs)
+
+    monkeypatch.setattr(reply_tasks, "_record_publish_result", record)
+    tenant_id = "11111111-1111-1111-1111-111111111111"
+    review_id = "22222222-2222-2222-2222-222222222222"
+    await reply_tasks.publish_review_reply(
+        {},
+        "33333333-3333-3333-3333-333333333333",
+        tenant_id,
+        {"tenant_id": tenant_id, "review_id": review_id},
+    )
+
+    assert results == [
+        {
+            "status": ReplyPublicationStatus.PUBLISH_FAILED,
+            "failure_reason": "Токен доступа истёк или недействителен.",
+        }
     ]
 
 
-@pytest.mark.asyncio
-async def test_integration_job_retries_transient_platform_errors(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tenant_id = uuid4()
-    registry = PlatformAdapterRegistry()
-
-    class _RetryingAdapter(BasePlatformAdapter):
-        async def publish_reply(
-            self,
-            _review_external_id: str,
-            _text: str,
-            _credentials: dict[str, object],
-        ) -> str:
-            raise TransientAPIError("temporary failure", retry_after=17)
-
-    registry.register("yandex", _RetryingAdapter)
-    monkeypatch.setattr(integration_tasks, "AsyncSessionLocal", _FakeSession)
-    monkeypatch.setattr(integration_tasks, "set_tenant_rls_context", AsyncMock())
-    monkeypatch.setattr(
-        integration_tasks,
-        "decrypt_token",
-        lambda _ciphertext: json.dumps({"access_token": "secret-token"}),
-    )
-    monkeypatch.setattr(integration_tasks, "PLATFORM_ADAPTER_REGISTRY", registry)
-
-    from arq import Retry
-
-    with pytest.raises(Retry):
-        await integration_tasks.process_outbox_integration_job(
-            {},
-            str(uuid4()),
-            str(tenant_id),
-            {
-                "tenant_id": str(tenant_id),
-                "platform": "yandex",
-                "review_external_id": "review-123",
-                "text": "Thank you",
-            },
-        )
+async def _load_publication(_tenant_id, _review_id):
+    return _publication()

@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
+from app.domain.reviews.publication import ReplyPublicationStatus
 from app.domain.reviews.risk import ResponseStrategyType, RiskLevel
 
 
@@ -53,7 +53,13 @@ class CrisisEscalationRequest(BaseModel):
         return drafts
 
 
-class DraftResponse(BaseModel):
+class ReplyResponse(BaseModel):
+    status: ReplyPublicationStatus | None = None
+    external_reply_id: str | None = None
+    failure_reason: str | None = None
+
+
+class DraftResponse(ReplyResponse):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -89,7 +95,7 @@ class ApproveDraftResponse(BaseModel):
     idempotent: bool
     approved_by: str | None
     approved_at: datetime | None
-    publication_status: Literal["outbox_pending"] = "outbox_pending"
+    publication_status: ReplyPublicationStatus | None = None
 
 
 class CrisisEscalationResponse(BaseModel):

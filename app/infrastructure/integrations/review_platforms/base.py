@@ -11,6 +11,26 @@ from app.api.schemas.parser import RawReview
 from app.core.pii import PIISanitizer, redact_text
 
 
+class IntegrationError(Exception):
+    """Base error for failures while communicating with a review platform."""
+
+
+class TransientAPIError(IntegrationError):
+    """Temporary platform or network failure that should be retried."""
+
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+class PermanentAPIError(IntegrationError):
+    """Non-retryable platform failure, such as invalid credentials or input."""
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class RawPlatformReview(BaseModel):
     """Untrusted review payload returned by a platform integration."""
 
@@ -105,8 +125,8 @@ class BasePlatformAdapter(ABC):
         """Fetch reviews created since the given timestamp."""
 
     @abstractmethod
-    async def publish_reply(self, review_id: str, text: str) -> bool:
-        """Publish a business reply and return whether the request succeeded."""
+    async def publish_reply(self, review_id: str, text: str) -> str | bool:
+        """Publish a reply; publishing adapters return its external ID."""
 
     @abstractmethod
     async def refresh_access_token(self) -> None:

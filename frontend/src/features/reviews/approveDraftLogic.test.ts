@@ -22,7 +22,7 @@ describe('approve draft response', () => {
     const body = {
       draft: { id: 'd1', is_approved: true },
       idempotent: true,
-      publication_status: 'outbox_pending',
+      publication_status: 'queued_outbox',
       approved_by: 'admin@example.com',
       approved_at: '2026-11-02T00:00:00Z',
     };
@@ -41,7 +41,7 @@ describe('approve draft response', () => {
     expect(catchApproveError(200, {
       draft: { id: '', is_approved: true },
       idempotent: false,
-      publication_status: 'outbox_pending',
+      publication_status: 'queued_outbox',
       approved_by: null,
       approved_at: null,
     }).kind).toBe('server');

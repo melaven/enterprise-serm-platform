@@ -1,6 +1,7 @@
 """Factory for platform-specific review adapters."""
 
 from collections.abc import Callable
+from datetime import datetime
 
 from app.infrastructure.integrations.review_platforms.avito import AvitoAdapter
 from app.infrastructure.integrations.review_platforms.base import (
@@ -21,7 +22,7 @@ from app.infrastructure.integrations.review_platforms.yandex import (
     YandexBusinessAdapter,
 )
 
-AdapterBuilder = Callable[[str, dict[str, object]], BasePlatformAdapter]
+AdapterBuilder = Callable[..., BasePlatformAdapter]
 
 _ADAPTERS: dict[str, AdapterBuilder] = {
     "google": GoogleBusinessAdapter,
@@ -40,6 +41,8 @@ class PlatformAdapterFactory:
         platform: str,
         api_key: str,
         meta_config: dict[str, object],
+        refresh_token: str | None = None,
+        expires_at: datetime | None = None,
     ) -> BasePlatformAdapter:
         builder = _ADAPTERS.get(platform.strip().lower())
         if builder is None:
@@ -47,7 +50,12 @@ class PlatformAdapterFactory:
             raise ValueError(
                 f"Unsupported platform {platform!r}. Supported platforms: {supported}"
             )
-        return builder(api_key, meta_config)
+        return builder(
+            api_key,
+            meta_config,
+            refresh_token=refresh_token,
+            expires_at=expires_at,
+        )
 
 
 def get_adapter(platform: str) -> BaseReviewAdapter:

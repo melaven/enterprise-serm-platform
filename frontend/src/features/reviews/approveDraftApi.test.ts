@@ -17,7 +17,7 @@ describe('approveDraft API', () => {
       data: {
         draft: { id: 'draft-1', is_approved: true },
         idempotent: false,
-        publication_status: 'outbox_pending',
+        publication_status: 'queued_outbox',
         approved_by: null,
         approved_at: null,
       },

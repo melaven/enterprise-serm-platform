@@ -7,6 +7,7 @@ import {
   Lock,
   MessageCircleQuestion,
   Pencil,
+  RotateCcw,
   Scale,
   Send,
   ShieldAlert,
@@ -43,6 +44,7 @@ export interface CriticalReview {
 }
 
 export type ApproveHandler = (request: ApproveRequest) => Promise<ApproveResult>;
+export type RetryPublicationHandler = (reviewId: string, draftId: string) => Promise<void>;
 
 export interface AntiCrisisRadarProps {
   readonly review?: CriticalReview;
@@ -52,6 +54,7 @@ export interface AntiCrisisRadarProps {
    * любой неудаче бросить ApproveError: компонент не делает optimistic UI.
    */
   readonly onApprove: ApproveHandler;
+  readonly onRetryPublication?: RetryPublicationHandler;
   /** Роль текущего пользователя. UI-ограничение: окончательное решение за сервером (403). */
   readonly userRole?: UserRole;
 }
@@ -86,6 +89,9 @@ export const MOCK_RESPONSE_DRAFTS: readonly DraftResponse[] = [
       'установленные законодательством. Чтобы идентифицировать ваше обращение, направьте номер договора ' +
       'на privacy@company.example. Просим не публиковать персональные данные в отзыве.',
     is_approved: false,
+    status: null,
+    external_reply_id: null,
+    failure_reason: null,
     approved_by: null,
     approved_at: null,
     created_at: '2026-11-01T18:14:00+05:00',
@@ -100,6 +106,9 @@ export const MOCK_RESPONSE_DRAFTS: readonly DraftResponse[] = [
       'Готовы обсудить компенсацию и обязательно свяжемся с вами лично. Напишите нам удобный способ связи ' +
       'на support@company.example, ответим в течение одного рабочего дня.',
     is_approved: false,
+    status: null,
+    external_reply_id: null,
+    failure_reason: null,
     approved_by: null,
     approved_at: null,
     created_at: '2026-11-01T18:14:00+05:00',
@@ -114,6 +123,9 @@ export const MOCK_RESPONSE_DRAFTS: readonly DraftResponse[] = [
       'support@company.example вместе с номером договора. Персональные данные в публичных комментариях ' +
       'указывать не нужно.',
     is_approved: false,
+    status: null,
+    external_reply_id: null,
+    failure_reason: null,
     approved_by: null,
     approved_at: null,
     created_at: '2026-11-01T18:14:00+05:00',
@@ -241,6 +253,71 @@ function Tip({ id, message, wrapperClass = '', align = 'left', children }: TipPr
   );
 }
 
+interface PublicationStatusViewProps {
+  readonly status: DraftResponse['status'];
+  readonly externalReplyId: string | null;
+  readonly failureReason: string | null;
+  readonly retrying: boolean;
+  readonly retryDisabled: boolean;
+  readonly onRetry: () => void;
+}
+
+function PublicationStatusView({
+  status,
+  externalReplyId,
+  failureReason,
+  retrying,
+  retryDisabled,
+  onRetry,
+}: PublicationStatusViewProps) {
+  if (status === 'queued_outbox') {
+    return (
+      <p role="status" className="flex items-center gap-1.5 text-sm text-gray-700">
+        <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+        🟡 В очереди на отправку
+      </p>
+    );
+  }
+  if (status === 'publishing') {
+    return (
+      <p role="status" className="flex items-center gap-1.5 text-sm text-gray-700">
+        🔵 Публикация на площадке...
+      </p>
+    );
+  }
+  if (status === 'published') {
+    return (
+      <div role="status" className="space-y-1 text-sm text-gray-700">
+        <p>🟢 Опубликовано</p>
+        {externalReplyId !== null && (
+          <p className="break-all font-mono text-xs">ID ответа: {externalReplyId}</p>
+        )}
+      </div>
+    );
+  }
+  if (status === 'publish_failed') {
+    return (
+      <div role="alert" className="space-y-2 text-sm text-gray-700">
+        <p>🔴 Ошибка: {failureReason ?? 'Причина не указана.'}</p>
+        <button
+          type="button"
+          disabled={retryDisabled}
+          onClick={onRetry}
+          className={BTN_SECONDARY}
+        >
+          {retrying ? (
+            <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <RotateCcw className="h-4 w-4" aria-hidden="true" />
+          )}
+          Повторить
+        </button>
+      </div>
+    );
+  }
+  return <p role="status" className="text-sm text-gray-600">Статус публикации пока не указан.</p>;
+}
+
 /* ------------------------------------------------------------------ */
 /* Компонент                                                           */
 /* ------------------------------------------------------------------ */
@@ -249,6 +326,7 @@ export function AntiCrisisRadar({
   review = MOCK_CRITICAL_REVIEW,
   drafts = MOCK_RESPONSE_DRAFTS,
   onApprove,
+  onRetryPublication,
   userRole = 'admin',
 }: AntiCrisisRadarProps) {
   const [texts, setTexts] = useState<Readonly<Record<string, string>>>(() =>
@@ -258,6 +336,7 @@ export function AntiCrisisRadar({
   const [flow, setFlow] = useState<Flow>(IDLE_FLOW);
   /** Сервер ответил 403, хотя по роли в UI права были: блокируем интерфейс до перезагрузки. */
   const [serverForbidden, setServerForbidden] = useState(false);
+  const [retryingDraftId, setRetryingDraftId] = useState<string | null>(null);
 
   const mounted = useRef(true);
   const inFlight = useRef(false);
@@ -346,7 +425,26 @@ export function AntiCrisisRadar({
     [onApprove, readOnly, review.id, texts],
   );
 
+  const retryPublication = useCallback(
+    async (draftId: string): Promise<void> => {
+      if (onRetryPublication === undefined || readOnly || retryingDraftId !== null) return;
+      setRetryingDraftId(draftId);
+      try {
+        await onRetryPublication(review.id, draftId);
+        toast.success('Публикация повторно поставлена в очередь');
+      } catch (error: unknown) {
+        toast.error('Не удалось повторить публикацию', {
+          description: error instanceof Error ? error.message : 'Попробуйте ещё раз.',
+        });
+      } finally {
+        setRetryingDraftId(null);
+      }
+    },
+    [onRetryPublication, readOnly, retryingDraftId, review.id],
+  );
+
   const approvedFlow = flow.phase === 'approved' ? flow : null;
+  const serverApprovedDraft = drafts.find((draft) => draft.is_approved) ?? null;
 
   return (
     <section aria-labelledby="radar-title" className="mx-auto w-full max-w-5xl space-y-4 text-gray-900">
@@ -416,10 +514,24 @@ export function AntiCrisisRadar({
           <Check className="mt-0.5 h-5 w-5 shrink-0 text-gray-900" aria-hidden="true" />
           <div className="min-w-0 flex-1">
             <h2 id="radar-title" className="text-sm font-semibold text-gray-900">
-              {approvedFlow.outboxQueued ? 'Ответ отправлен в Outbox' : 'Ответ подтверждён'}
+              {serverApprovedDraft?.status === 'published'
+                ? 'Ответ опубликован'
+                : serverApprovedDraft?.status === 'publishing'
+                  ? 'Ответ публикуется на площадке'
+                  : serverApprovedDraft?.status === 'publish_failed'
+                    ? 'Публикация ответа не удалась'
+                    : approvedFlow.outboxQueued
+                      ? 'Ответ в очереди на отправку'
+                      : 'Ответ подтверждён'}
             </h2>
             <p className="mt-0.5 text-sm text-gray-700">
-              Публикация на площадке выполнится из очереди. Повторная отправка не нужна.
+              {serverApprovedDraft?.status === 'published'
+                ? `ID ответа на площадке: ${serverApprovedDraft.external_reply_id ?? 'не предоставлен'}.`
+                : serverApprovedDraft?.status === 'publish_failed'
+                  ? serverApprovedDraft.failure_reason ?? 'Причина ошибки не указана.'
+                  : serverApprovedDraft?.status === 'publishing'
+                    ? 'Идёт публикация утверждённого ответа.'
+                    : 'Публикация выполняется из очереди.'}
             </p>
           </div>
         </div>
@@ -488,8 +600,13 @@ export function AntiCrisisRadar({
           const isConfirming = flow.phase === 'confirm' && flow.draftId === draft.id && !readOnly;
           const isSending = flow.phase === 'sending' && flow.draftId === draft.id;
           const isApproved = approvedFlow !== null && approvedFlow.draftId === draft.id;
+          const publicationPending =
+            draft.status === 'queued_outbox' || draft.status === 'publishing';
           const failure = flow.phase === 'failed' && flow.draftId === draft.id ? flow.kind : null;
-          const dimmed = (locked && !isSending && !isApproved) || (readOnly && !locked);
+          const dimmed =
+            (locked && !isSending && !isApproved) ||
+            (readOnly && !locked) ||
+            (publicationPending && !isApproved);
 
           const border = isSending || isApproved ? 'border-gray-900' : 'border-gray-200';
           const surface = isApproved ? 'bg-gray-50' : 'bg-white';
@@ -498,7 +615,7 @@ export function AntiCrisisRadar({
             <article
               key={draft.id}
               aria-labelledby={`${draft.id}-title`}
-              aria-busy={isSending}
+              aria-busy={isSending || publicationPending}
               className={`flex min-w-0 flex-col rounded-sm border ${border} ${surface} ${dimmed ? 'opacity-60' : ''}`}
             >
               <header className="flex items-start gap-2 border-b border-gray-200 px-3 py-2">
@@ -521,7 +638,7 @@ export function AntiCrisisRadar({
                     aria-label={`Текст ответа: ${meta.title}`}
                     value={text}
                     rows={9}
-                    disabled={locked}
+                    disabled={locked || draft.is_approved || publicationPending}
                     onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
                       setTexts((prev) => ({ ...prev, [draft.id]: e.target.value }))
                     }
@@ -533,7 +650,20 @@ export function AntiCrisisRadar({
               </div>
 
               <footer className="space-y-2 border-t border-gray-200 px-3 py-2">
-                {isApproved && approvedFlow !== null ? (
+                {draft.is_approved ? (
+                  <PublicationStatusView
+                    status={draft.status}
+                    externalReplyId={draft.external_reply_id}
+                    failureReason={draft.failure_reason}
+                    retrying={retryingDraftId === draft.id}
+                    retryDisabled={
+                      readOnly ||
+                      onRetryPublication === undefined ||
+                      retryingDraftId !== null
+                    }
+                    onRetry={() => void retryPublication(draft.id)}
+                  />
+                ) : isApproved && approvedFlow !== null ? (
                   <div role="status" className="space-y-0.5">
                     <p className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
                       <Check className="h-4 w-4" aria-hidden="true" />
@@ -582,7 +712,11 @@ export function AntiCrisisRadar({
                     <Tip id={`${draft.id}-approve-tip`} message={rbacHint} wrapperClass="flex-1">
                       <button
                         type="button"
-                        disabled={(locked && !readOnly) || (!readOnly && text.trim().length === 0)}
+                        disabled={
+                          publicationPending ||
+                          (locked && !readOnly) ||
+                          (!readOnly && text.trim().length === 0)
+                        }
                         aria-disabled={readOnly || undefined}
                         aria-describedby={rbacHint !== null ? `${draft.id}-approve-tip` : undefined}
                         aria-label={`Апрув и Отправка (Approve & Send): ${meta.title}`}
@@ -604,7 +738,7 @@ export function AntiCrisisRadar({
                     <Tip id={`${draft.id}-edit-tip`} message={rbacHint} align="right">
                       <button
                         type="button"
-                        disabled={locked && !readOnly}
+                        disabled={publicationPending || (locked && !readOnly)}
                         aria-disabled={readOnly || undefined}
                         aria-pressed={isEditing}
                         aria-describedby={rbacHint !== null ? `${draft.id}-edit-tip` : undefined}

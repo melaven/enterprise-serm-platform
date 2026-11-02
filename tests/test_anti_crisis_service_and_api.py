@@ -21,6 +21,7 @@ from app.core.database import Base
 from app.core.dependencies import get_tenant_db
 from app.core.exceptions import SERMException
 from app.core.tenant_session import set_rls_context, set_tenant_rls_context
+from app.domain.reviews.publication import ReplyPublicationStatus
 from app.domain.reviews.risk import ResponseStrategyType, RiskLevel
 from app.infrastructure.persistence.models.ai_response_draft import AIResponseDraft
 from app.infrastructure.persistence.models.economics import Company, Review
@@ -244,10 +245,87 @@ async def test_approval_edits_reply_and_is_idempotent_for_same_draft(
     assert draft.approved_by == "manager-user-id"
     assert draft.approved_at.replace(tzinfo=timezone.utc) == first_result.approved_at
     assert reply is not None and reply.reply_text == "Manager-edited response"
+    assert reply.status is ReplyPublicationStatus.QUEUED_OUTBOX
+    assert first_result.draft.status is ReplyPublicationStatus.QUEUED_OUTBOX
+    assert first_result.draft.external_reply_id is None
+    assert first_result.draft.failure_reason is None
     assert review is not None
     assert review.moderation_status is ReplyModerationStatus.APPROVED
     assert len(events) == 1
     assert events[0].event_type is OutboxEventType.PUBLISH_REVIEW_REPLY
+    await close()
+
+
+@pytest.mark.asyncio
+async def test_failed_publication_retry_resets_state_and_enqueues_new_event(
+    anti_crisis_database,
+) -> None:
+    _, factory, create_schema, close = anti_crisis_database
+    await create_schema()
+    tenant_id = uuid4()
+    review_id = await _create_review(factory, tenant_id)
+    async with factory() as session:
+        await set_tenant_rls_context(session, tenant_id)
+        escalation = await AntiCrisisService(session).escalate_crisis(
+            tenant_id,
+            review_id,
+            RiskLevel.CRITICAL_RISK,
+            _crisis_drafts(),
+            [],
+            {},
+        )
+    approved_draft = escalation.drafts[0]
+
+    async with factory() as session:
+        await set_tenant_rls_context(session, tenant_id)
+        await AntiCrisisService(session).approve_draft(
+            tenant_id,
+            review_id,
+            approved_draft.id,
+            "Approved reply",
+            "manager-id",
+        )
+
+    async with factory() as session:
+        reply = await session.get(ReviewReply, review_id)
+        assert reply is not None
+        reply.status = ReplyPublicationStatus.PUBLISH_FAILED
+        reply.failure_reason = "Expired token"
+        await session.commit()
+
+    async with factory() as session:
+        await set_tenant_rls_context(session, tenant_id)
+        result = await AntiCrisisService(session).retry_reply_publication(
+            tenant_id,
+            review_id,
+            approved_draft.id,
+        )
+
+    async with factory() as session:
+        reply = await session.get(ReviewReply, review_id)
+        events = list(
+            (
+                await session.scalars(
+                    select(OutboxEvent).where(
+                        OutboxEvent.event_type == OutboxEventType.PUBLISH_REVIEW_REPLY
+                    )
+                )
+            ).all()
+        )
+
+    assert result.status is ReplyPublicationStatus.QUEUED_OUTBOX
+    assert result.failure_reason is None
+    assert reply is not None
+    assert reply.status is ReplyPublicationStatus.QUEUED_OUTBOX
+    assert reply.failure_reason is None
+    assert len(events) == 2
+    retry_event = next(
+        event
+        for event in events
+        if event.idempotency_key.startswith("publish-review-reply-retry:")
+    )
+    assert retry_event.payload["review_id"] == str(review_id)
+    assert retry_event.idempotency_key != events[0].idempotency_key
     await close()
 
 
@@ -432,6 +510,16 @@ async def test_api_lists_drafts_and_rejects_non_admin_approval(
                 },
                 json={"edited_text": "Changed text on retry"},
             )
+            async with factory() as session:
+                reply = await session.get(ReviewReply, review_id)
+                assert reply is not None
+                reply.status = ReplyPublicationStatus.PUBLISH_FAILED
+                reply.failure_reason = "Expired token"
+                await session.commit()
+            retried_publication = await client.post(
+                f"/api/v1/reviews/{review_id}/drafts/{escalation.drafts[0].id}/retry-publication",
+                headers=admin_headers,
+            )
             conflicted = await client.post(
                 f"/api/v1/reviews/{review_id}/drafts/{escalation.drafts[1].id}/approve",
                 headers={
@@ -450,7 +538,10 @@ async def test_api_lists_drafts_and_rejects_non_admin_approval(
             assert approved.status_code == 200, approved.text
             assert approved.json()["draft"]["body"] == "Manager approved response"
             assert approved.json()["idempotent"] is False
-            assert approved.json()["publication_status"] == "outbox_pending"
+            assert approved.json()["publication_status"] == "queued_outbox"
+            assert approved.json()["draft"]["status"] == "queued_outbox"
+            assert approved.json()["draft"]["external_reply_id"] is None
+            assert approved.json()["draft"]["failure_reason"] is None
             assert (
                 approved.json()["approved_by"] == "d41eaf1d-631b-47b6-a30d-7a7c13f46270"
             )
@@ -476,6 +567,9 @@ async def test_api_lists_drafts_and_rejects_non_admin_approval(
             assert retried.json()["idempotent"] is True
             assert retried.json()["approved_by"] == approved.json()["approved_by"]
             assert retried.json()["approved_at"] == approved.json()["approved_at"]
+            assert retried_publication.status_code == 200, retried_publication.text
+            assert retried_publication.json()["status"] == "queued_outbox"
+            assert retried_publication.json()["failure_reason"] is None
             assert conflicted.status_code == 409
             conflict_details = conflicted.json()["error"]["details"]
             assert conflict_details["approved_draft_id"] == str(escalation.drafts[0].id)

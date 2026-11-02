@@ -10,6 +10,7 @@ import type { SanitizedReview } from '@/types/review';
 import { getCompanyRoleFromToken } from './authRole';
 import { AntiCrisisRadar } from './AntiCrisisRadar';
 import { approveDraft } from './approveDraftApi';
+import { retryReplyPublication } from './draftsApi';
 import { useDrafts } from './useDrafts';
 
 // --------------------------------------------------------------------------- //
@@ -176,6 +177,11 @@ export function ReviewsDashboard() {
     }
   }
 
+  async function handleRetryPublication(reviewId: string, draftId: string): Promise<void> {
+    await retryReplyPublication(reviewId, draftId);
+    retryDrafts();
+  }
+
   function onListKeyDown(event: KeyboardEvent<HTMLUListElement>): void {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
@@ -337,6 +343,7 @@ export function ReviewsDashboard() {
                       review={criticalReview}
                       drafts={drafts}
                       onApprove={approveDraft}
+                      onRetryPublication={handleRetryPublication}
                       userRole={userRole}
                     />
                   </>

@@ -3,7 +3,7 @@
  * тестируется в Node (см. approveDraftLogic.test.ts).
  *
  * POST /api/v1/reviews/{review_id}/drafts/{draft_id}/approve  { edited_text }
- *   200 { draft, idempotent, publication_status: "outbox_pending" }
+ *   200 { draft, idempotent, publication_status: "queued_outbox" }
  *   409 { error: { details: { approved_draft_id, approved_by, approved_at } } }
  *   403                                роль без прав (нужен owner/admin)
  *   400/422                            пустой текст / ошибка валидации
@@ -78,7 +78,7 @@ export function interpretApproveResponse(status: number, body: unknown): Approve
       draft.is_approved === true &&
       data?.idempotent !== undefined &&
       typeof data.idempotent === 'boolean' &&
-      data.publication_status === 'outbox_pending' &&
+      data.publication_status === 'queued_outbox' &&
       (data.approved_by === null || typeof data.approved_by === 'string') &&
       (data.approved_at === null || typeof data.approved_at === 'string')
     ) {

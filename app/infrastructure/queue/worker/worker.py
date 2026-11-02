@@ -43,16 +43,14 @@ from app.infrastructure.queue.worker.digest import (
     enqueue_weekly_digests,
     send_company_weekly_digest,
 )
-from app.infrastructure.queue.worker.integration_tasks import (
-    process_outbox_integration_job,
-)
+from app.infrastructure.queue.worker.reply_tasks import publish_review_reply
 from app.workers.tasks.ingestion import process_review_ingestion
 
 logger = get_logger(__name__)
 
 OUTBOX_BATCH_SIZE = 50
 OUTBOX_ANALYSIS_EVENT = "review.analysis.requested"
-OUTBOX_REPLY_PUBLISH_EVENT = "review.reply.publish.requested"
+OUTBOX_REPLY_PUBLISH_EVENT = "publish_review_reply"
 
 
 async def process_review_task(
@@ -297,20 +295,11 @@ async def relay_outbox_events(ctx: dict[str, Any]) -> dict[str, int]:
                     ):
                         try:
                             event_tenant_id = UUID(str(payload["tenant_id"]))
+                            UUID(str(payload["review_id"]))
                             if event_tenant_id != tenant_id:
                                 raise ValueError(
                                     "Outbox event tenant does not match claim"
                                 )
-                            for field in (
-                                "platform",
-                                "review_external_id",
-                                "text",
-                            ):
-                                value = payload.get(field)
-                                if not isinstance(value, str) or not value.strip():
-                                    raise ValueError(
-                                        f"Invalid outbox integration {field}"
-                                    )
                         except (KeyError, TypeError, ValueError) as exc:
                             await _set_outbox_status(session, event["id"], "failed")
                             failed += 1
@@ -323,11 +312,11 @@ async def relay_outbox_events(ctx: dict[str, Any]) -> dict[str, int]:
 
                         try:
                             await redis.enqueue_job(
-                                "process_outbox_integration_job",
+                                "publish_review_reply",
                                 str(event["id"]),
                                 str(tenant_id),
                                 payload,
-                                _job_id=f"publish-reply-{event['id']}",
+                                _job_id=f"publish-review-reply-{event['id']}",
                             )
                         except Exception:
                             logger.exception(
@@ -418,7 +407,7 @@ class WorkerSettings:
     # Задачи для выполнения
     functions = [
         process_review_task,
-        process_outbox_integration_job,
+        publish_review_reply,
         relay_outbox_events,
         process_review_ingestion,
         send_company_weekly_digest,

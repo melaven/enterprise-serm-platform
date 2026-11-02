@@ -122,16 +122,14 @@ async def test_outbox_relay_enqueues_platform_reply_job(
     event_id = uuid4()
     payload = {
         "tenant_id": str(tenant_id),
-        "platform": "yandex",
-        "review_external_id": "external-review-1",
-        "text": "Thank you",
+        "review_id": str(uuid4()),
     }
     calls: list[str] = []
     event_session = _FakeSession(
         events=[
             {
                 "id": event_id,
-                "event_type": "review.reply.publish.requested",
+                "event_type": "publish_review_reply",
                 "payload": payload,
             }
         ],
@@ -151,11 +149,11 @@ async def test_outbox_relay_enqueues_platform_reply_job(
     assert result == {"delivered": 1, "failed": 0}
     assert calls == ["enqueue", "status"]
     queue.enqueue_job.assert_awaited_once_with(
-        "process_outbox_integration_job",
+        "publish_review_reply",
         str(event_id),
         str(tenant_id),
         payload,
-        _job_id=f"publish-reply-{event_id}",
+        _job_id=f"publish-review-reply-{event_id}",
     )
 
 
@@ -168,12 +166,10 @@ async def test_outbox_relay_rolls_back_when_integration_enqueue_fails(
         events=[
             {
                 "id": uuid4(),
-                "event_type": "review.reply.publish.requested",
+                "event_type": "publish_review_reply",
                 "payload": {
                     "tenant_id": str(tenant_id),
-                    "platform": "yandex",
-                    "review_external_id": "external-review-1",
-                    "text": "Thank you",
+                    "review_id": str(uuid4()),
                 },
             }
         ]

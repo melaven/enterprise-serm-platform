@@ -1,25 +1,34 @@
-# External platform reply integrations
+# External reply publishing
 
-The outbox relay dispatches `review.reply.publish.requested` events to
-`process_outbox_integration_job`. The event payload must contain:
+The outbox relay dispatches `publish_review_reply` events to the
+canonical `publish_review_reply` ARQ task. Payloads contain only the tenant and
+internal review identifiers:
 
 ```json
 {
   "tenant_id": "company UUID",
-  "platform": "yandex",
-  "review_external_id": "platform review ID",
-  "text": "approved reply text"
+  "review_id": "review UUID"
 }
 ```
 
-Credentials are not included in the outbox payload. The job establishes the
-tenant RLS context, reads `encrypted_credentials` from `tenant_integrations`,
-and decrypts its JSON object with the configured `ENCRYPTION_KEY`. The Yandex
-adapter currently expects an `access_token` property and sends the reply as
-`{"text": "..."}` to the Yandex Business reviews reply endpoint. Confirm the
-endpoint path and response field (`external_reply_id`) against the Yandex API
-contract enabled for the account before production use.
+The task loads the approved reply and platform credentials from the tenant's
+`review_replies`, `reviews`, and `platform_integrations` rows under RLS. API and
+refresh tokens are decrypted with `ENCRYPTION_KEY`. Database work is split
+around the platform request: credentials are loaded and the session is closed,
+the HTTP request runs without a DB transaction, then the external reply ID or
+publication error is stored in a new short tenant-scoped transaction.
 
-HTTP 429 and 5xx responses and network errors are retried by ARQ. Other 4xx
-responses are logged as permanent failures and are not retried. Credentials
-and reply text are not written to logs.
+Publication status is exposed on each approved draft as `queued_outbox`,
+`publishing`, `published`, or `publish_failed`. Approving a draft creates its
+reply and outbox event in one transaction. Permanent failures can be retried
+through `POST /api/v1/reviews/{review_id}/drafts/{draft_id}/retry-publication`;
+that endpoint resets the reply to `queued_outbox` and inserts a fresh outbox
+event atomically.
+
+The Yandex adapter currently expects `external_id` on the review and sends
+`{"text": "..."}` to the Yandex Business reviews reply endpoint using the
+OAuth token. Verify the endpoint path and response field
+(`external_reply_id`) against the API contract enabled for the account before
+production use. HTTP 429 and 5xx and network errors are retried by ARQ. Other
+4xx responses are recorded as permanent failures. Credentials and reply text
+are not written to logs.

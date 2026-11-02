@@ -93,7 +93,6 @@ async def test_provider_fetch_methods_fail_explicitly_until_implemented() -> Non
 @pytest.mark.parametrize(
     ("adapter_type", "platform"),
     [
-        (YandexBusinessAdapter, "Яндекс Бизнес"),
         (TwoGisAdapter, "2ГИС"),
         (AvitoAdapter, "Авито"),
         (OtzovikScraperAdapter, "Отзовик"),

@@ -201,6 +201,26 @@ async def approve_crisis_draft(
 
 
 @router.post(
+    "/{review_id}/drafts/{draft_id}/retry-publication",
+    response_model=DraftResponse,
+    summary="Повторить публикацию ответа",
+)
+async def retry_crisis_draft_publication(
+    review_id: UUID,
+    draft_id: UUID,
+    session: AsyncSession = Depends(get_tenant_db),
+    tenant_id: UUID = Depends(get_current_tenant),
+    auth: JWTPayload = Depends(get_jwt_payload),
+) -> DraftResponse:
+    _require_crisis_publish_role(auth.company_role)
+    return await AntiCrisisService(session).retry_reply_publication(
+        tenant_id,
+        review_id,
+        draft_id,
+    )
+
+
+@router.post(
     "/webhook",
     status_code=status.HTTP_201_CREATED,
     summary="Webhook для получения отзывов от внешних систем",

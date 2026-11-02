@@ -112,3 +112,80 @@ async def test_outbox_relay_rolls_back_when_enqueue_fails(
         await worker.relay_outbox_events({"redis": queue})
 
     assert event_session.rolled_back
+
+
+@pytest.mark.asyncio
+async def test_outbox_relay_enqueues_platform_reply_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid4()
+    event_id = uuid4()
+    payload = {
+        "tenant_id": str(tenant_id),
+        "platform": "yandex",
+        "review_external_id": "external-review-1",
+        "text": "Thank you",
+    }
+    calls: list[str] = []
+    event_session = _FakeSession(
+        events=[
+            {
+                "id": event_id,
+                "event_type": "review.reply.publish.requested",
+                "payload": payload,
+            }
+        ],
+        calls=calls,
+    )
+    sessions = iter([_FakeSession(tenant_ids=[tenant_id]), event_session])
+    queue = SimpleNamespace(
+        enqueue_job=AsyncMock(
+            side_effect=lambda *args, **kwargs: calls.append("enqueue")
+        )
+    )
+    monkeypatch.setattr(worker, "AsyncSessionLocal", lambda: next(sessions))
+    monkeypatch.setattr(worker, "set_tenant_rls_context", AsyncMock())
+
+    result = await worker.relay_outbox_events({"redis": queue})
+
+    assert result == {"delivered": 1, "failed": 0}
+    assert calls == ["enqueue", "status"]
+    queue.enqueue_job.assert_awaited_once_with(
+        "process_outbox_integration_job",
+        str(event_id),
+        str(tenant_id),
+        payload,
+        _job_id=f"publish-reply-{event_id}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_outbox_relay_rolls_back_when_integration_enqueue_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid4()
+    event_session = _FakeSession(
+        events=[
+            {
+                "id": uuid4(),
+                "event_type": "review.reply.publish.requested",
+                "payload": {
+                    "tenant_id": str(tenant_id),
+                    "platform": "yandex",
+                    "review_external_id": "external-review-1",
+                    "text": "Thank you",
+                },
+            }
+        ]
+    )
+    sessions = iter([_FakeSession(tenant_ids=[tenant_id]), event_session])
+    queue = SimpleNamespace(
+        enqueue_job=AsyncMock(side_effect=RuntimeError("Redis unavailable"))
+    )
+    monkeypatch.setattr(worker, "AsyncSessionLocal", lambda: next(sessions))
+    monkeypatch.setattr(worker, "set_tenant_rls_context", AsyncMock())
+
+    with pytest.raises(RuntimeError, match="Redis unavailable"):
+        await worker.relay_outbox_events({"redis": queue})
+
+    assert event_session.rolled_back

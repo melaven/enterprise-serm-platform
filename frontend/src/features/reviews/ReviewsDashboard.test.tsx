@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -28,6 +29,8 @@ vi.mock('./approveDraftApi', () => ({
 }));
 
 vi.mock('@/store/useAppStore', () => ({
+  useAppStore: (selector: (state: { user: { tenant_id: string } }) => unknown) =>
+    selector({ user: { tenant_id: 'tenant-1' } }),
   useAuth: () => ({ user: { tenant_id: 'tenant-1' }, token: mocks.token }),
 }));
 
@@ -53,10 +56,15 @@ const review = {
 };
 
 function renderDashboard() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 0 } },
+  });
   return render(
-    <MemoryRouter>
-      <ReviewsDashboard />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <ReviewsDashboard />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -198,11 +206,11 @@ describe('ReviewsDashboard reply generation', () => {
     expect(await screen.findByRole('button', { name: /Review author/ })).toBeInTheDocument();
 
     setVisibilityState('hidden');
-    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('visibilitychange'));
     expect(mocks.fetchReviews).toHaveBeenCalledTimes(1);
 
     setVisibilityState('visible');
-    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('visibilitychange'));
     expect(await screen.findByText('Перехвачен отзыв с риском CRITICAL_RISK')).toBeInTheDocument();
     expect(await screen.findByText('Критический риск')).toBeInTheDocument();
     expect(mocks.fetchReviews).toHaveBeenCalledTimes(2);
@@ -248,12 +256,12 @@ describe('ReviewsDashboard reply generation', () => {
     fireEvent.change(editor, { target: { value: 'Local unsaved changes' } });
 
     setVisibilityState('hidden');
-    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('visibilitychange'));
     const requestsBeforeVisible = mocks.fetchReviewDrafts.mock.calls.length;
 
     setVisibilityState('visible');
     anotherManagerApproved = true;
-    fireEvent(document, new Event('visibilitychange'));
+    fireEvent(window, new Event('visibilitychange'));
     expect(await screen.findByText(/colleague@example\.com.*уже отправил ответ/)).toBeInTheDocument();
     expect(await screen.findByRole('textbox', { name: 'Текст ответа: Юридически строгий' })).toHaveValue(
       'Local unsaved changes',

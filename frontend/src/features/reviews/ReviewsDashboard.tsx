@@ -1,17 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { useMemo, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { ArrowLeft, Inbox, Loader2, Search, Sparkles, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { ErrorBoundary } from 'react-error-boundary';
 
-import { generateReviewReply, fetchReviews } from '@/api/reviews';
+import { generateReviewReply } from '@/api/reviews';
 import { RateLimitedApiError } from '@/api/client';
+import { ErrorFallback } from '@/components/ui/ErrorFallback';
 import { useAuth } from '@/store/useAppStore';
-import type { SanitizedReview } from '@/types/review';
 import { getCompanyRoleFromToken } from './authRole';
 import { AntiCrisisRadar } from './AntiCrisisRadar';
-import { approveDraft } from './approveDraftApi';
 import { retryReplyPublication } from './draftsApi';
 import { useDrafts } from './useDrafts';
+import { useApproveDraft, usePlatformReviews } from '@/hooks/api/useReviews';
 
 // --------------------------------------------------------------------------- //
 // Контракт
@@ -80,9 +81,6 @@ export function ReviewsDashboard() {
   const { user, token } = useAuth();
   const companyId = user?.tenant_id ?? null;
   const userRole = getCompanyRoleFromToken(token) ?? 'member';
-  const [reviews, setReviews] = useState<SanitizedReview[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [platform, setPlatform] = useState<PlatformFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -90,57 +88,18 @@ export function ReviewsDashboard() {
   const [generatingReplyFor, setGeneratingReplyFor] = useState<string | null>(null);
   const [generatedReplies, setGeneratedReplies] = useState<Record<string, string>>({});
   const itemRefs = useRef(new Map<string, HTMLButtonElement>());
-
-  useEffect(() => {
-    if (companyId === null) {
-      setReviews([]);
-      setError('Не удалось определить компанию для загрузки отзывов.');
-      setLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    let active = true;
-    let inFlight = false;
-    setLoading(true);
-    setError(null);
-
-    const refresh = async (initial = false): Promise<void> => {
-      if ((!initial && document.visibilityState !== 'visible') || inFlight) return;
-      inFlight = true;
-      try {
-        const nextReviews = await fetchReviews(
-          companyId,
-          platform === 'all' ? null : platform,
-          controller.signal,
-        );
-        if (!active) return;
-        setReviews(nextReviews);
-        setError(null);
-      } catch (cause: unknown) {
-        if (!active || controller.signal.aborted) return;
-        setError(cause instanceof Error ? cause.message : 'Не удалось загрузить отзывы.');
-        if (initial) setReviews([]);
-      } finally {
-        inFlight = false;
-        if (active && initial) setLoading(false);
-      }
-    };
-
-    void refresh(true);
-    const intervalId = window.setInterval(() => void refresh(), 15_000);
-    const handleVisibilityChange = (): void => {
-      if (document.visibilityState === 'visible') void refresh();
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      active = false;
-      controller.abort();
-      window.clearInterval(intervalId);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [companyId, platform]);
+  const reviewsQuery = usePlatformReviews(companyId, platform === 'all' ? null : platform);
+  const reviews = reviewsQuery.data ?? [];
+  const loading = reviewsQuery.isLoading;
+  const error =
+    companyId === null
+      ? 'Не удалось определить компанию для загрузки отзывов.'
+      : reviewsQuery.isError
+        ? reviewsQuery.error instanceof Error
+          ? reviewsQuery.error.message
+          : 'Не удалось загрузить отзывы.'
+        : null;
+  const approveDraftMutation = useApproveDraft();
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -308,6 +267,7 @@ export function ReviewsDashboard() {
 
       {/* Главное окно: детали */}
       <main className={`${mobileDetail ? 'flex' : 'hidden'} min-w-0 flex-1 flex-col overflow-y-auto md:flex`}>
+        <ErrorBoundary FallbackComponent={ErrorFallback}>
         {selected === null ? (
           <div className="flex flex-1 items-center justify-center p-8 text-sm text-neutral-500">
             Выберите отзыв в списке слева.
@@ -342,7 +302,7 @@ export function ReviewsDashboard() {
                     <AntiCrisisRadar
                       review={criticalReview}
                       drafts={drafts}
-                      onApprove={approveDraft}
+                      onApprove={approveDraftMutation.mutateAsync}
                       onRetryPublication={handleRetryPublication}
                       userRole={userRole}
                     />
@@ -424,6 +384,7 @@ export function ReviewsDashboard() {
             </article>
           </>
         )}
+        </ErrorBoundary>
       </main>
     </div>
   );

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Database, Download } from 'lucide-react';
-import { useReviews } from '../../store/useAppStore';
+import { ErrorBoundary } from 'react-error-boundary';
+
 import {
   Table,
   TableBody,
@@ -14,10 +15,12 @@ import { Button } from '../../components/ui/button';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Review } from '../../api/services';
 import { ReviewDetailModal } from './ReviewDetailModal';
+import { ErrorFallback } from '@/components/ui/ErrorFallback';
+import { useReviews } from '@/hooks/api/useReviews';
 
 /**
  * Таблица отзывов
- * Использует centralized API через Zustand store
+ * Загружает данные через TanStack Query.
  */
 export interface ReviewsTableProps {
   searchQuery?: string;
@@ -26,40 +29,26 @@ export interface ReviewsTableProps {
   onExportCSV?: () => void;
 }
 
-export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onExportCSV }: ReviewsTableProps) => {
-  const {
-    reviews,
-    reviewsLoading,
-    reviewsTotal,
-    fetchReviews,
-  } = useReviews();
+function ReviewsTableContent({
+  searchQuery,
+  sentimentFilter,
+  platformFilter,
+  onExportCSV,
+}: ReviewsTableProps) {
+  const params = useMemo(
+    () => ({
+      page_size: 50,
+      ...(platformFilter && platformFilter !== 'all' ? { platform: platformFilter } : {}),
+      ...(sentimentFilter && sentimentFilter !== 'all' ? { sentiment: sentimentFilter } : {}),
+      ...(searchQuery?.trim() ? { search: searchQuery.trim() } : {}),
+    }),
+    [platformFilter, searchQuery, sentimentFilter],
+  );
+  const reviewsQuery = useReviews(params);
+  const reviews = reviewsQuery.data?.items ?? [];
+  const reviewsTotal = reviewsQuery.data?.total ?? 0;
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  useEffect(() => {
-    const params: {
-      page_size: number;
-      platform?: string;
-      sentiment?: string;
-      search?: string;
-    } = { page_size: 50 };
-
-    // Применяем фильтры только если они не "all"
-    if (platformFilter && platformFilter !== 'all') {
-      params.platform = platformFilter;
-    }
-    if (sentimentFilter && sentimentFilter !== 'all') {
-      params.sentiment = sentimentFilter;
-    }
-    if (searchQuery?.trim()) {
-      params.search = searchQuery.trim();
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      void fetchReviews(params);
-    }, 250);
-    return () => window.clearTimeout(timeoutId);
-  }, [fetchReviews, platformFilter, searchQuery, sentimentFilter]);
 
   const handleRowClick = (review: Review) => {
     setSelectedReview(review);
@@ -106,7 +95,7 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
   };
 
   // Loading Skeleton
-  if (reviewsLoading) {
+  if (reviewsQuery.isLoading) {
     return (
       <div className="rounded-sm border-2 border-chrome-600 bg-ink-900 p-6">
         <div className="space-y-4">
@@ -116,6 +105,17 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
           <Skeleton className="h-10 w-full" />
           <Skeleton className="h-10 w-3/4" />
         </div>
+      </div>
+    );
+  }
+
+  if (reviewsQuery.isError && reviewsQuery.data === undefined) {
+    return (
+      <div role="alert" className="rounded-sm border-2 border-chrome-600 bg-ink-900 p-6 text-chrome-200">
+        <p>Не удалось загрузить отзывы: {reviewsQuery.error.message}</p>
+        <Button className="mt-4" variant="outline" onClick={() => void reviewsQuery.refetch()}>
+          Повторить
+        </Button>
       </div>
     );
   }
@@ -137,14 +137,7 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
           </div>
           <Button
             variant="outline"
-            onClick={() =>
-              fetchReviews({
-                page_size: 50,
-                ...(platformFilter && platformFilter !== 'all' ? { platform: platformFilter } : {}),
-                ...(sentimentFilter && sentimentFilter !== 'all' ? { sentiment: sentimentFilter } : {}),
-                ...(searchQuery?.trim() ? { search: searchQuery.trim() } : {}),
-              })
-            }
+            onClick={() => void reviewsQuery.refetch()}
           >
             Обновить
           </Button>
@@ -215,14 +208,7 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
             )}
             <Button
               variant="outline"
-              onClick={() =>
-                fetchReviews({
-                  page_size: 50,
-                  ...(platformFilter && platformFilter !== 'all' ? { platform: platformFilter } : {}),
-                  ...(sentimentFilter && sentimentFilter !== 'all' ? { sentiment: sentimentFilter } : {}),
-                  ...(searchQuery?.trim() ? { search: searchQuery.trim() } : {}),
-                })
-              }
+              onClick={() => void reviewsQuery.refetch()}
             >
               Обновить
             </Button>
@@ -286,4 +272,12 @@ export const ReviewsTable = ({ searchQuery, sentimentFilter, platformFilter, onE
       />
     </>
   );
-};
+}
+
+export function ReviewsTable(props: ReviewsTableProps) {
+  return (
+    <ErrorBoundary FallbackComponent={ErrorFallback}>
+      <ReviewsTableContent {...props} />
+    </ErrorBoundary>
+  );
+}

@@ -158,6 +158,7 @@ def test_set_rls_context_sets_all_tenant_claims() -> None:
         "claims": json.dumps({"sub": USER, "tenant_id": TENANT}),
         "company_id": TENANT,
         "user_id": USER,
+        "current_user_id": USER,
     }
 
 

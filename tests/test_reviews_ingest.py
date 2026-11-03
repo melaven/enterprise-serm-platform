@@ -6,10 +6,15 @@ import pytest
 from fastapi import FastAPI
 
 from app.api.dependencies.tenant import get_current_user
+from app.api.errors import (
+    DuplicateWebhookError,
+    duplicate_webhook_exception_handler,
+)
 from app.api.schemas.auth import AuthContext, JWTPayload
 from app.api.v1.routes.reviews import router as reviews_router
 from app.core.auth import get_jwt_payload
 from app.core.dependencies import get_review_queue
+from app.core.handlers import general_exception_handler
 
 
 class _FakeQueue:
@@ -23,6 +28,26 @@ class _FakeQueue:
         return object()
 
 
+class _FakeRedis:
+    def __init__(self) -> None:
+        self.keys: set[str] = set()
+        self.set_calls: list[tuple[str, str, int, bool]] = []
+
+    async def set(
+        self,
+        name: str,
+        value: str,
+        *,
+        ex: int,
+        nx: bool,
+    ) -> bool | None:
+        self.set_calls.append((name, value, ex, nx))
+        if nx and name in self.keys:
+            return None
+        self.keys.add(name)
+        return True
+
+
 def _create_app(
     company_id: UUID | None = None,
     queue: _FakeQueue | None = None,
@@ -30,7 +55,12 @@ def _create_app(
     missing_tenant_context: bool = False,
 ) -> FastAPI:
     app = FastAPI()
+    app.state.redis_pool = _FakeRedis()
     app.include_router(reviews_router, prefix="/api/v1/reviews")
+    app.add_exception_handler(
+        DuplicateWebhookError, duplicate_webhook_exception_handler
+    )
+    app.add_exception_handler(Exception, general_exception_handler)
     if company_id is not None:
         app.dependency_overrides[get_current_user] = lambda: AuthContext(
             user_id=uuid4(), company_id=company_id
@@ -76,6 +106,30 @@ async def test_ingest_returns_202_and_enqueues_job() -> None:
     assert args[0] == str(tenant_id)
     assert args[1]["raw_author"] == "Иван Петров"
     assert kwargs["_job_id"] == body["job_id"]
+
+
+@pytest.mark.asyncio
+async def test_duplicate_ingest_returns_202_without_enqueuing_again() -> None:
+    tenant_id = uuid4()
+    queue = _FakeQueue()
+    app = _create_app(tenant_id, queue)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        first_response = await client.post("/api/v1/reviews/ingest", json=_payload())
+        duplicate_response = await client.post(
+            "/api/v1/reviews/ingest", json=_payload()
+        )
+
+    assert first_response.status_code == 202
+    assert duplicate_response.status_code == 202
+    assert duplicate_response.json() == {"status": "accepted", "duplicate": True}
+    assert len(queue.calls) == 1
+    assert app.state.redis_pool.set_calls == [
+        ("dedup:review:yandex:review-123", "1", 300, True),
+        ("dedup:review:yandex:review-123", "1", 300, True),
+    ]
 
 
 @pytest.mark.asyncio

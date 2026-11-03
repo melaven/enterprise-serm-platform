@@ -199,6 +199,27 @@ def test_generator_draft_migration_preserves_anti_crisis_drafts() -> None:
     )
 
 
+def test_audit_logging_migration_registers_protected_change_triggers() -> None:
+    filename = "047_audit_logging_cdc.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "CREATE TABLE IF NOT EXISTS public.audit_logs" in sql
+    assert "SECURITY DEFINER" in sql
+    assert "current_setting('app.current_user_id', true)" in sql
+    assert "ADD COLUMN IF NOT EXISTS changed_by_user_id uuid" in sql
+    assert "changed_tenant_id" in sql
+    for table_name in (
+        "reviews",
+        "ai_response_drafts",
+        "anti_crisis_response_drafts",
+        "platform_integrations",
+    ):
+        assert f"'{table_name}'" in sql
+    assert "old_row := to_jsonb(OLD)" in sql
+    assert "new_row := to_jsonb(NEW)" in sql
+
+
 def test_schema_cleanup_migration_removes_duplicate_review_pipeline_state() -> None:
     sql = (MIGRATIONS_DIR / "028_schema_cleanup.sql").read_text(encoding="utf-8")
 

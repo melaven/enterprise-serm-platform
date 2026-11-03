@@ -48,6 +48,7 @@ from app.core.dependencies import (
     get_review_repository,
     get_sentiment_service,
     get_tenant_db,
+    verify_idempotency,
 )
 from app.core.rate_limit import check_llm_limits
 from app.infrastructure.persistence.models.economics import Review
@@ -80,6 +81,7 @@ def _require_crisis_publish_role(company_role: str | None) -> None:
 async def ingest_review(
     payload: ReviewIngestPayload,
     tenant_id: UUID = Depends(verify_tenant_access),
+    _idempotency: None = Depends(verify_idempotency),
     arq_pool: ReviewQueue | None = Depends(get_review_queue),
 ) -> ReviewIngestResponse:
     """Queue an untrusted review payload for worker-side PII sanitization."""

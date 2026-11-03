@@ -17,7 +17,8 @@ from app.core.auth import tenant_id_from_payload
 SET_RLS_CONTEXT = text(
     "SELECT set_config('request.jwt.claims', :claims, true), "
     "set_config('app.company_id', :company_id, true), "
-    "set_config('app.user_id', :user_id, true)"
+    "set_config('app.user_id', :user_id, true), "
+    "set_config('app.current_user_id', :current_user_id, true)"
 )
 RLS_CONTEXT_INFO_KEY = "tenant_rls_context"
 RLS_CONTEXT_LISTENER_INFO_KEY = "tenant_rls_context_listener"
@@ -67,10 +68,12 @@ def _remember_rls_context(
     user_id: str | None = None,
 ) -> None:
     tenant_id = tenant_id_from_payload(payload)
+    current_user_id = user_id if user_id is not None else str(payload.sub)
     session.sync_session.info[RLS_CONTEXT_INFO_KEY] = {
         "claims": build_rls_claims(payload),
         "company_id": str(tenant_id),
-        "user_id": user_id if user_id is not None else str(payload.sub),
+        "user_id": current_user_id,
+        "current_user_id": current_user_id,
     }
     sync_session = session.sync_session
     if not sync_session.info.get(RLS_CONTEXT_LISTENER_INFO_KEY):

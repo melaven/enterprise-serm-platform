@@ -28,6 +28,7 @@ from app.api.admin import (
     ReviewAdmin,
     ReviewReplyAdmin,
 )
+from app.api.errors import DuplicateWebhookError, duplicate_webhook_exception_handler
 from app.api.v1.routes import (
     analytics,
     api_keys,
@@ -268,6 +269,10 @@ app.add_middleware(
 
 # Подключение глобальных обработчиков исключений
 app.add_exception_handler(SERMException, cast(ExceptionHandler, serm_exception_handler))
+app.add_exception_handler(
+    DuplicateWebhookError,
+    cast(ExceptionHandler, duplicate_webhook_exception_handler),
+)
 app.add_exception_handler(HTTPException, cast(ExceptionHandler, http_exception_handler))
 app.add_exception_handler(
     RequestValidationError, cast(ExceptionHandler, validation_exception_handler)

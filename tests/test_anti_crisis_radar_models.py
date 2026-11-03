@@ -85,6 +85,7 @@ async def test_ai_response_draft_and_review_defaults_use_tenant_context() -> Non
             "request.jwt.claims",
             "app.company_id",
             "app.user_id",
+            "app.current_user_id",
         ]
         assert all(is_local for _, _, is_local in applied_settings)
         assert applied_settings[1][1] == str(tenant_id)

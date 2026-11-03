@@ -55,6 +55,7 @@ async def test_tenant_session_applies_rls_context_before_first_query() -> None:
             "request.jwt.claims",
             "app.company_id",
             "app.user_id",
+            "app.current_user_id",
         ]
         assert all(is_local for _, _, is_local in applied_settings)
         assert tenant_id_from_payload(payload) == tenant_id
@@ -79,17 +80,23 @@ async def test_rls_context_is_restored_after_commit_on_same_session() -> None:
                 "claims": f'{{"sub": "{user_id}", "tenant_id": "{tenant_id}"}}',
                 "company_id": str(tenant_id),
                 "user_id": str(user_id),
+                "current_user_id": str(user_id),
             }
 
             await session.execute(text("SELECT 1"))
-            assert len(applied_settings) == 3
+            assert len(applied_settings) == 4
 
             await session.commit()
             await session.execute(text("SELECT 1"))
 
-            assert len(applied_settings) == 6
-            assert applied_settings[3:] == applied_settings[:3]
+            assert len(applied_settings) == 8
+            assert applied_settings[4:] == applied_settings[:4]
             assert all(is_local for _, _, is_local in applied_settings)
+            assert applied_settings[3] == (
+                "app.current_user_id",
+                str(user_id),
+                True,
+            )
     finally:
         await engine.dispose()
 
@@ -143,6 +150,7 @@ async def test_tenant_dependency_commits_only_session_dml(
             "request.jwt.claims",
             "app.company_id",
             "app.user_id",
+            "app.current_user_id",
         ]
 
         async with session_factory() as verification_session:

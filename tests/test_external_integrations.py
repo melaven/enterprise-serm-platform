@@ -15,6 +15,12 @@ from app.infrastructure.integrations.review_platforms.yandex import (
     YandexBusinessAdapter,
 )
 from app.infrastructure.queue.worker import reply_tasks
+from app.infrastructure.redis.circuit_breaker import (
+    _IS_ALLOWED_SCRIPT,
+    _RECORD_FAILURE_SCRIPT,
+    _RECORD_SUCCESS_SCRIPT,
+)
+from app.infrastructure.redis.rate_limiter import _TOKEN_BUCKET_SCRIPT
 
 
 @pytest.mark.asyncio
@@ -184,6 +190,28 @@ def _publication() -> reply_tasks.ReplyPublication:
     )
 
 
+class _RateLimitRedis:
+    def __init__(
+        self,
+        result: list[int] | None = None,
+        *,
+        circuit_result: int = 1,
+    ) -> None:
+        self.result = result or [1, 0]
+        self.circuit_result = circuit_result
+        self.calls: list[str] = []
+
+    async def eval(self, script: str, _numkeys: int, *_args: object) -> object:
+        self.calls.append(script)
+        if script == _TOKEN_BUCKET_SCRIPT:
+            return self.result
+        if script == _IS_ALLOWED_SCRIPT:
+            return self.circuit_result
+        if script in {_RECORD_FAILURE_SCRIPT, _RECORD_SUCCESS_SCRIPT}:
+            return 1
+        return 1
+
+
 @pytest.mark.asyncio
 async def test_reply_task_runs_db_http_db_phases_in_order(
     monkeypatch: pytest.MonkeyPatch,
@@ -218,14 +246,16 @@ async def test_reply_task_runs_db_http_db_phases_in_order(
 
     tenant_id = "11111111-1111-1111-1111-111111111111"
     review_id = "22222222-2222-2222-2222-222222222222"
+    redis = _RateLimitRedis()
     await reply_tasks.publish_review_reply(
-        {},
+        {"redis": redis},
         "33333333-3333-3333-3333-333333333333",
         tenant_id,
         {"tenant_id": tenant_id, "review_id": review_id},
     )
 
     assert events == ["phase-1-db", "phase-2-http", "phase-3-db"]
+    assert _RECORD_SUCCESS_SCRIPT in redis.calls
 
 
 @pytest.mark.asyncio
@@ -235,6 +265,7 @@ async def test_reply_task_retries_transient_errors_after_recording_failure(
     from arq import Retry
 
     recorded_results = []
+    redis = _RateLimitRedis()
     monkeypatch.setattr(reply_tasks, "_load_reply_publication", _load_publication)
 
     class _RetryingAdapter:
@@ -261,7 +292,7 @@ async def test_reply_task_retries_transient_errors_after_recording_failure(
 
     with pytest.raises(Retry):
         await reply_tasks.publish_review_reply(
-            {},
+            {"redis": redis},
             "33333333-3333-3333-3333-333333333333",
             tenant_id,
             {"tenant_id": tenant_id, "review_id": review_id},
@@ -269,6 +300,7 @@ async def test_reply_task_retries_transient_errors_after_recording_failure(
 
     assert recorded_results[0]["status"] is ReplyPublicationStatus.QUEUED_OUTBOX
     assert recorded_results[0]["failure_reason"] == "temporary failure"
+    assert _RECORD_FAILURE_SCRIPT in redis.calls
 
 
 @pytest.mark.asyncio
@@ -300,7 +332,7 @@ async def test_reply_task_marks_permanent_error_failed(
     tenant_id = "11111111-1111-1111-1111-111111111111"
     review_id = "22222222-2222-2222-2222-222222222222"
     await reply_tasks.publish_review_reply(
-        {},
+        {"redis": _RateLimitRedis()},
         "33333333-3333-3333-3333-333333333333",
         tenant_id,
         {"tenant_id": tenant_id, "review_id": review_id},
@@ -342,7 +374,7 @@ async def test_reply_task_persists_rotated_credentials_and_does_not_retry_publis
     review_id = "22222222-2222-2222-2222-222222222222"
 
     await reply_tasks.publish_review_reply(
-        {},
+        {"redis": _RateLimitRedis()},
         "33333333-3333-3333-3333-333333333333",
         tenant_id,
         {"tenant_id": tenant_id, "review_id": review_id},
@@ -351,6 +383,89 @@ async def test_reply_task_persists_rotated_credentials_and_does_not_retry_publis
     credentials = recorded_results[0]["refreshed_credentials"]
     assert credentials.api_key == "rotated-access-token"
     assert credentials.refresh_token == "rotated-refresh-token"
+
+
+@pytest.mark.asyncio
+async def test_reply_task_defers_without_calling_platform_when_rate_limited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from arq import Retry
+
+    recorded_results = []
+    adapter_created = False
+    monkeypatch.setattr(reply_tasks, "_load_reply_publication", _load_publication)
+
+    def get_adapter(*_args, **_kwargs):
+        nonlocal adapter_created
+        adapter_created = True
+        raise AssertionError("rate-limited task must not create a platform adapter")
+
+    async def record(_tenant_id, _review_id, **kwargs):
+        recorded_results.append(kwargs)
+        return True
+
+    monkeypatch.setattr(reply_tasks.PlatformAdapterFactory, "get_adapter", get_adapter)
+    monkeypatch.setattr(reply_tasks, "_record_publish_result", record)
+    tenant_id = "11111111-1111-1111-1111-111111111111"
+    review_id = "22222222-2222-2222-2222-222222222222"
+
+    with pytest.raises(Retry) as caught:
+        await reply_tasks.publish_review_reply(
+            {"redis": _RateLimitRedis([0, 1750])},
+            "33333333-3333-3333-3333-333333333333",
+            tenant_id,
+            {"tenant_id": tenant_id, "review_id": review_id},
+        )
+
+    assert caught.value.defer_score is not None
+    assert not adapter_created
+    assert recorded_results[0]["status"] is ReplyPublicationStatus.QUEUED_OUTBOX
+    assert (
+        recorded_results[0]["failure_reason"] == "External platform rate limit exceeded"
+    )
+
+
+@pytest.mark.asyncio
+async def test_reply_task_defers_open_circuit_without_creating_platform_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from arq import Retry
+
+    recorded_results = []
+    adapter_created = False
+    redis = _RateLimitRedis(circuit_result=0)
+    monkeypatch.setattr(reply_tasks, "_load_reply_publication", _load_publication)
+
+    def get_adapter(*_args, **_kwargs):
+        nonlocal adapter_created
+        adapter_created = True
+        raise AssertionError("open circuit must not create a platform adapter")
+
+    async def record(_tenant_id, _review_id, **kwargs):
+        recorded_results.append(kwargs)
+        return True
+
+    monkeypatch.setattr(reply_tasks.PlatformAdapterFactory, "get_adapter", get_adapter)
+    monkeypatch.setattr(reply_tasks, "_record_publish_result", record)
+    tenant_id = "11111111-1111-1111-1111-111111111111"
+    review_id = "22222222-2222-2222-2222-222222222222"
+
+    with pytest.raises(Retry) as caught:
+        await reply_tasks.publish_review_reply(
+            {"redis": redis},
+            "33333333-3333-3333-3333-333333333333",
+            tenant_id,
+            {"tenant_id": tenant_id, "review_id": review_id},
+        )
+
+    assert caught.value.defer_score is not None
+    assert not adapter_created
+    assert _TOKEN_BUCKET_SCRIPT not in redis.calls
+    assert recorded_results[0]["status"] is ReplyPublicationStatus.QUEUED_OUTBOX
+    assert (
+        recorded_results[0]["failure_reason"]
+        == "External platform circuit breaker is open"
+    )
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from sqlalchemy import case, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
+from app.core.dispatch import enqueue_bulk
 from app.core.logger import get_logger
 from app.core.notifications import send_html_email
 from app.core.tenant_session import get_tenant_session
@@ -34,11 +35,12 @@ async def enqueue_weekly_digests(ctx: dict[str, Any]) -> dict[str, int]:
     queued = 0
     duplicates = 0
     for (tenant_id,) in recipients:
-        job = await redis.enqueue_job(
+        job = await enqueue_bulk(
+            redis,
             "send_company_weekly_digest",
             str(tenant_id),
             period_end_iso,
-            _job_id=f"weekly-digest-{tenant_id}-{week_key}",
+            job_id=f"weekly-digest-{tenant_id}-{week_key}",
         )
         if job is None:
             duplicates += 1

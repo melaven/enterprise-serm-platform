@@ -6,6 +6,7 @@ HTTP-обработка запросов, валидация, делегиров
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import and_, column, func, or_, select
@@ -38,7 +39,6 @@ from app.application import SentimentService
 from app.application.reviews.anti_crisis import AntiCrisisService
 from app.application.reviews.service import (
     ReviewApplicationService,
-    ReviewQueue,
     ReviewReplyAnalyzer,
 )
 from app.core.auth import get_current_tenant, get_jwt_payload
@@ -50,6 +50,7 @@ from app.core.dependencies import (
     get_tenant_db,
     verify_idempotency,
 )
+from app.core.dispatch import enqueue_bulk
 from app.core.rate_limit import check_llm_limits
 from app.infrastructure.persistence.models.economics import Review
 from app.infrastructure.persistence.repositories import ReviewRepository
@@ -82,7 +83,7 @@ async def ingest_review(
     payload: ReviewIngestPayload,
     tenant_id: UUID = Depends(verify_tenant_access),
     _idempotency: None = Depends(verify_idempotency),
-    arq_pool: ReviewQueue | None = Depends(get_review_queue),
+    arq_pool: ArqRedis | None = Depends(get_review_queue),
 ) -> ReviewIngestResponse:
     """Queue an untrusted review payload for worker-side PII sanitization."""
     if arq_pool is None:
@@ -93,11 +94,12 @@ async def ingest_review(
 
     job_id = uuid4()
     queued_at = datetime.now(timezone.utc)
-    job = await arq_pool.enqueue_job(
+    job = await enqueue_bulk(
+        arq_pool,
         "process_review_ingestion",
         str(tenant_id),
         payload.model_dump(mode="json"),
-        _job_id=str(job_id),
+        job_id=str(job_id),
     )
     if job is None:
         raise HTTPException(

@@ -130,14 +130,47 @@ services:
   worker:
     <<: *app
     entrypoint: ["arq"]
-    command: ["app.infrastructure.queue.worker.worker.WorkerSettings"]
+    command: ["app.infrastructure.queue.worker.worker.BulkWorkerSettings"]
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.WorkerSettings"]
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.BulkWorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  worker-critical:
+    <<: *app
+    entrypoint: ["arq"]
+    command: ["app.infrastructure.queue.worker.worker.CriticalWorkerSettings"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.CriticalWorkerSettings"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  worker-legacy:
+    <<: *app
+    profiles: ["queue-migration"]
+    entrypoint: ["arq"]
+    command: ["app.infrastructure.queue.worker.worker.LegacyWorkerSettings"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.LegacyWorkerSettings"]
       interval: 30s
       timeout: 10s
       retries: 3

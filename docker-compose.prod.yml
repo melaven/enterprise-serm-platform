@@ -104,7 +104,7 @@ services:
   worker:
     <<: *app
     entrypoint: ["arq"]
-    command: ["app.infrastructure.queue.worker.worker.WorkerSettings"]
+    command: ["app.infrastructure.queue.worker.worker.BulkWorkerSettings"]
     stop_grace_period: 40s # дать дозавершить задачи; прерванные ARQ вернёт в очередь
     mem_limit: ${WORKER_MEM_LIMIT:-1g}
     depends_on:
@@ -117,7 +117,52 @@ services:
       - data
       - edge
     healthcheck:
-      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.WorkerSettings"]
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.BulkWorkerSettings"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  worker-critical:
+    <<: *app
+    entrypoint: ["arq"]
+    command: ["app.infrastructure.queue.worker.worker.CriticalWorkerSettings"]
+    stop_grace_period: 40s
+    mem_limit: ${WORKER_CRITICAL_MEM_LIMIT:-1g}
+    depends_on:
+      <<: *app-deps
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *app-env
+    networks:
+      - data
+      - edge
+    healthcheck:
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.CriticalWorkerSettings"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  worker-legacy:
+    <<: *app
+    profiles: ["queue-migration"]
+    entrypoint: ["arq"]
+    command: ["app.infrastructure.queue.worker.worker.LegacyWorkerSettings"]
+    stop_grace_period: 40s
+    mem_limit: ${WORKER_MEM_LIMIT:-1g}
+    depends_on:
+      <<: *app-deps
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *app-env
+    networks:
+      - data
+      - edge
+    healthcheck:
+      test: ["CMD", "arq", "--check", "app.infrastructure.queue.worker.worker.LegacyWorkerSettings"]
       interval: 30s
       timeout: 10s
       retries: 3

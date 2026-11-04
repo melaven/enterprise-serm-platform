@@ -18,8 +18,12 @@ from arq import create_pool, cron
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ai import AIResponseGenerator, build_provider
+from app.core.config import get_settings
 from app.core.database import AsyncSessionLocal
+from app.core.dispatch import enqueue_routed
 from app.core.logger import configure_logging, get_logger, set_correlation_id
+from app.core.queues import LEGACY_QUEUE, Queue
 from app.core.redis import get_redis_settings
 from app.core.review_privacy import safe_review_summary
 from app.core.security import decrypt_token
@@ -43,6 +47,7 @@ from app.infrastructure.queue.worker.digest import (
     enqueue_weekly_digests,
     send_company_weekly_digest,
 )
+from app.infrastructure.queue.worker.draft_tasks import generate_drafts_task
 from app.infrastructure.queue.worker.reply_tasks import publish_review_reply
 from app.workers.tasks.ingestion import process_review_ingestion
 
@@ -291,6 +296,8 @@ async def relay_outbox_events(ctx: dict[str, Any]) -> dict[str, int]:
         for event in events:
             payload = event["payload"]
             event_type = event["event_type"]
+            job_args: tuple[Any, ...]
+            job_kwargs: dict[str, Any]
 
             try:
                 if event_type == OUTBOX_REPLY_PUBLISH_EVENT and isinstance(
@@ -341,7 +348,13 @@ async def relay_outbox_events(ctx: dict[str, Any]) -> dict[str, int]:
                 continue
 
             try:
-                await redis.enqueue_job(*job_args, **job_kwargs)
+                await enqueue_routed(
+                    redis,
+                    job_args[0],
+                    *job_args[1:],
+                    job_id=job_kwargs.pop("_job_id"),
+                    **job_kwargs,
+                )
             except Exception:
                 logger.exception(
                     "outbox_event_enqueue_failed",
@@ -380,16 +393,14 @@ async def _set_outbox_status(
         raise RuntimeError(f"Outbox event {event_id} was not processing")
 
 
-class WorkerSettings:
+class LegacyWorkerSettings:
     on_startup: Any
     on_shutdown: Any
 
-    """Конфигурация ARQ Worker с Dead Letter Queue"""
+    """Temporarily drain jobs queued before the queue split."""
 
-    # Настройки Redis
+    queue_name = LEGACY_QUEUE
     redis_settings = get_redis_settings()
-
-    # Задачи для выполнения
     functions = [
         process_review_task,
         publish_review_reply,
@@ -399,27 +410,64 @@ class WorkerSettings:
         enqueue_weekly_digests,
         flush_api_key_usage,
     ]
+    cron_jobs: list[Any] = []
+    timezone = timezone.utc
+    max_jobs = 10
+    job_timeout = 300  # 5 минут на задачу
+    keep_result = 120  # Держим результаты 2 минуты
+    max_tries = 5
+    log_results = True
+    allow_abort_jobs = True
+
+
+class CriticalWorkerSettings:
+    """Worker for latency-sensitive draft generation and approved reply publication."""
+
+    on_startup: Any
+    on_shutdown: Any
+    queue_name = Queue.CRITICAL.value
+    redis_settings = get_redis_settings()
+    functions = [generate_drafts_task, publish_review_reply]
+    cron_jobs: list[Any] = []
+    timezone = timezone.utc
+    max_jobs = 4
+    job_timeout = 90
+    keep_result = 120
+    max_tries = 2
+    log_results = True
+    allow_abort_jobs = True
+
+
+class BulkWorkerSettings:
+    """Worker for review ingestion, analysis, reporting, and periodic maintenance."""
+
+    on_startup: Any
+    on_shutdown: Any
+    queue_name = Queue.BULK.value
+    redis_settings = get_redis_settings()
+    functions = [
+        process_review_task,
+        process_review_ingestion,
+        send_company_weekly_digest,
+    ]
     cron_jobs = [
         cron(enqueue_weekly_digests, weekday="mon", hour=9, minute=0),
         cron(flush_api_key_usage, second=0),
         cron(relay_outbox_events, second=set(range(0, 60, 5))),
     ]
     timezone = timezone.utc
-
-    # Настройки воркера
     max_jobs = 10
-    job_timeout = 300  # 5 минут на задачу
-    keep_result = 120  # Держим результаты 2 минуты
-    max_tries = 5  # Максимальное количество попыток для DLQ
-
-    # Логирование
+    job_timeout = 300
+    keep_result = 120
+    max_tries = 5
     log_results = True
-
-    # Обработка ошибок
     allow_abort_jobs = True
 
 
-async def on_startup(ctx):
+WorkerSettings = BulkWorkerSettings
+
+
+async def on_startup(ctx: dict[str, Any]) -> None:
     """Инициализация воркера с настройкой логирования"""
 
     # Настройка логирования для воркера
@@ -557,15 +605,34 @@ async def on_startup(ctx):
     logger.info("=" * 60)
 
 
-async def on_shutdown(ctx):
+async def startup_critical(ctx: dict[str, Any]) -> None:
+    await on_startup(ctx)
+    settings = get_settings()
+    if settings.groq_api_key is None:
+        raise RuntimeError("GROQ_API_KEY is required by the critical draft worker")
+
+    ctx["session_factory"] = AsyncSessionLocal
+    ctx["draft_generator"] = AIResponseGenerator(
+        build_provider(
+            "groq",
+            api_key=settings.groq_api_key.get_secret_value(),
+            model=settings.groq_model,
+        )
+    )
+
+
+async def on_shutdown(ctx: dict[str, Any]) -> None:
     """Завершение работы воркера"""
     logger.info("🛑 ARQ Worker shutting down...")
     logger.info("✅ Worker shutdown completed")
 
 
-# Добавляем хуки в настройки
-WorkerSettings.on_startup = on_startup
-WorkerSettings.on_shutdown = on_shutdown
+for settings_class in (LegacyWorkerSettings, BulkWorkerSettings):
+    settings_class.on_startup = on_startup
+    settings_class.on_shutdown = on_shutdown
+
+CriticalWorkerSettings.on_startup = startup_critical
+CriticalWorkerSettings.on_shutdown = on_shutdown
 
 
 async def create_arq_pool():

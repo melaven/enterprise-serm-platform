@@ -13,7 +13,8 @@
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "prepare": "cd .. && husky frontend/.husky"
+    "prepare": "cd .. && husky frontend/.husky",
+    "typegen": "openapi-typescript http://localhost:8000/openapi.json -o src/api/schema.d.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
@@ -35,6 +36,8 @@
     "clsx": "^2.0.0",
     "framer-motion": "^14.6.0",
     "lucide-react": "^1.55.0",
+    "openapi-fetch": "^0.17.0",
+    "openapi-typescript": "^7.13.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-error-boundary": "^6.1.6",

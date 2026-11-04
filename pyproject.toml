@@ -35,6 +35,9 @@ dependencies = [
     "anthropic>=0.40.0,<1",
     "aiosmtplib>=3.0.0",
     "tenacity>=8.2.0",
+    # SpaCy for NLP-based PII sanitization (NER)
+    # After installation, download language model: python -m spacy download ru_core_news_sm
+    "spacy>=3.7.0,<4",
 ]
 
 [project.optional-dependencies]

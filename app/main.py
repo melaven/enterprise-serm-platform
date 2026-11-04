@@ -70,6 +70,7 @@ from .core.middleware import (
     RequestLoggingMiddleware,
 )
 from .core.rate_limit import RateLimitDependency, add_rate_limit_headers
+from .core.spacy_pii import get_spacy_sanitizer
 
 # Определяем переменные окружения
 environment = os.getenv("ENVIRONMENT", "development")
@@ -148,6 +149,19 @@ async def lifespan(app: FastAPI):
             app.state.arq_pool = None
             app.state.redis_pool = None
 
+        # Инициализация SpaCy PII sanitizer
+        try:
+            spacy_sanitizer = get_spacy_sanitizer()
+            await spacy_sanitizer.initialize()
+            app.state.spacy_sanitizer = spacy_sanitizer
+            logger.info(
+                "✅ SpaCy PII sanitizer initialized", component="spacy", status="ready"
+            )
+        except Exception as e:
+            logger.warning("⚠️ SpaCy PII sanitizer initialization failed", component="spacy", error=str(e))
+            logger.warning("PII sanitization will use regex fallback")
+            app.state.spacy_sanitizer = None
+
         logger.info("✅ Сервисы инициализированы", status="startup_complete")
         yield
 
@@ -168,6 +182,16 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.error(
                     "❌ Ошибка закрытия ARQ pool", component="arq", error=str(e)
+                )
+
+        # Закрываем SpaCy PII sanitizer
+        if hasattr(app.state, "spacy_sanitizer") and app.state.spacy_sanitizer:
+            try:
+                await app.state.spacy_sanitizer.shutdown()
+                logger.info("✅ SpaCy PII sanitizer закрыт", component="spacy")
+            except Exception as e:
+                logger.error(
+                    "❌ Ошибка закрытия SpaCy PII sanitizer", component="spacy", error=str(e)
                 )
 
         await cleanup_dependencies()

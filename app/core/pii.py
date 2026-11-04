@@ -6,6 +6,9 @@
 Принцип: лучше лишнее срезать, чем пропустить. Любая цифровая последовательность из 9+ цифр считается идентификатором.
 Известные ограничения (смотри тесты): числа прописью («восемь девять...»), цифры, разбитые словами, имена без
 контекста и без участия LLM.
+
+NOTE: For enhanced PII detection, the SpaCy-based sanitizer (spacy_pii.py) can be used as an alternative.
+It uses Named Entity Recognition (NER) for more accurate entity detection.
 """
 
 from __future__ import annotations

@@ -123,6 +123,32 @@ describe('DemoService - API Fallback', () => {
       expect(result).toEqual(mockData.MOCK_DASHBOARD_SUMMARY);
       expect(realApi.getDashboardSummary).toHaveBeenCalledOnce();
     });
+
+    it('should pass abort signals to real review and summary requests', async () => {
+      const controller = new AbortController();
+      const params = { page: 1, page_size: 5 };
+      vi.mocked(realApi.getReviews).mockResolvedValueOnce(
+        mockData.getPaginatedReviews(params),
+      );
+      vi.mocked(realApi.getDashboardSummary).mockResolvedValueOnce(
+        mockData.MOCK_DASHBOARD_SUMMARY,
+      );
+
+      await demoApi.getReviews(params, controller.signal);
+      await demoApi.getDashboardSummary(controller.signal);
+
+      expect(realApi.getReviews).toHaveBeenCalledWith(params, controller.signal);
+      expect(realApi.getDashboardSummary).toHaveBeenCalledWith(controller.signal);
+    });
+
+    it('should not convert an aborted review request into mock data', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const abortError = controller.signal.reason;
+      vi.mocked(realApi.getReviews).mockRejectedValueOnce(abortError);
+
+      await expect(demoApi.getReviews({}, controller.signal)).rejects.toBe(abortError);
+    });
   });
 
   describe('Network Delay Simulation', () => {

@@ -60,7 +60,7 @@ export async function getCurrentUser(): Promise<realApi.UserProfile> {
   }
 }
 
-export async function logout(): Promise<void> {
+export async function logout(accessToken?: string): Promise<void> {
   if (isDemoMode) {
     await mockData.simulateNetworkDelay(200);
     console.log('[DEMO MODE] Mock logout');
@@ -68,7 +68,7 @@ export async function logout(): Promise<void> {
   }
 
   try {
-    await realApi.logout();
+    await realApi.logout(accessToken);
   } catch (error) {
     console.warn('[API Error] Ignoring logout error in demo mode:', error);
   }
@@ -98,18 +98,19 @@ export async function getReviews(params?: {
   platform?: string;
   sentiment?: string;
   search?: string;
-}): Promise<realApi.PaginatedResponse<realApi.Review>> {
+}, signal?: AbortSignal): Promise<realApi.PaginatedResponse<realApi.Review>> {
   if (isDemoMode) {
-    await mockData.simulateNetworkDelay();
+    await mockData.simulateNetworkDelay(undefined, signal);
     console.log('[DEMO MODE] Mock getReviews:', params);
     return mockData.getPaginatedReviews(params);
   }
 
   try {
-    return await realApi.getReviews(params);
+    return await realApi.getReviews(params, signal);
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.warn('[API Error] Falling back to demo mode:', error);
-    await mockData.simulateNetworkDelay();
+    await mockData.simulateNetworkDelay(undefined, signal);
     return mockData.getPaginatedReviews(params);
   }
 }
@@ -140,18 +141,19 @@ export async function getReviewById(reviewId: string): Promise<realApi.Review> {
 // Dashboard Services with Demo Fallback
 // ========================================
 
-export async function getDashboardSummary(): Promise<realApi.DashboardSummary> {
+export async function getDashboardSummary(signal?: AbortSignal): Promise<realApi.DashboardSummary> {
   if (isDemoMode) {
-    await mockData.simulateNetworkDelay();
+    await mockData.simulateNetworkDelay(undefined, signal);
     console.log('[DEMO MODE] Mock dashboard summary');
     return mockData.MOCK_DASHBOARD_SUMMARY;
   }
 
   try {
-    return await realApi.getDashboardSummary();
+    return await realApi.getDashboardSummary(signal);
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.warn('[API Error] Falling back to demo mode:', error);
-    await mockData.simulateNetworkDelay();
+    await mockData.simulateNetworkDelay(undefined, signal);
     return mockData.MOCK_DASHBOARD_SUMMARY;
   }
 }

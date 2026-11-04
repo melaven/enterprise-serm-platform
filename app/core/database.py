@@ -139,6 +139,8 @@ Base = declarative_base()
 
 # Наш главный мост — Dependency Injection для FastAPI роутеров
 # Используется только для health checks и не-tenant операций
+# ПРИМЕЧАНИЕ: Сессия остается открытой во время сериализации ответа.
+# Для тяжелых операций (LLM, I/O) используйте with_db_session() контекст-менеджер.
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
@@ -157,3 +159,54 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             except Exception:
                 logger.exception("Database rollback after request failure also failed")
             raise
+
+
+# Явный контекст-менеджер для сервисов, требующих раннего закрытия сессии
+# Используйте это в сервисах, которые выполняют тяжелые I/O или LLM вызовы
+# после получения данных из БД. Сессия закрывается немедленно после выхода из блока.
+class DatabaseSessionManager:
+    """
+    Контекст-менеджер для явного управления жизненным циклом сессии БД.
+
+    Использование:
+        async with DatabaseSessionManager() as session:
+            # Получаем данные из БД
+            data = await session.execute(...)
+            # Сессия закрывается здесь, до тяжелых операций
+        # Выполняем тяжелые операции (LLM, внешние API)
+        result = await heavy_operation(data)
+
+    Преимущества:
+    - Сессия закрывается немедленно после выхода из блока
+    - DB соединение возвращается в пул до начала тяжелых операций
+    - Предотвращает TooManyConnectionsError при PgBouncer/NullPool
+    """
+
+    async def __aenter__(self) -> AsyncSession:
+        self.session = AsyncSessionLocal()
+        await self.session.__aenter__()
+        track_session_writes(self.session)
+        return self.session
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        try:
+            if exc_type is None:
+                if (
+                    self.session.new
+                    or self.session.dirty
+                    or self.session.deleted
+                    or self.session.sync_session.info.get("has_writes")
+                ):
+                    await self.session.commit()
+            else:
+                await self.session.rollback()
+        except Exception:
+            logger.exception("Database error during session cleanup")
+            if exc_type is None:
+                raise
+        finally:
+            await self.session.__aexit__(exc_type, exc_val, exc_tb)
+
+
+# Синоним для удобства использования
+with_db_session = DatabaseSessionManager

@@ -132,6 +132,20 @@ def test_transactional_outbox_migration_is_registered_and_tenant_isolated() -> N
     assert "GRANT EXECUTE ON FUNCTION public.claim_outbox_events(integer)" in sql
 
 
+def test_outbox_relay_claim_ack_migration_supports_processing_leases() -> None:
+    filename = "048_outbox_relay_claim_ack.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    assert "ADD COLUMN IF NOT EXISTS processing_at timestamptz" in sql
+    assert "status IN ('pending', 'processing', 'processed', 'failed')" in sql
+    assert "FOR UPDATE OF event SKIP LOCKED" in sql
+    assert "SET status = 'processing'" in sql
+    assert "status = 'processing'" in sql
+    assert "processing_at < now() - interval '5 minutes'" in sql
+    assert "SET status = p_status" in sql
+
+
 def test_anti_crisis_radar_migration_is_registered_and_tenant_isolated() -> None:
     filename = "041_anti_crisis_radar.sql"
     assert filename in MIGRATIONS

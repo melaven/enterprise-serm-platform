@@ -25,6 +25,8 @@ from app.infrastructure.persistence.models.economics import (
     Review,
 )
 from app.infrastructure.persistence.models.review_reply import ReviewReply
+from app.infrastructure.redis.circuit_breaker import RedisCircuitBreaker
+from app.infrastructure.redis.rate_limiter import RedisRateLimiter
 
 logger = get_logger(__name__)
 DEFAULT_RETRY_DELAY_SECONDS = 5.0
@@ -229,6 +231,54 @@ async def publish_review_reply(
             review_id=str(review_uuid),
         )
         return
+    redis = ctx.get("redis")
+    if redis is None:
+        raise RuntimeError("ARQ Redis connection is missing from worker context")
+    circuit_breaker = RedisCircuitBreaker(redis)
+    if not await circuit_breaker.is_allowed(publication.platform):
+        defer = circuit_breaker.recovery_timeout
+        updated = await _record_publish_result(
+            tenant_uuid,
+            review_uuid,
+            status=ReplyPublicationStatus.QUEUED_OUTBOX,
+            failure_reason="External platform circuit breaker is open",
+        )
+        if not updated:
+            return
+        logger.info(
+            "review_reply_circuit_breaker_open",
+            event_id=str(event_uuid),
+            tenant_id=str(tenant_uuid),
+            review_id=str(review_uuid),
+            platform=publication.platform,
+            retry_after=defer,
+        )
+        raise Retry(defer=defer)
+
+    allowed, retry_after = await RedisRateLimiter(redis).acquire(
+        tenant_uuid, publication.platform
+    )
+    if not allowed:
+        await circuit_breaker.release_probe(publication.platform)
+        defer = retry_after
+        updated = await _record_publish_result(
+            tenant_uuid,
+            review_uuid,
+            status=ReplyPublicationStatus.QUEUED_OUTBOX,
+            failure_reason="External platform rate limit exceeded",
+        )
+        if not updated:
+            return
+        logger.info(
+            "review_reply_rate_limited",
+            event_id=str(event_uuid),
+            tenant_id=str(tenant_uuid),
+            review_id=str(review_uuid),
+            platform=publication.platform,
+            retry_after=defer,
+        )
+        raise Retry(defer=defer)
+
     # Phase 2: call the platform with no open database session or transaction.
     adapter = None
     try:
@@ -255,6 +305,7 @@ async def publish_review_reply(
             original_expires_at=publication.expires_at,
             refreshed_credentials=_get_refreshed_credentials(adapter, publication),
         )
+        await circuit_breaker.record_failure(publication.platform)
         if not updated:
             return
         defer = (
@@ -348,6 +399,7 @@ async def publish_review_reply(
         original_expires_at=publication.expires_at,
         refreshed_credentials=_get_refreshed_credentials(adapter, publication),
     )
+    await circuit_breaker.record_success(publication.platform)
     if not updated:
         return
     logger.info(

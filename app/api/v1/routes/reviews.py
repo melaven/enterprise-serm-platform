@@ -790,18 +790,20 @@ async def get_assistant_reviews(
 )
 async def generate_reply(
     review_id: UUID,
-    session: AsyncSession = Depends(get_tenant_db),
     tenant_id: UUID = Depends(get_current_tenant),
     analyzer: ReviewReplyAnalyzer = Depends(get_review_reply_analyzer),
 ) -> GenerateReplyResponse:
+    # Use explicit session management to prevent DB pool starvation during LLM calls
     service = ReviewApplicationService(
-        session=session,
+        session=None,  # Session managed explicitly in generate_reply_with_explicit_session
         tenant_id=tenant_id,
-        analyzer=analyzer,
+        analyzer=None,  # Analyzer passed explicitly
     )
     return GenerateReplyResponse(
         review_id=review_id,
-        suggested_reply=await service.generate_reply(review_id),
+        suggested_reply=await service.generate_reply_with_explicit_session(
+            review_id, analyzer
+        ),
     )
 
 

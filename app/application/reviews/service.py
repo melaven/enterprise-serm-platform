@@ -42,13 +42,22 @@ class ReviewApplicationService:
 
     def __init__(
         self,
-        session: AsyncSession,
+        session: AsyncSession | None,
         tenant_id: UUID,
         analyzer: ReviewReplyAnalyzer | None = None,
     ) -> None:
         self.session = session
         self.tenant_id = tenant_id
         self.analyzer = analyzer
+
+    def _require_session(self) -> AsyncSession:
+        """Validate that session is available for operations that need it."""
+        if self.session is None:
+            raise SERMException(
+                "Database session is required for this operation. Use generate_reply_with_explicit_session instead.",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        return self.session
 
     async def create_review(
         self,
@@ -58,13 +67,14 @@ class ReviewApplicationService:
         review_status: ReviewStatus = ReviewStatus.NEW,
         financial_impact: float = 0.0,
     ) -> Review:
+        session = self._require_session()
         if not text.strip() or len(text) > 10000:
             raise SERMException(
                 "Review text must contain 1 to 10000 characters",
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
-        platform = await self.session.scalar(
+        platform = await session.scalar(
             select(Platform).where(
                 Platform.id == platform_id,
                 Platform.company_id == self.tenant_id,
@@ -86,16 +96,16 @@ class ReviewApplicationService:
             state=ReviewState.NEW,
             financial_impact=financial_impact,
         )
-        self.session.add(review)
-        await self.session.flush()
-        self.session.add(
+        session.add(review)
+        await session.flush()
+        session.add(
             ReviewAnalysisPayload(
                 review_id=review.id,
                 company_id=self.tenant_id,
                 encrypted_text=encrypt_token(text),
             )
         )
-        self.session.add(
+        session.add(
             OutboxEvent(
                 event_type="review.analysis.requested",
                 payload={
@@ -105,9 +115,9 @@ class ReviewApplicationService:
                 },
             )
         )
-        await self.session.flush()
-        await self.session.refresh(review)
-        await self.session.commit()
+        await session.flush()
+        await session.refresh(review)
+        await session.commit()
         return review
 
     async def list_assistant_reviews(
@@ -117,6 +127,7 @@ class ReviewApplicationService:
         limit: int,
         offset: int,
     ) -> list[AssistantReviewSchema]:
+        session = self._require_session()
         filters = [Review.company_id == self.tenant_id]
         if branch_id is not None:
             filters.append(Review.branch_id == branch_id)
@@ -129,7 +140,7 @@ class ReviewApplicationService:
                 )
             )
 
-        result = await self.session.execute(
+        result = await session.execute(
             select(Review, ReviewReply.reply_text)
             .outerjoin(ReviewReply, ReviewReply.review_id == Review.id)
             .where(and_(*filters))
@@ -153,13 +164,14 @@ class ReviewApplicationService:
         ]
 
     async def generate_reply(self, review_id: UUID) -> str:
+        session = self._require_session()
         review = await self._get_review(review_id)
         if not review.is_analyzed:
             raise SERMException(
                 "Review analysis is not complete", status.HTTP_409_CONFLICT
             )
 
-        payload = await self.session.scalar(
+        payload = await session.scalar(
             select(ReviewAnalysisPayload).where(
                 ReviewAnalysisPayload.review_id == review_id,
                 ReviewAnalysisPayload.company_id == self.tenant_id,
@@ -185,9 +197,70 @@ class ReviewApplicationService:
             review.moderation_status = ReplyModerationStatus.DRAFTED
         return suggested_reply
 
+    async def generate_reply_with_explicit_session(
+        self, review_id: UUID, analyzer: ReviewReplyAnalyzer
+    ) -> str:
+        """
+        Generate reply with explicit session management to prevent DB pool starvation.
+        Fetches data from DB, closes session, then performs LLM operation.
+        """
+        from app.core.database import DatabaseSessionManager
+
+        async with DatabaseSessionManager() as session:
+            review = await session.scalar(
+                select(Review).where(
+                    and_(
+                        Review.id == review_id,
+                        Review.company_id == self.tenant_id,
+                    )
+                )
+            )
+            if review is None:
+                raise NotFoundError("Review", str(review_id))
+            if not review.is_analyzed:
+                raise SERMException(
+                    "Review analysis is not complete", status.HTTP_409_CONFLICT
+                )
+
+            payload = await session.scalar(
+                select(ReviewAnalysisPayload).where(
+                    ReviewAnalysisPayload.review_id == review_id,
+                    ReviewAnalysisPayload.company_id == self.tenant_id,
+                )
+            )
+            if payload is None:
+                raise SERMException(
+                    "Encrypted review text is no longer available",
+                    status.HTTP_409_CONFLICT,
+                )
+
+            # Fetch data we need for LLM
+            encrypted_text = payload.encrypted_text
+            tags = review.tags or []
+            rating = review.rating
+            was_new = review.moderation_status == ReplyModerationStatus.NEW
+
+        # Session is now closed - DB connection returned to pool
+        # Perform heavy LLM operation without holding DB connection
+        suggested_reply = await analyzer.generate_reply(
+            decrypt_token(encrypted_text),
+            tags,
+            rating,
+        )
+
+        # Update moderation status in a separate transaction
+        if was_new:
+            async with DatabaseSessionManager() as session:
+                review = await session.get(Review, review_id)
+                if review:
+                    review.moderation_status = ReplyModerationStatus.DRAFTED
+
+        return suggested_reply
+
     async def submit_moderation(
         self, review_id: UUID, reply_text: str
     ) -> AssistantReviewSchema:
+        session = self._require_session()
         review = await self._get_review(review_id)
         if review.moderation_status != ReplyModerationStatus.DRAFTED:
             raise BusinessLogicError(
@@ -199,10 +272,11 @@ class ReviewApplicationService:
         return await self._assistant_review(review)
 
     async def approve_moderation(self, review_id: UUID) -> AssistantReviewSchema:
+        session = self._require_session()
         review = await self._get_review(review_id)
         if review.moderation_status != ReplyModerationStatus.PENDING_MODERATION:
             raise BusinessLogicError("Only replies pending moderation can be approved")
-        if await self.session.get(ReviewReply, review_id) is None:
+        if await session.get(ReviewReply, review_id) is None:
             raise BusinessLogicError("Cannot approve a review without a reply")
 
         review.moderation_status = ReplyModerationStatus.APPROVED
@@ -214,17 +288,19 @@ class ReviewApplicationService:
         new_status: ReviewStatus,
         si_response: str | None,
     ) -> tuple[Review, bool]:
+        session = self._require_session()
         review = await self._get_review(review_id)
         review.status = new_status
         if si_response is not None:
             await self._save_reply(review, si_response)
             return review, True
 
-        reply = await self.session.get(ReviewReply, review.id)
+        reply = await session.get(ReviewReply, review.id)
         return review, reply is not None
 
     async def _get_review(self, review_id: UUID) -> Review:
-        review = await self.session.scalar(
+        session = self._require_session()
+        review = await session.scalar(
             select(Review).where(
                 and_(
                     Review.id == review_id,
@@ -237,20 +313,22 @@ class ReviewApplicationService:
         return review
 
     async def _save_reply(self, review: Review, reply_text: str) -> ReviewReply:
-        reply = await self.session.get(ReviewReply, review.id)
+        session = self._require_session()
+        reply = await session.get(ReviewReply, review.id)
         if reply is None:
             reply = ReviewReply(
                 review_id=review.id,
                 company_id=self.tenant_id,
                 reply_text=reply_text,
             )
-            self.session.add(reply)
+            session.add(reply)
         else:
             reply.reply_text = reply_text
         return reply
 
     async def _assistant_review(self, review: Review) -> AssistantReviewSchema:
-        reply = await self.session.get(ReviewReply, review.id)
+        session = self._require_session()
+        reply = await session.get(ReviewReply, review.id)
         return AssistantReviewSchema(
             id=review.id,
             platform=review.platform,

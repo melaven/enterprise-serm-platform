@@ -1,9 +1,10 @@
 import { BarChart3, Inbox, LogOut, Menu, Settings, X, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
 import { PlanBadge } from '@/features/billing/PlanBadge';
 import { Button } from '@/components/ui/button';
+import { queryClient } from '@/lib/react-query';
 import { QuotaModal } from './QuotaModal';
 import { cn } from '@/lib/utils';
 
@@ -26,7 +27,7 @@ export interface DashboardLayoutProps {
   /** null — квоты загружаются (скелетон) */
   quota: { llmTokens?: unknown; reviewsParsed?: unknown; resetDate?: unknown } | null;
   online: boolean;
-  onLogout: () => void;
+  onLogout: () => void | Promise<void>;
   onUpgrade?: () => void;
   /** Если не передан — рендерится <Outlet /> */
   children?: React.ReactNode;
@@ -81,6 +82,13 @@ export function DashboardLayout({
   children,
 }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    void onLogout();
+    queryClient.clear();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <>
@@ -149,7 +157,7 @@ export function DashboardLayout({
               {userEmail ? (
                 <span className="hidden truncate text-xs text-chrome-400 lg:inline">{userEmail}</span>
               ) : null}
-              <Button variant="outline" size="sm" onClick={onLogout} className="shrink-0">
+              <Button variant="outline" size="sm" onClick={handleLogout} className="shrink-0">
                 <LogOut className="size-4" strokeWidth={1.75} aria-hidden="true" />
                 <span className="hidden sm:inline">Выйти</span>
               </Button>

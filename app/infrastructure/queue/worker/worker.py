@@ -260,7 +260,7 @@ async def process_review_task(
 
 
 async def relay_outbox_events(ctx: dict[str, Any]) -> dict[str, int]:
-    """Deliver committed outbox events to ARQ while holding their row locks."""
+    """Claim outbox events, enqueue without DB locks, then acknowledge delivery."""
     redis = ctx.get("redis")
     if redis is None:
         raise RuntimeError("ARQ Redis connection is missing from worker context")
@@ -278,108 +278,93 @@ async def relay_outbox_events(ctx: dict[str, Any]) -> dict[str, int]:
         async with AsyncSessionLocal() as session:
             async with session.begin():
                 await set_tenant_rls_context(session, tenant_id)
-                rows = (
-                    await session.execute(
-                        text(
-                            "SELECT id, event_type, payload "
-                            "FROM public.claim_outbox_events(:batch_size)"
-                        ),
-                        {"batch_size": OUTBOX_BATCH_SIZE},
+                result = await session.execute(
+                    text(
+                        "SELECT id, event_type, payload "
+                        "FROM public.claim_outbox_events(:batch_size)"
+                    ),
+                    {"batch_size": OUTBOX_BATCH_SIZE},
+                )
+                events = list(result.mappings().all())
+
+        acknowledgements: list[tuple[UUID, str]] = []
+        for event in events:
+            payload = event["payload"]
+            event_type = event["event_type"]
+
+            try:
+                if event_type == OUTBOX_REPLY_PUBLISH_EVENT and isinstance(
+                    payload, dict
+                ):
+                    event_tenant_id = UUID(str(payload["tenant_id"]))
+                    UUID(str(payload["review_id"]))
+                    if event_tenant_id != tenant_id:
+                        raise ValueError("Outbox event tenant does not match claim")
+                    job_args = (
+                        "publish_review_reply",
+                        str(event["id"]),
+                        str(tenant_id),
+                        payload,
                     )
-                ).mappings()
-
-                for event in rows:
-                    payload = event["payload"]
-                    if event["event_type"] == OUTBOX_REPLY_PUBLISH_EVENT and isinstance(
-                        payload, dict
+                    job_kwargs = {"_job_id": f"publish-review-reply-{event['id']}"}
+                elif event_type == OUTBOX_ANALYSIS_EVENT and isinstance(payload, dict):
+                    review_id = UUID(str(payload["review_id"]))
+                    event_tenant_id = UUID(str(payload["tenant_id"]))
+                    correlation_id = payload.get("correlation_id")
+                    if event_tenant_id != tenant_id:
+                        raise ValueError("Outbox event tenant does not match claim")
+                    if correlation_id is not None and not isinstance(
+                        correlation_id, str
                     ):
-                        try:
-                            event_tenant_id = UUID(str(payload["tenant_id"]))
-                            UUID(str(payload["review_id"]))
-                            if event_tenant_id != tenant_id:
-                                raise ValueError(
-                                    "Outbox event tenant does not match claim"
-                                )
-                        except (KeyError, TypeError, ValueError) as exc:
-                            await _set_outbox_status(session, event["id"], "failed")
-                            failed += 1
-                            logger.error(
-                                "outbox_integration_event_invalid",
-                                event_id=str(event["id"]),
-                                error=str(exc),
-                            )
-                            continue
+                        raise ValueError("Invalid outbox correlation_id")
+                    job_args = (
+                        "process_review_task",
+                        str(review_id),
+                        str(tenant_id),
+                    )
+                    job_kwargs = {
+                        "correlation_id": correlation_id,
+                        "_job_id": f"process-review-{review_id}",
+                    }
+                else:
+                    raise ValueError(f"Unsupported outbox event type: {event_type}")
+            except (KeyError, TypeError, ValueError) as exc:
+                acknowledgements.append((event["id"], "failed"))
+                failed += 1
+                logger.error(
+                    "outbox_event_invalid",
+                    event_id=str(event["id"]),
+                    event_type=event_type,
+                    tenant_id=str(tenant_id),
+                    error=str(exc),
+                )
+                continue
 
-                        try:
-                            await redis.enqueue_job(
-                                "publish_review_reply",
-                                str(event["id"]),
-                                str(tenant_id),
-                                payload,
-                                _job_id=f"publish-review-reply-{event['id']}",
-                            )
-                        except Exception:
-                            logger.exception(
-                                "outbox_integration_enqueue_failed",
-                                event_id=str(event["id"]),
-                                tenant_id=str(tenant_id),
-                            )
-                            raise
-                        await _set_outbox_status(session, event["id"], "processed")
-                        delivered += 1
-                        continue
+            try:
+                await redis.enqueue_job(*job_args, **job_kwargs)
+            except Exception:
+                logger.exception(
+                    "outbox_event_enqueue_failed",
+                    event_id=str(event["id"]),
+                    event_type=event_type,
+                    tenant_id=str(tenant_id),
+                    correlation_id=(
+                        payload.get("correlation_id")
+                        if isinstance(payload, dict)
+                        else None
+                    ),
+                )
+                failed += 1
+            else:
+                acknowledgements.append((event["id"], "processed"))
+                delivered += 1
 
-                    if event["event_type"] != OUTBOX_ANALYSIS_EVENT or not isinstance(
-                        payload, dict
-                    ):
-                        await _set_outbox_status(session, event["id"], "failed")
-                        failed += 1
-                        logger.error(
-                            "outbox_event_invalid",
-                            event_id=str(event["id"]),
-                            event_type=event["event_type"],
-                        )
-                        continue
-
-                    try:
-                        review_id = UUID(str(payload["review_id"]))
-                        event_tenant_id = UUID(str(payload["tenant_id"]))
-                        correlation_id = payload.get("correlation_id")
-                        if event_tenant_id != tenant_id:
-                            raise ValueError("Outbox event tenant does not match claim")
-                        if correlation_id is not None and not isinstance(
-                            correlation_id, str
-                        ):
-                            raise ValueError("Invalid outbox correlation_id")
-                    except (KeyError, TypeError, ValueError) as exc:
-                        await _set_outbox_status(session, event["id"], "failed")
-                        failed += 1
-                        logger.error(
-                            "outbox_event_invalid_payload",
-                            event_id=str(event["id"]),
-                            error=str(exc),
-                        )
-                        continue
-
-                    try:
-                        await redis.enqueue_job(
-                            "process_review_task",
-                            str(review_id),
-                            str(tenant_id),
-                            correlation_id=correlation_id,
-                            _job_id=f"process-review-{review_id}",
-                        )
-                    except Exception:
-                        logger.exception(
-                            "outbox_event_enqueue_failed",
-                            event_id=str(event["id"]),
-                            review_id=str(review_id),
-                        )
-                        raise
-
-                    # ARQ returns None when this stable job ID was already enqueued.
-                    await _set_outbox_status(session, event["id"], "processed")
-                    delivered += 1
+        if acknowledgements:
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    await set_tenant_rls_context(session, tenant_id)
+                    for event_id, status in acknowledgements:
+                        await _set_outbox_status(session, event_id, status)
 
     return {"delivered": delivered, "failed": failed}
 
@@ -392,7 +377,7 @@ async def _set_outbox_status(
         {"event_id": event_id, "status": status},
     )
     if updated is not True:
-        raise RuntimeError(f"Outbox event {event_id} was not pending")
+        raise RuntimeError(f"Outbox event {event_id} was not processing")
 
 
 class WorkerSettings:

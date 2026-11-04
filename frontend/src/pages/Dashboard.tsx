@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { CircleAlert, Download, MessageSquareText, MessagesSquare, Sparkles, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -10,7 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardLayout } from '@/features/dashboard/DashboardLayout';
-import { useReviews, useDashboard, useAppStore } from '@/store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
+import { useDashboardSummary, useReviews } from '@/hooks/api/useReviews';
 
 type Review = api.Review;
 
@@ -109,15 +110,12 @@ function DashboardLoading() {
 
 export default function Dashboard() {
   const { user, logout } = useAppStore();
-  const { reviews, reviewsLoading, reviewsTotal, fetchReviews } = useReviews();
-  const { dashboard, dashboardLoading, fetchDashboard } = useDashboard();
+  const reviewsQuery = useReviews({ page: 1, page_size: 5 });
+  const reviews = reviewsQuery.data?.items ?? [];
+  const reviewsTotal = reviewsQuery.data?.total ?? 0;
+  const dashboardQuery = useDashboardSummary();
+  const dashboard = dashboardQuery.data;
   const [isExporting, setIsExporting] = useState(false);
-
-  // Load data on mount
-  useEffect(() => {
-    void fetchDashboard();
-    void fetchReviews({ page: 1, page_size: 5 });
-  }, [fetchDashboard, fetchReviews]);
 
   const handleExportCSV = async () => {
     setIsExporting(true);
@@ -215,8 +213,13 @@ export default function Dashboard() {
         </header>
 
         <AsyncView
-          isLoading={dashboardLoading || reviewsLoading}
-          isEmpty={!dashboardLoading && !reviewsLoading && !dashboard && reviews.length === 0}
+          isLoading={dashboardQuery.isLoading || reviewsQuery.isLoading}
+          isEmpty={
+            !dashboardQuery.isLoading &&
+            !reviewsQuery.isLoading &&
+            !dashboard &&
+            reviews.length === 0
+          }
           emptyMessage="Данные пока недоступны"
           loadingComponent={<DashboardLoading />}
         >

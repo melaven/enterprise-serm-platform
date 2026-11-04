@@ -5,6 +5,7 @@ const apiMocks = vi.hoisted(() => ({
   login: vi.fn(),
   register: vi.fn(),
   logout: vi.fn(),
+  getToken: vi.fn(() => 'access-token'),
   setToken: vi.fn(),
   clearTokens: vi.fn(),
 }));
@@ -14,6 +15,7 @@ vi.mock('@/api/services', () => ({
   register: apiMocks.register,
   logout: apiMocks.logout,
   tokens: {
+    get: apiMocks.getToken,
     set: apiMocks.setToken,
     clear: apiMocks.clearTokens,
   },
@@ -140,6 +142,10 @@ describe('useAppStore authentication actions', () => {
   });
 
   it('clears user and tokens when logging out', async () => {
+    const clearStorage = vi.spyOn(useAppStore.persist, 'clearStorage');
+    localStorage.setItem('sentiguard-storage', 'stale-tenant-data');
+    localStorage.setItem('serm.access_token', 'access-token');
+    localStorage.setItem('auth_token', 'legacy-token');
     useAppStore.setState({
       user: {
         id: 'user-123',
@@ -156,7 +162,11 @@ describe('useAppStore authentication actions', () => {
 
     expect(result.current.isAuthenticated).toBe(false);
     expect(result.current.user).toBeNull();
-    expect(apiMocks.logout).toHaveBeenCalledOnce();
+    expect(apiMocks.logout).toHaveBeenCalledWith('access-token');
     expect(apiMocks.clearTokens).toHaveBeenCalledOnce();
+    expect(clearStorage).toHaveBeenCalledOnce();
+    expect(localStorage.getItem('sentiguard-storage')).toBeNull();
+    expect(localStorage.getItem('serm.access_token')).toBeNull();
+    expect(localStorage.getItem('auth_token')).toBeNull();
   });
 });

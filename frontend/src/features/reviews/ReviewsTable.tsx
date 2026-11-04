@@ -1,11 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Database, Download } from 'lucide-react';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import {
   Table,
-  TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -50,6 +49,9 @@ function ReviewsTableContent({
   const [selectedReview, setSelectedReview] = useState<Review | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // Ref for the scrollable parent container
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
   const handleRowClick = (review: Review) => {
     setSelectedReview(review);
     setIsModalOpen(true);
@@ -62,6 +64,14 @@ function ReviewsTableContent({
       review.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
       )
     : reviews;
+
+  // Initialize virtualizer
+  const rowVirtualizer = useVirtualizer({
+    count: filteredReviews.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => 60, // Estimated height of each row
+    overscan: 5, // Render a few extra items for smooth scrolling
+  });
 
   const getSentimentBadge = (sentiment: string | null) => {
     if (!sentiment) return <Badge variant="secondary">Не определена</Badge>;
@@ -229,38 +239,58 @@ function ReviewsTableContent({
                 <TableHead>Дата</TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {filteredReviews.map((review) => (
-                <TableRow 
-                  key={review.id}
-                  className="cursor-pointer"
-                  onClick={() => handleRowClick(review)}
-                >
-                  <TableCell className="font-medium">
-                    {review.platform}
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-lime font-mono text-sm">
-                      {renderStars(review.rating)}
-                    </span>
-                  </TableCell>
-                  <TableCell className="max-w-md">
-                    <div className="line-clamp-2 break-words" title={review.text}>
-                      {review.text}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {getSentimentBadge(review.sentiment)}
-                  </TableCell>
-                  <TableCell>{review.threat_level ?? '—'}</TableCell>
-                  <TableCell>{review.tags.join(', ') || '—'}</TableCell>
-                  <TableCell className="font-mono text-xs text-chrome-400 whitespace-nowrap">
-                    {formatDate(review.created_at)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
           </Table>
+          <div
+            ref={tableContainerRef}
+            className="overflow-y-auto max-h-[600px]"
+          >
+            <div
+              style={{
+                height: `${rowVirtualizer.getTotalSize()}px`,
+                width: '100%',
+                position: 'relative',
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                const review = filteredReviews[virtualRow.index];
+                return (
+                  <div
+                    key={review.id}
+                    data-index={virtualRow.index}
+                    ref={(el) => rowVirtualizer.measureElement(el)}
+                    className="grid grid-cols-7 gap-4 px-4 py-3 border-b border-chrome-600/50 hover:bg-ink-50 transition-colors cursor-pointer absolute left-0 top-0 w-full items-center"
+                    style={{
+                      height: `${virtualRow.size}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    onClick={() => handleRowClick(review)}
+                  >
+                    <div className="font-medium text-sm text-chrome-300">
+                      {review.platform}
+                    </div>
+                    <div>
+                      <span className="text-lime font-mono text-sm">
+                        {renderStars(review.rating)}
+                      </span>
+                    </div>
+                    <div className="max-w-md">
+                      <div className="line-clamp-2 break-words text-sm text-chrome-300" title={review.text}>
+                        {review.text}
+                      </div>
+                    </div>
+                    <div>
+                      {getSentimentBadge(review.sentiment)}
+                    </div>
+                    <div className="text-sm text-chrome-300">{review.threat_level ?? '—'}</div>
+                    <div className="text-sm text-chrome-300">{review.tags.join(', ') || '—'}</div>
+                    <div className="font-mono text-xs text-chrome-400 whitespace-nowrap">
+                      {formatDate(review.created_at)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 

@@ -4,8 +4,9 @@ import { toast } from 'sonner';
 import { DashboardLayout } from '@/features/dashboard/DashboardLayout';
 import { ReviewsTable } from '@/features/reviews/ReviewsTable';
 import { ReviewFilters } from '@/features/reviews/ReviewFilters';
-import { useAppStore, useReviews } from '@/store/useAppStore';
+import { useAppStore } from '@/store/useAppStore';
 import { Review } from '@/api/services';
+import { useReviews } from '@/hooks/api/useReviews';
 
 // CSV Export Utility
 const exportToCSV = (reviews: Review[], filename: string = 'reviews.csv') => {
@@ -52,7 +53,8 @@ const exportToCSV = (reviews: Review[], filename: string = 'reviews.csv') => {
 
 export function ReviewsPage() {
   const { user, logout } = useAppStore();
-  const { reviews } = useReviews();
+  const { data: reviewsData } = useReviews({ page: 1, page_size: 100 });
+  const reviews = reviewsData?.items ?? [];
 
   // Состояние фильтров
   const [searchQuery, setSearchQuery] = useState('');

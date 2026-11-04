@@ -266,8 +266,14 @@ export async function getCurrentUser(): Promise<UserProfile> {
 /**
  * Выход из системы
  */
-export async function logout(): Promise<void> {
-  await apiClient.post('/v1/auth/logout');
+export async function logout(accessToken?: string): Promise<void> {
+  await apiClient.post(
+    '/v1/auth/logout',
+    undefined,
+    accessToken
+      ? { headers: { Authorization: `Bearer ${accessToken}` } }
+      : undefined,
+  );
 }
 
 /**
@@ -292,9 +298,25 @@ export async function getReviews(params?: {
   platform?: string;
   sentiment?: string;
   search?: string;
-}): Promise<PaginatedResponse<Review>> {
-  const { data } = await apiClient.get<ApiResponse<PaginatedResponse<Review>>>('/v1/reviews', { params });
+}, signal?: AbortSignal): Promise<PaginatedResponse<Review>> {
+  const { data } = await apiClient.get<ApiResponse<PaginatedResponse<Review>>>('/v1/reviews', {
+    params,
+    signal,
+  });
   return data.data;
+}
+
+export async function updateReviewStatus(
+  reviewId: string,
+  newStatus: Review['status'],
+  siResponse?: string,
+): Promise<void> {
+  await apiClient.put(`/v1/reviews/${encodeURIComponent(reviewId)}/status`, null, {
+    params: {
+      new_status: newStatus,
+      si_response: siResponse,
+    },
+  });
 }
 
 export async function configureGoogleBusinessIntegration(input: {
@@ -326,8 +348,10 @@ export async function getReviewById(reviewId: string): Promise<Review> {
  * Получение сводки дашборда
  * Эндпоинт: GET /api/v1/reviews/summary
  */
-export async function getDashboardSummary(): Promise<DashboardSummary> {
-  const { data } = await apiClient.get<DashboardSummaryResponse>('/v1/reviews/summary');
+export async function getDashboardSummary(signal?: AbortSignal): Promise<DashboardSummary> {
+  const { data } = await apiClient.get<DashboardSummaryResponse>('/v1/reviews/summary', {
+    signal,
+  });
   return data.data;
 }
 

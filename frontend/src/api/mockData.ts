@@ -107,9 +107,26 @@ export const MOCK_DASHBOARD_SUMMARY: DashboardSummary = {
 /**
  * Симулирует задержку сети (300-800ms)
  */
-export const simulateNetworkDelay = (ms?: number): Promise<void> => {
+export const simulateNetworkDelay = (ms?: number, signal?: AbortSignal): Promise<void> => {
   const delay = ms ?? Math.random() * 500 + 300;
-  return new Promise((resolve) => setTimeout(resolve, delay));
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException('The request was aborted.', 'AbortError'));
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delay);
+    const onAbort = () => {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', onAbort);
+      reject(signal?.reason ?? new DOMException('The request was aborted.', 'AbortError'));
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 };
 
 /**

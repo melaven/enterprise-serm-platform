@@ -3,11 +3,12 @@ import { persist } from 'zustand/middleware';
 import * as api from '../api/services';
 import * as demoApi from '../api/demoService';
 import { tokens } from '../api/services';
+import { OWN_TOKEN_KEY } from '../api/token';
 import { withErrorHandling } from '../api/errorHandler';
 
 /**
  * Глобальное состояние приложения с Zustand
- * Управляет аутентификацией, отзывами и аналитикой
+ * Управляет аутентификацией, состоянием парсер-задачи и UI
  * 
  * Поддерживает Demo Mode через demoService (VITE_DEMO_MODE=true)
  */
@@ -26,18 +27,6 @@ interface AppState {
   token: string | null;
   refreshToken: string | null;
 
-  // Reviews State
-  reviews: api.Review[];
-  reviewsLoading: boolean;
-  reviewsTotal: number;
-  reviewsPage: number;
-  reviewsPageSize: number;
-  reviewsTotalPages: number;
-
-  // Analytics State
-  dashboard: api.DashboardSummary | null;
-  dashboardLoading: boolean;
-
   // Parser State
   parserJobId: string | null;
   parserStatus: 'queued' | 'in_progress' | 'succeeded' | 'failed' | null;
@@ -50,20 +39,13 @@ interface AppState {
 
   // Auth Actions
   login: (auth: api.AuthResponse) => void;
+  hardReset: () => void;
   logout: () => Promise<void>;
   invalidateAuth: () => void;
   performLogin: (email: string, password: string) => Promise<boolean>;
   performRegister: (email: string, password: string, fullName?: string) => Promise<boolean>;
 
-  // Data Fetch Actions
-  fetchReviews: (params?: {
-    page?: number;
-    page_size?: number;
-    platform?: string;
-    sentiment?: string;
-    search?: string;
-  }) => Promise<void>;
-  fetchDashboard: () => Promise<void>;
+  // Parser Actions
   startParser: (platform: string, url: string) => Promise<string | null>;
   pollParserStatus: (jobId: string) => Promise<void>;
 
@@ -84,14 +66,6 @@ export const useAppStore = create<AppState>()(
       user: null,
       token: null,
       refreshToken: null,
-      reviews: [],
-      reviewsLoading: false,
-      reviewsTotal: 0,
-      reviewsPage: 1,
-      reviewsPageSize: 50,
-      reviewsTotalPages: 1,
-      dashboard: null,
-      dashboardLoading: false,
       parserJobId: null,
       parserStatus: null,
       parserResult: null,
@@ -113,12 +87,6 @@ export const useAppStore = create<AppState>()(
           token: auth.access_token,
           refreshToken: auth.refresh_token,
           user: auth.user,
-          reviews: [],
-          reviewsTotal: 0,
-          reviewsPage: 1,
-          reviewsPageSize: 50,
-          reviewsTotalPages: 1,
-          dashboard: null,
           parserJobId: null,
           parserStatus: null,
           parserResult: null,
@@ -126,21 +94,13 @@ export const useAppStore = create<AppState>()(
         });
       },
 
-      invalidateAuth: () => {
+      hardReset: () => {
         tokens.clear();
         set({
           isAuthenticated: false,
           user: null,
           token: null,
           refreshToken: null,
-          reviews: [],
-          reviewsLoading: false,
-          reviewsTotal: 0,
-          reviewsPage: 1,
-          reviewsPageSize: 50,
-          reviewsTotalPages: 1,
-          dashboard: null,
-          dashboardLoading: false,
           parserJobId: null,
           parserStatus: null,
           parserResult: null,
@@ -148,20 +108,21 @@ export const useAppStore = create<AppState>()(
           sidebarCollapsed: false,
           activeNavItem: 'overview',
         });
+        useAppStore.persist.clearStorage();
         if (typeof localStorage !== 'undefined') {
+          localStorage.removeItem(OWN_TOKEN_KEY);
           localStorage.removeItem('auth_token');
         }
       },
 
+      invalidateAuth: () => {
+        get().hardReset();
+      },
+
       logout: async () => {
-        try {
-          await withErrorHandling(async () => apiClient.logout());
-        } finally {
-          get().invalidateAuth();
-          if (typeof localStorage !== 'undefined') {
-            localStorage.removeItem('sentiguard-storage');
-          }
-        }
+        const accessToken = tokens.get();
+        get().hardReset();
+        await withErrorHandling(async () => apiClient.logout(accessToken ?? undefined));
       },
 
       performLogin: async (email: string, password: string): Promise<boolean> => {
@@ -190,31 +151,6 @@ export const useAppStore = create<AppState>()(
       // ============================================================
       // DATA FETCH ACTIONS
       // ============================================================
-
-      fetchReviews: async (params) => {
-        set({ reviewsLoading: true });
-        await withErrorHandling(async () => {
-          const paginatedData = await apiClient.getReviews(params);
-          set({
-            reviews: paginatedData.items,
-            reviewsTotal: paginatedData.total,
-            reviewsPage: paginatedData.page,
-            reviewsPageSize: paginatedData.page_size,
-            reviewsTotalPages: paginatedData.total_pages,
-            reviewsLoading: false
-          });
-        });
-        set({ reviewsLoading: false });
-      },
-
-      fetchDashboard: async () => {
-        set({ dashboardLoading: true });
-        await withErrorHandling(async () => {
-          const dashboard = await apiClient.getDashboardSummary();
-          set({ dashboard, dashboardLoading: false });
-        });
-        set({ dashboardLoading: false });
-      },
 
       startParser: async (platform: string, url: string): Promise<string | null> => {
         const result = await withErrorHandling(async () => {
@@ -281,22 +217,6 @@ export const useAuth = () => useAppStore((state) => ({
   logout: state.logout,
   performLogin: state.performLogin,
   performRegister: state.performRegister,
-}));
-
-export const useReviews = () => useAppStore((state) => ({
-  reviews: state.reviews,
-  reviewsLoading: state.reviewsLoading,
-  reviewsTotal: state.reviewsTotal,
-  reviewsPage: state.reviewsPage,
-  reviewsPageSize: state.reviewsPageSize,
-  reviewsTotalPages: state.reviewsTotalPages,
-  fetchReviews: state.fetchReviews,
-}));
-
-export const useDashboard = () => useAppStore((state) => ({
-  dashboard: state.dashboard,
-  dashboardLoading: state.dashboardLoading,
-  fetchDashboard: state.fetchDashboard,
 }));
 
 export const useParser = () => useAppStore((state) => ({

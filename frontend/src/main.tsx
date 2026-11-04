@@ -22,13 +22,16 @@ import { ReviewsDashboard } from './features/reviews/ReviewsDashboard.tsx'
 import { SettingsPage } from './pages/SettingsPage.tsx'
 import { ReviewsOverviewPage } from './pages/ReviewsOverviewPage.tsx'
 import { ProtectedRoute } from './features/auth/ProtectedRoute.tsx'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from './lib/react-query'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <GlobalErrorBoundary>
     <React.StrictMode>
-      <BrowserRouter>
-        <Routes>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <Routes>
           {/* Public Routes */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/pricing" element={<LandingPage />} />
@@ -79,17 +82,18 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           
           {/* Catch all redirect */}
           <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+          </Routes>
         
         {/* Toast Notifications - плоский дизайн без теней */}
-        <Toaster />
+          <Toaster />
         
         {/* Глобальная модалка для HTTP 402 Payment Required */}
-        <QuotaExceededHost upgradePath="/billing" />
-      </BrowserRouter>
+          <QuotaExceededHost upgradePath="/billing" />
+        </BrowserRouter>
       
       {/* Таймер 429 Rate Limit - вне Router, монтируется один раз */}
-      <RateLimitHost />
+        <RateLimitHost />
+      </QueryClientProvider>
     </React.StrictMode>
   </GlobalErrorBoundary>,
 )

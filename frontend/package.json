@@ -14,7 +14,8 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "prepare": "cd .. && husky frontend/.husky",
-    "typegen": "openapi-typescript http://localhost:8000/openapi.json -o src/api/schema.d.ts"
+    "typegen": "openapi-typescript http://localhost:8000/openapi.json -o src/api/schema.d.ts",
+    "api:gen": "openapi-typescript http://127.0.0.1:8000/openapi.json -o src/api/schema.d.ts"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

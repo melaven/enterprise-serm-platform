@@ -21,9 +21,22 @@ export interface ReviewQueryParams {
   search?: string;
 }
 
-export const reviewsQueryKey = ['reviews'] as const;
+// ============================================
+// Query Keys Factory
+// ============================================
+export const reviewsKeys = {
+  all: ['reviews'] as const,
+  lists: () => [...reviewsKeys.all, 'list'] as const,
+  list: (params: ReviewQueryParams) => [...reviewsKeys.lists(), params] as const,
+  details: () => [...reviewsKeys.all, 'detail'] as const,
+  detail: (id: string) => [...reviewsKeys.details(), id] as const,
+} as const;
+
 export const reviewDraftsQueryKey = ['review-drafts'] as const;
 export const dashboardSummaryQueryKey = ['dashboard-summary'] as const;
+
+// Backward compatibility - can be removed after migration
+export const reviewsQueryKey = reviewsKeys.all;
 
 const isDemoMode =
   import.meta.env.VITE_DEMO_MODE === 'true' || import.meta.env.VITE_USE_MOCKS === 'true';
@@ -32,7 +45,7 @@ export function useReviews(params: ReviewQueryParams = {}) {
   const tenantId = useAppStore((state) => state.user?.tenant_id ?? null);
 
   return useQuery({
-    queryKey: [...reviewsQueryKey, tenantId, params],
+    queryKey: [...reviewsKeys.all, tenantId, params],
     queryFn: ({ signal }) =>
       isDemoMode
         ? demoApi.getReviews(params, signal)
@@ -84,17 +97,17 @@ export function useApproveDraft() {
     mutationFn: (request) => approveDraft(request),
     onMutate: async (request) => {
       // Cancel any outgoing refetches for all reviews queries
-      await queryClient.cancelQueries({ queryKey: reviewsQueryKey });
+      await queryClient.cancelQueries({ queryKey: reviewsKeys.all });
 
       // Snapshot the previous state for all matching queries
       const queryCache = queryClient.getQueryCache();
       const previousData = new Map<QueryKey, unknown>();
-      queryCache.findAll({ queryKey: reviewsQueryKey }).forEach((query) => {
+      queryCache.findAll({ queryKey: reviewsKeys.all }).forEach((query) => {
         previousData.set(query.queryKey, query.state.data);
       });
 
       // Optimistically update the cache for all matching queries
-      queryCache.findAll({ queryKey: reviewsQueryKey }).forEach((query) => {
+      queryCache.findAll({ queryKey: reviewsKeys.all }).forEach((query) => {
         queryClient.setQueryData(query.queryKey, (old: any) => {
           if (!old) return old;
           return {
@@ -126,7 +139,7 @@ export function useApproveDraft() {
     onSettled: async (_result, _error, request) => {
       // Always refetch to ensure sync with server
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: reviewsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: reviewsKeys.all }),
         queryClient.invalidateQueries({
           queryKey: [...reviewDraftsQueryKey, request.reviewId],
         }),
@@ -154,17 +167,17 @@ export function useUpdateReviewStatus() {
       updateReviewStatus(reviewId, newStatus, siResponse),
     onMutate: async ({ reviewId, newStatus, siResponse }) => {
       // Cancel any outgoing refetches for all reviews queries
-      await queryClient.cancelQueries({ queryKey: reviewsQueryKey });
+      await queryClient.cancelQueries({ queryKey: reviewsKeys.all });
 
       // Snapshot the previous state for all matching queries
       const queryCache = queryClient.getQueryCache();
       const previousData = new Map<QueryKey, unknown>();
-      queryCache.findAll({ queryKey: reviewsQueryKey }).forEach((query) => {
+      queryCache.findAll({ queryKey: reviewsKeys.all }).forEach((query) => {
         previousData.set(query.queryKey, query.state.data);
       });
 
       // Optimistically update the cache for all matching queries
-      queryCache.findAll({ queryKey: reviewsQueryKey }).forEach((query) => {
+      queryCache.findAll({ queryKey: reviewsKeys.all }).forEach((query) => {
         queryClient.setQueryData(query.queryKey, (old: any) => {
           if (!old) return old;
           return {
@@ -199,7 +212,7 @@ export function useUpdateReviewStatus() {
     },
     onSettled: async () => {
       // Always refetch to ensure sync with server
-      await queryClient.invalidateQueries({ queryKey: reviewsQueryKey });
+      await queryClient.invalidateQueries({ queryKey: reviewsKeys.all });
     },
   });
 }

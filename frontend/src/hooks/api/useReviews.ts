@@ -51,6 +51,14 @@ export function useReviews(params: ReviewQueryParams = {}) {
         ? demoApi.getReviews(params, signal)
         : getReviews(params, signal),
     enabled: tenantId !== null,
+    refetchInterval: (query) =>
+      query.state.data?.items.some(
+        (review) =>
+          review.generated_reply === null || review.generated_reply === undefined,
+      )
+        ? 3_000
+        : false,
+    refetchIntervalInBackground: true,
   });
 }
 

@@ -6,6 +6,8 @@ from uuid import UUID
 
 from redis.asyncio import Redis
 
+from app.infrastructure.redis.async_eval import await_redis_eval
+
 _TOKEN_BUCKET_SCRIPT = """
 local capacity = tonumber(ARGV[1])
 local window_ms = tonumber(ARGV[2])
@@ -40,7 +42,7 @@ return {allowed, retry_after_ms}
 
 
 class _RedisEvalClient(Protocol):
-    async def eval(self, script: str, numkeys: int, *keys_and_args: object) -> object:
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> object:
         """Evaluate a Redis Lua script."""
 
 
@@ -71,12 +73,14 @@ class RedisRateLimiter:
         if not tenant or not platform:
             raise ValueError("tenant_id and platform_name must not be empty")
 
-        result = await self._redis.eval(
-            _TOKEN_BUCKET_SCRIPT,
-            1,
-            f"rate_limit:{tenant}:{platform}",
-            self._requests,
-            self._window_ms,
+        result = await await_redis_eval(
+            self._redis.eval(
+                _TOKEN_BUCKET_SCRIPT,
+                1,
+                f"rate_limit:{tenant}:{platform}",
+                str(self._requests),
+                str(self._window_ms),
+            )
         )
         if (
             not isinstance(result, list | tuple)

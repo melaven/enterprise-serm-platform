@@ -8,6 +8,7 @@ from collections.abc import AsyncGenerator
 from functools import lru_cache
 from uuid import UUID
 
+from arq.connections import ArqRedis
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +22,7 @@ from app.application import (
     ReviewProcessorService,
     SentimentService,
 )
-from app.application.reviews.service import ReviewQueue, ReviewReplyAnalyzer
+from app.application.reviews.service import ReviewReplyAnalyzer
 from app.core.exceptions import NotFoundError
 from app.infrastructure.integrations.llm.review_analyzer import create_openai_analyzer
 from app.infrastructure.persistence.models.economics import Review
@@ -197,7 +198,7 @@ async def get_review_processor_service(
     )
 
 
-def get_review_queue(request: Request) -> ReviewQueue | None:
+def get_review_queue(request: Request) -> ArqRedis | None:
     """Provide the application ARQ pool to review use cases."""
     return getattr(request.app.state, "arq_pool", None)
 

@@ -103,13 +103,13 @@ async def test_breaker_uses_atomic_redis_keys_and_expiring_counter() -> None:
         "circuit_breaker:{openai}:state",
         "circuit_breaker:{openai}:recovery",
         "circuit_breaker:{openai}:half_open_probe",
-        45,
+        "45",
     )
     failure_script, failure_args = redis.calls[1]
     assert failure_script == _RECORD_FAILURE_SCRIPT
     assert "redis.call('INCR'" in failure_script
     assert "redis.call('EXPIRE'" in failure_script
-    assert failure_args[-3:] == (3, 45, 45)
+    assert failure_args[-3:] == ("3", "45", "45")
 
 
 @pytest.mark.parametrize(

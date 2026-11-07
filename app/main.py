@@ -158,7 +158,11 @@ async def lifespan(app: FastAPI):
                 "✅ SpaCy PII sanitizer initialized", component="spacy", status="ready"
             )
         except Exception as e:
-            logger.warning("⚠️ SpaCy PII sanitizer initialization failed", component="spacy", error=str(e))
+            logger.warning(
+                "⚠️ SpaCy PII sanitizer initialization failed",
+                component="spacy",
+                error=str(e),
+            )
             logger.warning("PII sanitization will use regex fallback")
             app.state.spacy_sanitizer = None
 
@@ -191,7 +195,9 @@ async def lifespan(app: FastAPI):
                 logger.info("✅ SpaCy PII sanitizer закрыт", component="spacy")
             except Exception as e:
                 logger.error(
-                    "❌ Ошибка закрытия SpaCy PII sanitizer", component="spacy", error=str(e)
+                    "❌ Ошибка закрытия SpaCy PII sanitizer",
+                    component="spacy",
+                    error=str(e),
                 )
 
         await cleanup_dependencies()

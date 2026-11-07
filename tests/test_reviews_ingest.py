@@ -15,6 +15,7 @@ from app.api.v1.routes.reviews import router as reviews_router
 from app.core.auth import get_jwt_payload
 from app.core.dependencies import get_review_queue
 from app.core.handlers import general_exception_handler
+from app.core.queues import Queue
 
 
 class _FakeQueue:
@@ -105,6 +106,7 @@ async def test_ingest_returns_202_and_enqueues_job() -> None:
     assert function_name == "process_review_ingestion"
     assert args[0] == str(tenant_id)
     assert args[1]["raw_author"] == "Иван Петров"
+    assert kwargs["_queue_name"] == Queue.BULK.value
     assert kwargs["_job_id"] == body["job_id"]
 
 

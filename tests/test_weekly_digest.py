@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.core.queues import Queue
 from app.infrastructure.queue.worker import digest
 from app.infrastructure.queue.worker.worker import WorkerSettings
 
@@ -99,6 +100,7 @@ async def test_weekly_digest_enqueue_uses_one_deduplicated_job_per_tenant(
     kwargs = redis.enqueue_job.await_args.kwargs
     assert args[0] == "send_company_weekly_digest"
     assert args[1] == str(tenant_id)
+    assert kwargs["_queue_name"] == Queue.BULK.value
     assert kwargs["_job_id"].startswith(f"weekly-digest-{tenant_id}-")
 
 

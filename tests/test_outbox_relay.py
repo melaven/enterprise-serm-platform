@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.core.queues import Queue
 from app.infrastructure.queue.worker import worker
 
 
@@ -138,6 +139,7 @@ async def test_outbox_relay_commits_claim_before_enqueue_and_acknowledges_after(
         str(review_id),
         str(tenant_id),
         correlation_id="request-123",
+        _queue_name=Queue.BULK.value,
         _job_id=f"process-review-{review_id}",
     )
 
@@ -229,6 +231,7 @@ async def test_outbox_relay_enqueues_platform_reply_job(
         str(event_id),
         str(tenant_id),
         payload,
+        _queue_name=Queue.CRITICAL.value,
         _job_id=f"publish-review-reply-{event_id}",
     )
 

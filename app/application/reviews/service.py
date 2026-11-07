@@ -1,4 +1,4 @@
-from typing import Any, Protocol
+from typing import Protocol
 from uuid import UUID
 
 from fastapi import status
@@ -21,12 +21,6 @@ from app.infrastructure.persistence.models.review_analysis_payload import (
     ReviewAnalysisPayload,
 )
 from app.infrastructure.persistence.models.review_reply import ReviewReply
-
-
-class ReviewQueue(Protocol):
-    async def enqueue_job(
-        self, function_name: str, *args: object, **kwargs: object
-    ) -> Any: ...
 
 
 class ReviewReplyAnalyzer(Protocol):
@@ -260,7 +254,6 @@ class ReviewApplicationService:
     async def submit_moderation(
         self, review_id: UUID, reply_text: str
     ) -> AssistantReviewSchema:
-        session = self._require_session()
         review = await self._get_review(review_id)
         if review.moderation_status != ReplyModerationStatus.DRAFTED:
             raise BusinessLogicError(

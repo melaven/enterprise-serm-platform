@@ -38,8 +38,8 @@ async def test_acquire_uses_tenant_platform_key_and_redis_script(
     assert redis.eval_args[1:] == (
         1,
         f"rate_limit:{tenant_id}:yandex",
-        5,
-        1000,
+        "5",
+        "1000",
     )
     assert "redis.call('TIME')" in _TOKEN_BUCKET_SCRIPT
     assert "redis.call('HMGET'" in _TOKEN_BUCKET_SCRIPT

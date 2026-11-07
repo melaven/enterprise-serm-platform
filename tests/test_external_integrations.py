@@ -494,7 +494,7 @@ async def test_publish_result_does_not_overwrite_already_published_reply(
 
         async def execute(self, statement, _parameters):
             assert "status IS DISTINCT FROM :published_status" in str(statement)
-            return type("UpdateResult", (), {"rowcount": 0})()
+            return type("UpdateResult", (), {"scalar_one_or_none": lambda self: None})()
 
         async def scalar(self, _statement, _parameters):
             return ReplyPublicationStatus.PUBLISHED.value

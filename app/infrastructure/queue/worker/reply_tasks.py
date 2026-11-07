@@ -158,7 +158,8 @@ async def _record_publish_result(
                     "external_reply_id = COALESCE(:external_reply_id, external_reply_id), "
                     "failure_reason = :failure_reason, updated_at = now() "
                     "WHERE review_id = :review_id AND company_id = :tenant_id "
-                    "AND status IS DISTINCT FROM :published_status"
+                    "AND status IS DISTINCT FROM :published_status "
+                    "RETURNING review_id"
                 ),
                 {
                     "status": status.value,
@@ -169,7 +170,7 @@ async def _record_publish_result(
                     "tenant_id": tenant_id,
                 },
             )
-            if result.rowcount == 1:
+            if result.scalar_one_or_none() is not None:
                 return True
 
             current_status = await session.scalar(
@@ -236,7 +237,7 @@ async def publish_review_reply(
         raise RuntimeError("ARQ Redis connection is missing from worker context")
     circuit_breaker = RedisCircuitBreaker(redis)
     if not await circuit_breaker.is_allowed(publication.platform):
-        defer = circuit_breaker.recovery_timeout
+        defer = float(circuit_breaker.recovery_timeout)
         updated = await _record_publish_result(
             tenant_uuid,
             review_uuid,

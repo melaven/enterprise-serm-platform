@@ -4,6 +4,8 @@ from typing import Protocol
 
 from redis.asyncio import Redis
 
+from app.infrastructure.redis.async_eval import await_redis_eval
+
 _IS_ALLOWED_SCRIPT = """
 local state = redis.call('GET', KEYS[1])
 if not state or state == 'CLOSED' then
@@ -50,7 +52,7 @@ return 1
 
 
 class _RedisEvalClient(Protocol):
-    async def eval(self, script: str, numkeys: int, *keys_and_args: object) -> object:
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> object:
         """Evaluate a Redis Lua script."""
 
 
@@ -95,7 +97,7 @@ class RedisCircuitBreaker:
 
     @staticmethod
     def _result_as_int(result: object) -> int:
-        if isinstance(result, bool):
+        if isinstance(result, bool) or not isinstance(result, str | bytes | int):
             raise RuntimeError("Redis returned an invalid circuit-breaker result")
         try:
             return int(result)
@@ -108,13 +110,15 @@ class RedisCircuitBreaker:
         """Allow normal calls or atomically claim the single half-open probe."""
         state_key, _, recovery_key, probe_key = self._keys(platform_name)
         result = self._result_as_int(
-            await self._redis.eval(
-                _IS_ALLOWED_SCRIPT,
-                3,
-                state_key,
-                recovery_key,
-                probe_key,
-                self.recovery_timeout,
+            await await_redis_eval(
+                self._redis.eval(
+                    _IS_ALLOWED_SCRIPT,
+                    3,
+                    state_key,
+                    recovery_key,
+                    probe_key,
+                    str(self.recovery_timeout),
+                )
             )
         )
         if result not in (0, 1):
@@ -125,16 +129,18 @@ class RedisCircuitBreaker:
         """Increment consecutive failures and open the circuit at the threshold."""
         state_key, failure_key, recovery_key, probe_key = self._keys(platform_name)
         failure_count = self._result_as_int(
-            await self._redis.eval(
-                _RECORD_FAILURE_SCRIPT,
-                4,
-                state_key,
-                failure_key,
-                recovery_key,
-                probe_key,
-                self.failure_threshold,
-                self.recovery_timeout,
-                self.recovery_timeout,
+            await await_redis_eval(
+                self._redis.eval(
+                    _RECORD_FAILURE_SCRIPT,
+                    4,
+                    state_key,
+                    failure_key,
+                    recovery_key,
+                    probe_key,
+                    str(self.failure_threshold),
+                    str(self.recovery_timeout),
+                    str(self.recovery_timeout),
+                )
             )
         )
         if failure_count <= 0:
@@ -145,13 +151,15 @@ class RedisCircuitBreaker:
         """Reset the failure count and close the circuit after a successful call."""
         state_key, failure_key, recovery_key, probe_key = self._keys(platform_name)
         result = self._result_as_int(
-            await self._redis.eval(
-                _RECORD_SUCCESS_SCRIPT,
-                4,
-                state_key,
-                failure_key,
-                recovery_key,
-                probe_key,
+            await await_redis_eval(
+                self._redis.eval(
+                    _RECORD_SUCCESS_SCRIPT,
+                    4,
+                    state_key,
+                    failure_key,
+                    recovery_key,
+                    probe_key,
+                )
             )
         )
         if result != 1:
@@ -161,16 +169,18 @@ class RedisCircuitBreaker:
         """Release a half-open probe when another gate prevents its HTTP call."""
         state_key, _, _, probe_key = self._keys(platform_name)
         result = self._result_as_int(
-            await self._redis.eval(
-                """
+            await await_redis_eval(
+                self._redis.eval(
+                    """
                 if redis.call('GET', KEYS[1]) == 'HALF_OPEN' then
                     return redis.call('DEL', KEYS[2])
                 end
                 return 1
                 """,
-                2,
-                state_key,
-                probe_key,
+                    2,
+                    state_key,
+                    probe_key,
+                )
             )
         )
         if result not in (0, 1):

@@ -51,6 +51,7 @@ from app.core.dependencies import (
     verify_idempotency,
 )
 from app.core.dispatch import enqueue_bulk
+from app.core.pii_sanitizer import PIISanitizer
 from app.core.rate_limit import check_llm_limits
 from app.infrastructure.persistence.models.economics import Review
 from app.infrastructure.persistence.repositories import ReviewRepository
@@ -125,8 +126,10 @@ async def create_review(
     review_data: ReviewCreate,
     session: AsyncSession = Depends(get_tenant_db),
     tenant_id: UUID = Depends(get_current_tenant),
+    sanitizer: PIISanitizer = Depends(PIISanitizer.get_instance),
 ) -> ReviewResponse:
     """Сохранить отзыв и событие анализа в одной транзакции."""
+    sanitized_text = await sanitizer.sanitize_async(review_data.text)
     service = ReviewApplicationService(
         session=session,
         tenant_id=tenant_id,
@@ -134,7 +137,7 @@ async def create_review(
     new_review = await service.create_review(
         platform_id=review_data.platform_id,
         rating=review_data.rating,
-        text=review_data.text,
+        text=sanitized_text,
     )
 
     return ReviewResponse.model_validate(new_review)

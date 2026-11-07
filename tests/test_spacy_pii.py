@@ -5,14 +5,15 @@ Tests NER-based entity detection and async event loop protection.
 """
 
 import pytest
-from app.core.spacy_pii import SpacyPIISanitizer, ENTITY_PLACEHOLDERS
+
+from app.core.spacy_pii import SpacyPIISanitizer
 
 
 @pytest.mark.asyncio
 async def test_spacy_sanitizer_initialization():
     """Test that the SpaCy sanitizer can be initialized and shut down."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
         assert sanitizer._initialized
@@ -26,7 +27,7 @@ async def test_spacy_sanitizer_initialization():
 async def test_spacy_sanitize_empty_text():
     """Test sanitizing empty text."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
         result, count = await sanitizer.sanitize("")
@@ -40,7 +41,7 @@ async def test_spacy_sanitize_empty_text():
 async def test_spacy_sanitize_no_pii():
     """Test sanitizing text without PII."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
         text = "This is a simple review about good service."
@@ -55,7 +56,7 @@ async def test_spacy_sanitize_no_pii():
 async def test_spacy_sanitize_person():
     """Test sanitizing text with person names."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
         text = "John Smith visited our restaurant yesterday."
@@ -72,7 +73,7 @@ async def test_spacy_sanitize_person():
 async def test_spacy_sanitize_organization():
     """Test sanitizing text with organization names."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
         text = "I work at Google Inc."
@@ -87,7 +88,7 @@ async def test_spacy_sanitize_organization():
 async def test_spacy_sanitize_location():
     """Test sanitizing text with location names."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
         text = "I visited Paris last summer."
@@ -102,7 +103,7 @@ async def test_spacy_sanitize_location():
 async def test_spacy_sanitize_text_convenience():
     """Test the convenience method that returns only sanitized text."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
         text = "John called us from Moscow."
@@ -117,14 +118,14 @@ async def test_spacy_sanitize_text_convenience():
 async def test_spacy_contains_pii():
     """Test the contains_pii method."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
-        
+
         # Text with PII
         text_with_pii = "My name is John Doe."
         assert await sanitizer.contains_pii(text_with_pii) is True
-        
+
         # Text without PII
         text_without_pii = "The service was excellent."
         assert await sanitizer.contains_pii(text_without_pii) is False
@@ -136,7 +137,7 @@ async def test_spacy_contains_pii():
 async def test_spacy_error_not_initialized():
     """Test that error is raised when using uninitialized sanitizer."""
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     with pytest.raises(RuntimeError, match="not initialized"):
         await sanitizer.sanitize("test text")
 
@@ -145,27 +146,27 @@ async def test_spacy_error_not_initialized():
 async def test_event_loop_protection():
     """Test that the sanitizer doesn't block the event loop."""
     import asyncio
-    
+
     sanitizer = SpacyPIISanitizer(model_name="en_core_web_sm", max_workers=1)
-    
+
     try:
         await sanitizer.initialize()
-        
+
         # Create a concurrent task that should not be blocked
         async def concurrent_task():
             await asyncio.sleep(0.1)
             return "concurrent completed"
-        
+
         # Run sanitization and concurrent task in parallel
         text = "John Smith works at Apple in California."
         results = await asyncio.gather(
             sanitizer.sanitize(text),
             concurrent_task(),
         )
-        
+
         sanitized_text, count = results[0]
         concurrent_result = results[1]
-        
+
         assert count > 0
         assert concurrent_result == "concurrent completed"
         # If the event loop was blocked, the concurrent task would fail

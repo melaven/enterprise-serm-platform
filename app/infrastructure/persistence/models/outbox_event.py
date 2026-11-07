@@ -15,6 +15,7 @@ class OutboxEventType(str, Enum):
     REVIEW_ANALYSIS_REQUESTED = "review.analysis.requested"
     TRIGGER_EMERGENCY_ALERT = "trigger_emergency_alert"
     PUBLISH_REVIEW_REPLY = "publish_review_reply"
+    REVIEW_CREATED = "review_created"
 
 
 class OutboxEvent(Base):

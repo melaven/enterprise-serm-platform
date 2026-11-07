@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import JSON, DateTime, Index, String, Uuid, func
+from sqlalchemy import JSON, DateTime, Index, Integer, String, Uuid, func
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -43,6 +43,9 @@ class OutboxEvent(Base):
     )
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, default="pending", server_default="pending"
+    )
+    priority: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=False), nullable=False, server_default=func.now()

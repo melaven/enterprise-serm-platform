@@ -107,6 +107,7 @@ class ReviewApplicationService:
                     "tenant_id": str(self.tenant_id),
                     "correlation_id": get_correlation_id(),
                 },
+                priority=1,  # Critical priority for manual review creation
             )
         )
         await session.flush()

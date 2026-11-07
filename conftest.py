@@ -10,6 +10,8 @@ import httpx
 import pytest
 import pytest_asyncio
 from fastapi import Header
+from sqlalchemy import inspect
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, create_async_engine
 
 # Ensure project root is in sys.path for imports
@@ -85,12 +87,36 @@ async def review_assistant_connection(
     company_id: UUID, other_company_id: UUID
 ) -> AsyncIterator[AsyncConnection]:
     from app.core.database import Base
-    from app.infrastructure.persistence.models.economics import Company, Platform
+    from app.infrastructure.persistence.models import Company, Platform
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     try:
         async with engine.begin() as schema_connection:
             await schema_connection.run_sync(Base.metadata.create_all)
+
+            def assert_schema_matches_models(connection: Connection) -> None:
+                inspector = inspect(connection)
+                for table in Base.metadata.tables.values():
+                    actual_columns = {
+                        column["name"] for column in inspector.get_columns(table.name)
+                    }
+                    expected_columns = {column.name for column in table.columns}
+                    assert expected_columns <= actual_columns, (
+                        f"Test database table {table.name!r} is missing columns: "
+                        f"{sorted(expected_columns - actual_columns)}"
+                    )
+
+                assert "external_id" in {
+                    column["name"] for column in inspector.get_columns("reviews")
+                }
+                assert "generated_reply" in {
+                    column["name"] for column in inspector.get_columns("reviews")
+                }
+                assert "priority" in {
+                    column["name"] for column in inspector.get_columns("outbox_events")
+                }
+
+            await schema_connection.run_sync(assert_schema_matches_models)
 
         async with engine.connect() as connection:
             transaction = await connection.begin()
@@ -145,11 +171,22 @@ async def client(
     review_assistant_connection: AsyncConnection,
     rate_limit_pool: _FakeRateLimitPool,
     pii_sanitizer: AsyncMock,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[httpx.AsyncClient]:
+    from app.core import database
     from app.core.auth import get_current_tenant
     from app.core.dependencies import get_tenant_db
     from app.core.pii_sanitizer import PIISanitizer
     from app.main import app
+
+    def test_session_factory() -> AsyncSession:
+        return AsyncSession(
+            bind=review_assistant_connection,
+            join_transaction_mode="create_savepoint",
+            expire_on_commit=False,
+        )
+
+    monkeypatch.setattr(database, "AsyncSessionLocal", test_session_factory)
 
     async def get_test_pii_sanitizer() -> AsyncMock:
         return pii_sanitizer

@@ -146,6 +146,23 @@ def test_outbox_relay_claim_ack_migration_supports_processing_leases() -> None:
     assert "SET status = p_status" in sql
 
 
+def test_priority_and_generated_reply_migration_matches_models() -> None:
+    filename = "049_add_priority_and_generated_reply.sql"
+    assert filename in MIGRATIONS
+
+    statements = migration_statements(
+        (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    )
+    assert any(
+        "ADD COLUMN IF NOT EXISTS priority integer NOT NULL DEFAULT 1" in statement
+        for statement in statements
+    )
+    assert any(
+        "ADD COLUMN IF NOT EXISTS generated_reply text" in statement
+        for statement in statements
+    )
+
+
 def test_anti_crisis_radar_migration_is_registered_and_tenant_isolated() -> None:
     filename = "041_anti_crisis_radar.sql"
     assert filename in MIGRATIONS

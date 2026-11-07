@@ -49,6 +49,7 @@ class ReviewResponse(BaseModel):
     threat_level: int | None
     suggested_reply: str | None
     auto_reply: str | None
+    generated_reply: str | None = Field(None, description="AI-generated reply from LLM")
     financial_impact: float
     created_at: datetime
     updated_at: datetime | None

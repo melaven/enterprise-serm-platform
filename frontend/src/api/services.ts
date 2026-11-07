@@ -56,6 +56,7 @@ export interface Review {
   financial_impact: number;
   si_response: string | null;
   auto_reply: string | null;
+  generated_reply?: string | null;
   ai_pending: boolean;
   is_critical: boolean;
   created_at: string;

@@ -20,7 +20,6 @@ Usage:
 """
 
 import os
-from typing import Literal
 
 from openai import AsyncOpenAI as AsyncClient
 from tenacity import (
@@ -31,7 +30,6 @@ from tenacity import (
     wait_exponential,
 )
 
-from app.core.config import get_settings
 from app.core.exceptions import LLMServiceError
 from app.core.logger import get_logger
 
@@ -67,7 +65,9 @@ class LLMReplyGenerator:
             model: Model name (defaults to DEFAULT_MODEL)
             base_url: API base URL (for custom providers)
         """
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")
+        self.api_key = (
+            api_key or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")
+        )
         self.model = model or os.getenv("LLM_MODEL", DEFAULT_MODEL)
         self.base_url = base_url or os.getenv("LLM_BASE_URL")
 
@@ -91,7 +91,7 @@ class LLMReplyGenerator:
             System prompt string
         """
         if rating >= 4:
-            return """You are a polite B2B customer service representative. 
+            return """You are a polite B2B customer service representative.
 Generate a brief, professional thank-you message for a positive review.
 - Thank the customer
 - Express appreciation for their feedback
@@ -118,13 +118,16 @@ Generate a brief, professional apology for a negative review.
 - Empathetic but professional tone
 - Do not make excuses or be defensive"""
 
-    def _log_retry_attempt(self, retry_state: RetryCallState) -> None:
+    @staticmethod
+    def _log_retry_attempt(retry_state: RetryCallState) -> None:
         """Log retry attempts for monitoring."""
         logger.warning(
             "llm_reply_generation_retry",
             attempt=retry_state.attempt_number,
             max_attempts=MAX_RETRIES,
-            exception=str(retry_state.outcome.exception()) if retry_state.outcome else None,
+            exception=str(retry_state.outcome.exception())
+            if retry_state.outcome
+            else None,
         )
 
     def _is_retryable_error(self, exception: Exception) -> bool:

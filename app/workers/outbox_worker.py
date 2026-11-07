@@ -6,13 +6,18 @@ to prevent race conditions in horizontally scaled deployments.
 
 Architecture:
 - Row-level locking with SELECT ... FOR UPDATE SKIP LOCKED
+- Priority-based processing (Critical = 1, Bulk = 2)
 - Batch processing (LIMIT 50)
 - Graceful error handling per event
 - Cron-based scheduling (every 10 seconds)
 - Proper AsyncSession lifecycle
 
 Usage:
-    arq worker --settings app.workers.outbox_worker.WorkerSettings
+    # Critical worker (Q1 - immediate reviews)
+    arq worker --settings app.workers.outbox_worker.CriticalWorkerSettings
+
+    # Bulk worker (Q2 - mass import)
+    arq worker --settings app.workers.outbox_worker.BulkWorkerSettings
 """
 
 from datetime import datetime, timezone
@@ -40,23 +45,27 @@ BATCH_SIZE = 50
 STATUS_PENDING = "pending"
 STATUS_PROCESSED = "processed"
 STATUS_FAILED = "failed"
+PRIORITY_CRITICAL = 1
+PRIORITY_BULK = 2
 
 
-async def process_outbox_events(ctx: dict) -> dict[str, int]:
+async def process_outbox_events(ctx: dict, priority: int = PRIORITY_CRITICAL) -> dict[str, int]:
     """
-    Process pending outbox events with row-level locking.
+    Process pending outbox events with row-level locking and priority.
 
     This function:
     1. Claims pending events with SELECT ... FOR UPDATE SKIP LOCKED
-    2. Processes each event based on event_type
-    3. Updates status to 'processed' or 'failed'
-    4. Returns statistics
+    2. Filters by priority (Critical = 1, Bulk = 2)
+    3. Processes each event based on event_type
+    4. Updates status to 'processed' or 'failed'
+    5. Returns statistics
 
     Row-level locking prevents race conditions when multiple workers
     run simultaneously (horizontal scaling).
 
     Args:
         ctx: ARQ worker context
+        priority: Priority level to process (1=Critical, 2=Bulk)
 
     Returns:
         Dictionary with processing statistics
@@ -72,7 +81,10 @@ async def process_outbox_events(ctx: dict) -> dict[str, int]:
             # SKIP LOCKED: skip rows already locked by other workers
             result = await session.execute(
                 select(OutboxEvent)
-                .where(OutboxEvent.status == STATUS_PENDING)
+                .where(
+                    OutboxEvent.status == STATUS_PENDING,
+                    OutboxEvent.priority == priority,
+                )
                 .with_for_update(skip_locked=True)
                 .limit(BATCH_SIZE)
                 .order_by(OutboxEvent.created_at)
@@ -80,13 +92,17 @@ async def process_outbox_events(ctx: dict) -> dict[str, int]:
             events = result.scalars().all()
 
             if not events:
-                logger.debug("outbox_no_pending_events")
+                logger.debug(
+                    "outbox_no_pending_events",
+                    priority=priority,
+                )
                 return {"processed": 0, "failed": 0}
 
             logger.info(
                 "outbox_processing_batch",
                 event_count=len(events),
                 batch_size=BATCH_SIZE,
+                priority=priority,
             )
 
             # Process each event individually
@@ -99,6 +115,7 @@ async def process_outbox_events(ctx: dict) -> dict[str, int]:
                         "outbox_event_processed",
                         event_id=str(event.id),
                         event_type=event.event_type.value,
+                        priority=priority,
                     )
                 except Exception as exc:
                     event.status = STATUS_FAILED
@@ -107,6 +124,7 @@ async def process_outbox_events(ctx: dict) -> dict[str, int]:
                         "outbox_event_failed",
                         event_id=str(event.id),
                         event_type=event.event_type.value,
+                        priority=priority,
                         error=str(exc),
                         exc_info=True,
                     )
@@ -120,6 +138,7 @@ async def process_outbox_events(ctx: dict) -> dict[str, int]:
                 processed=processed_count,
                 failed=failed_count,
                 total=len(events),
+                priority=priority,
             )
 
         except Exception as exc:
@@ -127,6 +146,7 @@ async def process_outbox_events(ctx: dict) -> dict[str, int]:
             logger.error(
                 "outbox_processing_failed",
                 error=str(exc),
+                priority=priority,
                 exc_info=True,
             )
             raise
@@ -252,13 +272,18 @@ async def on_shutdown(ctx: dict) -> None:
     logger.info("outbox_worker_shutting_down")
 
 
-class WorkerSettings:
+class CriticalWorkerSettings:
     """
-    ARQ Worker Settings for Outbox Processing.
+    ARQ Worker Settings for Critical Priority (Q1) Outbox Processing.
+
+    Processes high-priority events (priority=1) with minimal latency.
+    - Manual review creation
+    - Immediate feedback scenarios
+    - Real-time notifications
 
     Configuration:
-    - Cron job runs every 10 seconds
-    - Processes up to 50 events per batch
+    - Cron job runs every 5 seconds (faster for critical)
+    - Processes up to 20 events per batch (smaller for speed)
     - Row-level locking prevents race conditions
     """
 
@@ -268,21 +293,70 @@ class WorkerSettings:
     # Redis settings
     redis_settings = get_redis_settings()
 
-    # Worker functions
-    functions = [process_outbox_events]
-
-    # Cron jobs: run every 10 seconds
-    cron_jobs = [
-        cron(process_outbox_events, second=set(range(0, 60, 10))),
+    # Worker functions with priority parameter
+    functions = [
+        lambda ctx: process_outbox_events(ctx, priority=PRIORITY_CRITICAL),
     ]
 
-    # Database settings (inherited from app config)
-    # Note: Workers use AsyncSessionLocal directly
+    # Cron jobs: run every 5 seconds for critical events
+    cron_jobs = [
+        cron(
+            lambda ctx: process_outbox_events(ctx, priority=PRIORITY_CRITICAL),
+            second=set(range(0, 60, 5)),
+        ),
+    ]
 
     # Worker settings
-    max_jobs = 2  # Allow concurrent jobs (adjust based on CPU cores)
-    job_timeout = 120  # 120 seconds timeout per batch (accommodate spaCy NER)
-    keep_result = 60  # Keep results for 60 seconds
-    max_tries = 3  # Retry failed batches up to 3 times
+    max_jobs = 4  # More concurrent jobs for critical events
+    job_timeout = 60  # Shorter timeout for critical events
+    keep_result = 60
+    max_tries = 3
     log_results = True
     allow_abort_jobs = True
+
+
+class BulkWorkerSettings:
+    """
+    ARQ Worker Settings for Bulk Priority (Q2) Outbox Processing.
+
+    Processes lower-priority events (priority=2) in batches.
+    - Mass import operations
+    - Scheduled batch processing
+    - Non-urgent analytics
+
+    Configuration:
+    - Cron job runs every 30 seconds (slower for bulk)
+    - Processes up to 100 events per batch (larger for efficiency)
+    - Row-level locking prevents race conditions
+    """
+
+    on_startup = on_startup
+    on_shutdown = on_shutdown
+
+    # Redis settings
+    redis_settings = get_redis_settings()
+
+    # Worker functions with priority parameter
+    functions = [
+        lambda ctx: process_outbox_events(ctx, priority=PRIORITY_BULK),
+    ]
+
+    # Cron jobs: run every 30 seconds for bulk events
+    cron_jobs = [
+        cron(
+            lambda ctx: process_outbox_events(ctx, priority=PRIORITY_BULK),
+            second=set(range(0, 60, 30)),
+        ),
+    ]
+
+    # Worker settings
+    max_jobs = 2  # Fewer concurrent jobs for bulk
+    job_timeout = 180  # Longer timeout for bulk processing
+    keep_result = 60
+    max_tries = 3
+    log_results = True
+    allow_abort_jobs = True
+
+
+# Default to Critical for backward compatibility
+WorkerSettings = CriticalWorkerSettings

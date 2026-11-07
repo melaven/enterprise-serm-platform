@@ -23,6 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
+from app.core.llm_reply_generator import LLMReplyGenerator
 from app.core.logger import get_logger
 from app.core.pii_sanitizer import PIISanitizer
 from app.core.redis import get_redis_settings
@@ -140,7 +141,8 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
     For REVIEW_CREATED events:
     1. Fetch the review by review_id
     2. Sanitize the review text using PIISanitizer
-    3. Update the review with sanitized text
+    3. Generate AI reply using LLMReplyGenerator
+    4. Update the review with sanitized text and generated reply
 
     Args:
         session: AsyncSession for DB operations
@@ -148,7 +150,7 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
 
     Raises:
         ValueError: If event type is unsupported
-        Exception: If processing fails
+        Exception: If processing fails (will trigger ARQ retry)
     """
     event_type = event.event_type
     payload = event.payload
@@ -168,20 +170,16 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
 
         if not review:
             logger.warning(
-                "review_not_found_for_sanitization",
+                "review_not_found_for_processing",
                 event_id=str(event.id),
                 review_id=str(review_id),
             )
             raise ValueError(f"Review {review_id} not found")
 
-        # Initialize or get PIISanitizer instance
+        # Step 1: Sanitize text using PIISanitizer
         sanitizer = await PIISanitizer.get_instance()
-
-        # Sanitize the review text
         original_text = review.text
         sanitized_text = await sanitizer.sanitize_async(original_text)
-
-        # Update review with sanitized text
         review.text = sanitized_text
 
         logger.info(
@@ -192,6 +190,39 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
             original_length=len(original_text),
             sanitized_length=len(sanitized_text),
         )
+
+        # Step 2: Generate AI reply using LLMReplyGenerator
+        try:
+            llm_generator = LLMReplyGenerator()
+            generated_reply = await llm_generator.generate_reply(
+                text=sanitized_text,
+                rating=review.rating,
+            )
+            review.generated_reply = generated_reply
+
+            logger.info(
+                "review_reply_generated",
+                event_id=str(event.id),
+                review_id=str(review_id),
+                tenant_id=str(tenant_id),
+                rating=review.rating,
+                reply_length=len(generated_reply),
+            )
+        except Exception as exc:
+            # LLM failure should not block the entire outbox processing
+            # Log the error but don't fail the event (reply can be generated later)
+            logger.error(
+                "review_reply_generation_failed",
+                event_id=str(event.id),
+                review_id=str(review_id),
+                tenant_id=str(tenant_id),
+                error=str(exc),
+                exc_info=True,
+            )
+            # Do not raise - allow sanitization to succeed
+        finally:
+            await llm_generator.close()
+
     else:
         # Unsupported event type
         raise ValueError(f"Unsupported event type: {event_type.value}")

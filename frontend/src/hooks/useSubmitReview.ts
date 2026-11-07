@@ -11,9 +11,8 @@
 import { useEffect, useRef } from 'react';
 import { useMutation, useQueryClient, type UseMutationOptions } from '@tanstack/react-query';
 
-import { apiClient } from '@/api/client';
+import { apiClient, type Review } from '@/api/services';
 import { reviewsKeys } from '@/hooks/api/useReviews';
-import type { Review } from '@/api/services';
 
 export interface SubmitReviewInput {
   platform: string;
@@ -81,22 +80,22 @@ export function useSubmitReview(
       }
     },
 
-    onSuccess: (data, variables, context) => {
+    onSuccess: (data, variables, context, mutationContext) => {
       // Invalidate reviews cache to fetch new data
       queryClient.invalidateQueries({ queryKey: reviewsKeys.all });
-      options?.onSuccess?.(data, variables, context);
+      options?.onSuccess?.(data, variables, context, mutationContext);
     },
 
-    onError: (error, variables, context) => {
+    onError: (error, variables, context, mutationContext) => {
       // Don't log if it's a cancellation
       if (error.message !== 'Request cancelled') {
         console.error('Failed to submit review:', error);
       }
-      options?.onError?.(error, variables, context);
+      options?.onError?.(error, variables, context, mutationContext);
     },
 
-    onSettled: (data, error, variables, context) => {
-      options?.onSettled?.(data, error, variables, context);
+    onSettled: (data, error, variables, context, mutationContext) => {
+      options?.onSettled?.(data, error, variables, context, mutationContext);
     },
   });
 

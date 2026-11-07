@@ -10,9 +10,8 @@
 
 import { useMutation, useQueryClient, type QueryKey } from '@tanstack/react-query';
 
-import { apiClient } from '@/api/client';
+import { apiClient, type Review } from '@/api/services';
 import { reviewsKeys } from '@/hooks/api/useReviews';
-import type { Review } from '@/api/services';
 
 interface ArchiveReviewVariables {
   reviewId: string;
@@ -77,7 +76,7 @@ export function useArchiveReview() {
       return { previousData };
     },
 
-    onError: (error, _variables, context) => {
+    onError: (_error, _variables, context) => {
       // Roll back to the previous values on error
       if (context?.previousData) {
         context.previousData.forEach((data, queryKey) => {

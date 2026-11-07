@@ -35,6 +35,11 @@
 import createClient from 'openapi-fetch';
 import type { paths } from './schema';
 
+// schema.d.ts is a placeholder until the backend OpenAPI types are generated.
+// Keep the client usable in the meantime; generated paths restore endpoint typing.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ClientPaths = keyof paths extends never ? any : paths;
+
 // Base URL for the API - can be configured via environment variable
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -45,7 +50,7 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
  * @returns Configured openapi-fetch client
  */
 export function createOpenAPIClient(token?: string) {
-  const client = createClient<paths>({
+  const client = createClient<ClientPaths>({
     baseUrl: BASE_URL,
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
@@ -145,7 +150,7 @@ export const api = {
    */
   getDashboardSummary: async () => {
     const client = createOpenAPIClient();
-    return client.GET('/api/v1/analytics/dashboard');
+    return client.GET('/api/v1/analytics/dashboard', {});
   },
 };
 

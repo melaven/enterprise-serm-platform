@@ -177,6 +177,7 @@ class Review(Base):
     threat_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     suggested_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     draft_response = synonym("suggested_reply")
+    generated_reply: Mapped[str | None] = mapped_column(Text, nullable=True)
     analysis_tags: Mapped[list[str]] = mapped_column(
         JSON().with_variant(JSONB, "postgresql"),
         nullable=False,

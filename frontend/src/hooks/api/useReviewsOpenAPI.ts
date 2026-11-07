@@ -16,8 +16,6 @@ import { useMutation, useQuery, useQueryClient, type QueryKey } from '@tanstack/
 
 import * as demoApi from '@/api/demoService';
 import { api, createOpenAPIClient } from '@/api/openapi-client';
-import { approveDraft } from '@/features/reviews/approveDraftApi';
-import type { ApproveRequest, ApproveResult } from '@/features/reviews/approveDraftLogic';
 import { useAppStore } from '@/store/useAppStore';
 
 export interface ReviewQueryParams {
@@ -244,6 +242,7 @@ export function useAuthenticatedReviews() {
       // Use the authenticated client
       const { data, error } = await client.GET('/api/v1/reviews', {
         params: { query: { page: 1, page_size: 50 } },
+        signal,
       });
 
       if (error) {

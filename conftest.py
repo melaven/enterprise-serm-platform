@@ -3,6 +3,7 @@
 import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import httpx
@@ -143,10 +144,15 @@ async def client(
     company_id: UUID,
     review_assistant_connection: AsyncConnection,
     rate_limit_pool: _FakeRateLimitPool,
+    pii_sanitizer: AsyncMock,
 ) -> AsyncIterator[httpx.AsyncClient]:
     from app.core.auth import get_current_tenant
     from app.core.dependencies import get_tenant_db
+    from app.core.pii_sanitizer import PIISanitizer
     from app.main import app
+
+    async def get_test_pii_sanitizer() -> AsyncMock:
+        return pii_sanitizer
 
     async def tenant_from_header(
         x_test_tenant: UUID = Header(alias="X-Test-Tenant"),
@@ -168,9 +174,12 @@ async def client(
 
     previous_tenant = app.dependency_overrides.get(get_current_tenant)
     previous_database = app.dependency_overrides.get(get_tenant_db)
+    sanitizer_dependency = PIISanitizer.get_instance
+    previous_sanitizer = app.dependency_overrides.get(sanitizer_dependency)
     previous_redis_pool = app.state.redis_pool
     app.dependency_overrides[get_current_tenant] = tenant_from_header
     app.dependency_overrides[get_tenant_db] = test_database_session
+    app.dependency_overrides[sanitizer_dependency] = get_test_pii_sanitizer
     app.state.redis_pool = rate_limit_pool
 
     try:
@@ -189,4 +198,17 @@ async def client(
             app.dependency_overrides.pop(get_tenant_db, None)
         else:
             app.dependency_overrides[get_tenant_db] = previous_database
+        if previous_sanitizer is None:
+            app.dependency_overrides.pop(sanitizer_dependency, None)
+        else:
+            app.dependency_overrides[sanitizer_dependency] = previous_sanitizer
         app.state.redis_pool = previous_redis_pool
+
+
+@pytest.fixture
+def pii_sanitizer() -> AsyncMock:
+    from app.core.pii_sanitizer import PIISanitizer
+
+    sanitizer = AsyncMock(spec=PIISanitizer)
+    sanitizer.sanitize_async.return_value = "ОЧИЩЕНО"
+    return sanitizer

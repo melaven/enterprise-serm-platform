@@ -322,55 +322,34 @@ async def test_create_review_encrypts_source_and_writes_analysis_outbox(
     company_id,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
+    pii_sanitizer,
 ):
     from app.application.reviews import service as review_service
-    from app.core.pii_sanitizer import PIISanitizer
     from app.infrastructure.persistence.models.review_analysis_payload import (
         ReviewAnalysisPayload,
     )
-    from app.main import app
 
     source_text = "A confidential customer review."
-    sanitized_text = "A [MASKED] customer review."
-    sanitized_inputs: list[str] = []
     encrypted_inputs: list[str] = []
-
-    class FakeSanitizer:
-        async def sanitize_async(self, text: str) -> str:
-            sanitized_inputs.append(text)
-            return sanitized_text
-
-    async def get_fake_sanitizer() -> FakeSanitizer:
-        return FakeSanitizer()
 
     def encrypt_source(text: str) -> str:
         encrypted_inputs.append(text)
         return "encrypted-source"
 
     monkeypatch.setattr(review_service, "encrypt_token", encrypt_source)
-    sanitizer_dependency = PIISanitizer.get_instance
-    previous_sanitizer = app.dependency_overrides.get(sanitizer_dependency)
-    app.dependency_overrides[sanitizer_dependency] = get_fake_sanitizer
-
-    try:
-        response = await client.post(
-            "/api/v1/reviews/",
-            json={
-                "platform_id": str(company_id),
-                "rating": 2,
-                "text": source_text,
-                "author_name": "Customer",
-            },
-        )
-    finally:
-        if previous_sanitizer is None:
-            app.dependency_overrides.pop(sanitizer_dependency, None)
-        else:
-            app.dependency_overrides[sanitizer_dependency] = previous_sanitizer
+    response = await client.post(
+        "/api/v1/reviews/",
+        json={
+            "platform_id": str(company_id),
+            "rating": 2,
+            "text": source_text,
+            "author_name": "Customer",
+        },
+    )
 
     assert response.status_code == 201
-    assert sanitized_inputs == [source_text]
-    assert encrypted_inputs == [sanitized_text]
+    pii_sanitizer.sanitize_async.assert_awaited_once_with(source_text)
+    assert encrypted_inputs == ["ОЧИЩЕНО"]
     review_id = UUID(response.json()["id"])
     stored_review = await db_session.get(Review, review_id)
     assert stored_review is not None

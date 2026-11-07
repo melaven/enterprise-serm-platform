@@ -24,7 +24,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.core.logger import get_logger
+from app.core.pii_sanitizer import PIISanitizer
 from app.core.redis import get_redis_settings
+from app.infrastructure.persistence.models.economics import Review
 from app.infrastructure.persistence.models.outbox_event import (
     OutboxEvent,
     OutboxEventType,
@@ -135,6 +137,11 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
     """
     Process a single outbox event based on its type.
 
+    For REVIEW_CREATED events:
+    1. Fetch the review by review_id
+    2. Sanitize the review text using PIISanitizer
+    3. Update the review with sanitized text
+
     Args:
         session: AsyncSession for DB operations
         event: OutboxEvent to process
@@ -147,17 +154,44 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
     payload = event.payload
 
     if event_type == OutboxEventType.REVIEW_CREATED:
-        # Simulate processing: log the event
-        # In production, this would trigger actual business logic
-        logger.info(
-            "review_created_event",
-            event_id=str(event.id),
-            review_id=payload.get("review_id"),
-            tenant_id=payload.get("tenant_id"),
-            payload=payload,
+        review_id = payload.get("review_id")
+        tenant_id = payload.get("tenant_id")
+
+        if not review_id:
+            raise ValueError("review_id is required in payload")
+
+        # Fetch the review from database
+        result = await session.execute(
+            select(Review).where(Review.id == review_id)
         )
-        # Example: could trigger notification, webhook, etc.
-        # await send_notification(payload)
+        review = result.scalar_one_or_none()
+
+        if not review:
+            logger.warning(
+                "review_not_found_for_sanitization",
+                event_id=str(event.id),
+                review_id=str(review_id),
+            )
+            raise ValueError(f"Review {review_id} not found")
+
+        # Initialize or get PIISanitizer instance
+        sanitizer = await PIISanitizer.get_instance()
+
+        # Sanitize the review text
+        original_text = review.text
+        sanitized_text = await sanitizer.sanitize_async(original_text)
+
+        # Update review with sanitized text
+        review.text = sanitized_text
+
+        logger.info(
+            "review_text_sanitized",
+            event_id=str(event.id),
+            review_id=str(review_id),
+            tenant_id=str(tenant_id),
+            original_length=len(original_text),
+            sanitized_length=len(sanitized_text),
+        )
     else:
         # Unsupported event type
         raise ValueError(f"Unsupported event type: {event_type.value}")
@@ -166,8 +200,18 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
 async def on_startup(ctx: dict) -> None:
     """
     Worker startup initialization.
+    Initializes PIISanitizer to load spaCy model in worker process.
     """
     logger.info("outbox_worker_starting")
+
+    # Initialize PIISanitizer to load spaCy model
+    # This ensures the model is loaded before any processing begins
+    try:
+        await PIISanitizer.get_instance()
+        logger.info("pii_sanitizer_initialized")
+    except Exception as exc:
+        logger.error("pii_sanitizer_init_failed", error=str(exc), exc_info=True)
+        raise
 
 
 async def on_shutdown(ctx: dict) -> None:
@@ -205,8 +249,8 @@ class WorkerSettings:
     # Note: Workers use AsyncSessionLocal directly
 
     # Worker settings
-    max_jobs = 1  # Only one outbox processing job at a time
-    job_timeout = 60  # 60 seconds timeout per batch
+    max_jobs = 2  # Allow concurrent jobs (adjust based on CPU cores)
+    job_timeout = 120  # 120 seconds timeout per batch (accommodate spaCy NER)
     keep_result = 60  # Keep results for 60 seconds
     max_tries = 3  # Retry failed batches up to 3 times
     log_results = True

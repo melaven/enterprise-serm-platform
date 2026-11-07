@@ -17,6 +17,7 @@ LEGACY_QUEUE: Final = "arq:queue"
 
 TASK_CRITICAL_DRAFTS: Final = "generate_drafts_task"
 TASK_PUBLISH_REPLY: Final = "publish_review_reply"
+TASK_PUBLISH_GENERATED_REPLY: Final = "publish_generated_reply"
 TASK_PROCESS_REVIEW: Final = "process_review_task"
 TASK_PROCESS_INGESTION: Final = "process_review_ingestion"
 TASK_SEND_WEEKLY_DIGEST: Final = "send_company_weekly_digest"
@@ -25,6 +26,7 @@ TASK_ROUTES: Final = MappingProxyType(
     {
         TASK_CRITICAL_DRAFTS: Queue.CRITICAL,
         TASK_PUBLISH_REPLY: Queue.CRITICAL,
+        TASK_PUBLISH_GENERATED_REPLY: Queue.CRITICAL,
         TASK_PROCESS_REVIEW: Queue.BULK,
         TASK_PROCESS_INGESTION: Queue.BULK,
         TASK_SEND_WEEKLY_DIGEST: Queue.BULK,

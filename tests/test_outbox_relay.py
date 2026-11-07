@@ -237,6 +237,47 @@ async def test_outbox_relay_enqueues_platform_reply_job(
 
 
 @pytest.mark.asyncio
+async def test_outbox_relay_enqueues_generated_reply_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid4()
+    event_id = uuid4()
+    payload = {
+        "tenant_id": str(tenant_id),
+        "review_id": str(uuid4()),
+    }
+    calls: list[str] = []
+    active_transactions: set[str] = set()
+    event = {
+        "id": event_id,
+        "event_type": "review.reply.publish_requested",
+        "payload": payload,
+    }
+
+    async def enqueue_job(*args, **kwargs):
+        assert not active_transactions
+        calls.append("enqueue")
+
+    queue = SimpleNamespace(enqueue_job=AsyncMock(side_effect=enqueue_job))
+    monkeypatch.setattr(
+        worker,
+        "AsyncSessionLocal",
+        _session_factory(tenant_id, event, calls, active_transactions),
+    )
+    monkeypatch.setattr(worker, "set_tenant_rls_context", AsyncMock())
+
+    result = await worker.relay_outbox_events({"redis": queue})
+
+    assert result == {"delivered": 1, "failed": 0}
+    queue.enqueue_job.assert_awaited_once_with(
+        "publish_generated_reply",
+        payload,
+        _queue_name=Queue.CRITICAL.value,
+        _job_id=f"publish-generated-review-reply-{event_id}",
+    )
+
+
+@pytest.mark.asyncio
 async def test_outbox_relay_marks_invalid_event_failed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

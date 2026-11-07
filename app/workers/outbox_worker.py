@@ -20,9 +20,6 @@ Usage:
     arq worker --settings app.workers.outbox_worker.BulkWorkerSettings
 """
 
-from datetime import datetime, timezone
-from uuid import UUID
-
 from arq import cron
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,7 +46,9 @@ PRIORITY_CRITICAL = 1
 PRIORITY_BULK = 2
 
 
-async def process_outbox_events(ctx: dict, priority: int = PRIORITY_CRITICAL) -> dict[str, int]:
+async def process_outbox_events(
+    ctx: dict, priority: int = PRIORITY_CRITICAL
+) -> dict[str, int]:
     """
     Process pending outbox events with row-level locking and priority.
 
@@ -183,9 +182,7 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
             raise ValueError("review_id is required in payload")
 
         # Fetch the review from database
-        result = await session.execute(
-            select(Review).where(Review.id == review_id)
-        )
+        result = await session.execute(select(Review).where(Review.id == review_id))
         review = result.scalar_one_or_none()
 
         if not review:
@@ -219,6 +216,7 @@ async def _process_single_event(session: AsyncSession, event: OutboxEvent) -> No
                 rating=review.rating,
             )
             review.generated_reply = generated_reply
+            review.reply_status = "draft"
 
             logger.info(
                 "review_reply_generated",

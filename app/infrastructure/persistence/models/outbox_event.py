@@ -13,6 +13,7 @@ from app.core.database import Base
 
 class OutboxEventType(str, Enum):
     REVIEW_ANALYSIS_REQUESTED = "review.analysis.requested"
+    REVIEW_REPLY_PUBLISH_REQUESTED = "review.reply.publish_requested"
     TRIGGER_EMERGENCY_ALERT = "trigger_emergency_alert"
     PUBLISH_REVIEW_REPLY = "publish_review_reply"
     REVIEW_CREATED = "review_created"

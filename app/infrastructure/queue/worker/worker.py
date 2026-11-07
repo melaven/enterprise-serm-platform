@@ -48,6 +48,9 @@ from app.infrastructure.queue.worker.digest import (
     send_company_weekly_digest,
 )
 from app.infrastructure.queue.worker.draft_tasks import generate_drafts_task
+from app.infrastructure.queue.worker.generated_reply_tasks import (
+    publish_review_reply as publish_generated_reply_task,
+)
 from app.infrastructure.queue.worker.reply_tasks import publish_review_reply
 from app.workers.tasks.ingestion import process_review_ingestion
 
@@ -56,6 +59,13 @@ logger = get_logger(__name__)
 OUTBOX_BATCH_SIZE = 50
 OUTBOX_ANALYSIS_EVENT = "review.analysis.requested"
 OUTBOX_REPLY_PUBLISH_EVENT = "publish_review_reply"
+OUTBOX_GENERATED_REPLY_EVENT = "review.reply.publish_requested"
+
+
+async def publish_generated_reply(
+    ctx: dict[str, Any], event_payload: dict[str, Any]
+) -> None:
+    await publish_generated_reply_task(ctx, event_payload)
 
 
 async def process_review_task(
@@ -300,7 +310,18 @@ async def relay_outbox_events(ctx: dict[str, Any]) -> dict[str, int]:
             job_kwargs: dict[str, Any]
 
             try:
-                if event_type == OUTBOX_REPLY_PUBLISH_EVENT and isinstance(
+                if event_type == OUTBOX_GENERATED_REPLY_EVENT and isinstance(
+                    payload, dict
+                ):
+                    event_tenant_id = UUID(str(payload["tenant_id"]))
+                    UUID(str(payload["review_id"]))
+                    if event_tenant_id != tenant_id:
+                        raise ValueError("Outbox event tenant does not match claim")
+                    job_args = ("publish_generated_reply", payload)
+                    job_kwargs = {
+                        "_job_id": f"publish-generated-review-reply-{event['id']}"
+                    }
+                elif event_type == OUTBOX_REPLY_PUBLISH_EVENT and isinstance(
                     payload, dict
                 ):
                     event_tenant_id = UUID(str(payload["tenant_id"]))
@@ -403,6 +424,7 @@ class LegacyWorkerSettings:
     redis_settings = get_redis_settings()
     functions = [
         process_review_task,
+        publish_generated_reply,
         publish_review_reply,
         relay_outbox_events,
         process_review_ingestion,
@@ -427,7 +449,11 @@ class CriticalWorkerSettings:
     on_shutdown: Any
     queue_name = Queue.CRITICAL.value
     redis_settings = get_redis_settings()
-    functions = [generate_drafts_task, publish_review_reply]
+    functions = [
+        generate_drafts_task,
+        publish_generated_reply,
+        publish_review_reply,
+    ]
     cron_jobs: list[Any] = []
     timezone = timezone.utc
     max_jobs = 4

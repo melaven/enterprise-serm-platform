@@ -13,6 +13,7 @@ from app.core.queues import (
     TASK_CRITICAL_DRAFTS,
     TASK_PROCESS_INGESTION,
     TASK_PROCESS_REVIEW,
+    TASK_PUBLISH_GENERATED_REPLY,
     TASK_PUBLISH_REPLY,
     TASK_ROUTES,
     TASK_SEND_WEEKLY_DIGEST,
@@ -73,6 +74,7 @@ def test_queues_are_distinct_redis_keys_and_not_the_default() -> None:
 def test_every_task_has_exactly_one_queue_and_unknown_task_fails_fast() -> None:
     assert queue_for(TASK_CRITICAL_DRAFTS) is Queue.CRITICAL
     assert queue_for(TASK_PUBLISH_REPLY) is Queue.CRITICAL
+    assert queue_for(TASK_PUBLISH_GENERATED_REPLY) is Queue.CRITICAL
     assert queue_for(TASK_PROCESS_REVIEW) is Queue.BULK
     assert queue_for(TASK_PROCESS_INGESTION) is Queue.BULK
     assert queue_for(TASK_SEND_WEEKLY_DIGEST) is Queue.BULK

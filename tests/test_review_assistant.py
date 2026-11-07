@@ -14,7 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.schemas.economics import ReplyModerationStatus, ReviewStatus
 from app.application.reviews.service import ReviewApplicationService
 from app.infrastructure.persistence.models.economics import Review
-from app.infrastructure.persistence.models.outbox_event import OutboxEvent
+from app.infrastructure.persistence.models.outbox_event import (
+    OutboxEvent,
+    OutboxEventType,
+)
 from app.infrastructure.persistence.models.review_reply import ReviewReply
 
 
@@ -314,6 +317,96 @@ async def test_generate_reply_rls_denies_access(
 
     response = await client.post(f"/api/v1/reviews/{review.id}/generate-reply")
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_approve_generated_reply_sets_status_and_creates_outbox_event(
+    client: AsyncClient,
+    company_id,
+    db_session: AsyncSession,
+):
+    review = Review(
+        company_id=company_id,
+        platform_id=company_id,
+        platform="google",
+        author_name="Customer",
+        rating=3,
+        text="Average service",
+        generated_reply="Thank you for your feedback.",
+    )
+    db_session.add(review)
+    await db_session.commit()
+
+    response = await client.post(f"/api/v1/reviews/{review.id}/approve")
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "review_id": str(review.id),
+        "reply_status": "approved",
+    }
+    await db_session.refresh(review)
+    assert review.reply_status == "approved"
+
+    event = await db_session.scalar(
+        select(OutboxEvent).where(
+            OutboxEvent.idempotency_key
+            == f"review.reply.publish_requested:{company_id}:{review.id}"
+        )
+    )
+    assert event is not None
+    assert event.event_type == OutboxEventType.REVIEW_REPLY_PUBLISH_REQUESTED
+    assert event.status == "pending"
+    assert event.priority == 1
+    assert event.payload == {
+        "review_id": str(review.id),
+        "tenant_id": str(company_id),
+    }
+
+
+@pytest.mark.asyncio
+async def test_publish_generated_reply_marks_review_published(
+    company_id,
+    db_session: AsyncSession,
+    review_assistant_connection,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from app.infrastructure.queue.worker import generated_reply_tasks
+
+    review = Review(
+        company_id=company_id,
+        platform_id=company_id,
+        platform="google",
+        author_name="Customer",
+        rating=3,
+        text="Average service",
+        generated_reply="Thank you for your feedback.",
+        reply_status="approved",
+    )
+    db_session.add(review)
+    await db_session.commit()
+
+    monkeypatch.setattr(
+        generated_reply_tasks,
+        "AsyncSessionLocal",
+        lambda: AsyncSession(
+            bind=review_assistant_connection,
+            join_transaction_mode="create_savepoint",
+            expire_on_commit=False,
+        ),
+    )
+    monkeypatch.setattr(
+        generated_reply_tasks,
+        "set_tenant_rls_context",
+        AsyncMock(),
+    )
+
+    await generated_reply_tasks.publish_review_reply(
+        {},
+        {"review_id": str(review.id), "tenant_id": str(company_id)},
+    )
+
+    await db_session.refresh(review)
+    assert review.reply_status == "published"
 
 
 @pytest.mark.asyncio

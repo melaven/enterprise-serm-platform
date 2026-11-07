@@ -54,6 +54,10 @@ from app.core.dispatch import enqueue_bulk
 from app.core.pii_sanitizer import PIISanitizer
 from app.core.rate_limit import check_llm_limits
 from app.infrastructure.persistence.models.economics import Review
+from app.infrastructure.persistence.models.outbox_event import (
+    OutboxEvent,
+    OutboxEventType,
+)
 from app.infrastructure.persistence.repositories import ReviewRepository
 from app.infrastructure.persistence.repositories.analytics_repo import (
     get_dashboard_metrics,
@@ -153,6 +157,62 @@ async def publish_review_reply(review_id: UUID) -> JSONResponse:
         status_code=status.HTTP_501_NOT_IMPLEMENTED,
         detail="Reply publishing is disabled because external review IDs are not stored",
     )
+
+
+@router.post(
+    "/{review_id}/approve",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Утвердить сгенерированный AI-ответ",
+)
+async def approve_generated_reply(
+    review_id: UUID,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> dict[str, str]:
+    result = await db.execute(
+        select(Review)
+        .where(Review.id == review_id, Review.company_id == tenant_id)
+        .with_for_update()
+    )
+    review = result.scalar_one_or_none()
+    if review is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Review not found",
+        )
+    if (
+        not isinstance(review.generated_reply, str)
+        or not review.generated_reply.strip()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Review has no generated reply to approve",
+        )
+    if review.reply_status == "published":
+        return {"review_id": str(review.id), "reply_status": "published"}
+
+    idempotency_key = f"review.reply.publish_requested:{tenant_id}:{review.id}"
+    event = await db.scalar(
+        select(OutboxEvent).where(OutboxEvent.idempotency_key == idempotency_key)
+    )
+    if event is None:
+        event = OutboxEvent(
+            event_type=OutboxEventType.REVIEW_REPLY_PUBLISH_REQUESTED,
+            idempotency_key=idempotency_key,
+            payload={
+                "review_id": str(review.id),
+                "tenant_id": str(tenant_id),
+            },
+            priority=1,
+        )
+        db.add(event)
+    elif event.status == "failed":
+        event.status = "pending"
+        event.priority = 1
+
+    review.reply_status = "approved"
+    await db.flush()
+    return {"review_id": str(review.id), "reply_status": review.reply_status}
 
 
 @router.post(

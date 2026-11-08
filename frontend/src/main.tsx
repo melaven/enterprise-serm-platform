@@ -13,7 +13,6 @@ import '@fontsource/inter/600.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 
-import App from './App.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 import { RegisterPage } from './pages/RegisterPage.tsx'
 import { BillingPage } from './pages/BillingPage.tsx'
@@ -21,6 +20,9 @@ import { LandingPage } from './pages/LandingPage.tsx'
 import { ReviewsDashboard } from './features/reviews/ReviewsDashboard.tsx'
 import { SettingsPage } from './pages/SettingsPage.tsx'
 import { ReviewsOverviewPage } from './pages/ReviewsOverviewPage.tsx'
+import DashboardOverview from './pages/DashboardOverview.tsx'
+import SIConfigPage from './pages/SIConfigPage.tsx'
+import IntegrationsPage from './pages/IntegrationsPage.tsx'
 import { ProtectedRoute } from './features/auth/ProtectedRoute.tsx'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from './lib/react-query'
@@ -43,15 +45,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <App />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/billing"
-            element={
-              <ProtectedRoute>
-                <BillingPage />
+                <DashboardOverview />
               </ProtectedRoute>
             }
           />
@@ -68,6 +62,30 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             element={
               <ProtectedRoute>
                 <ReviewsOverviewPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/si-config"
+            element={
+              <ProtectedRoute>
+                <SIConfigPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/integrations"
+            element={
+              <ProtectedRoute>
+                <IntegrationsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/billing"
+            element={
+              <ProtectedRoute>
+                <BillingPage />
               </ProtectedRoute>
             }
           />

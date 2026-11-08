@@ -364,6 +364,87 @@ async def test_approve_generated_reply_sets_status_and_creates_outbox_event(
 
 
 @pytest.mark.asyncio
+async def test_approve_generated_reply_with_edited_content(
+    client: AsyncClient,
+    company_id,
+    db_session: AsyncSession,
+):
+    """Test that approve endpoint accepts optional edited content and overwrites generated_reply."""
+    original_reply = "Original SI-generated reply."
+    edited_reply = "Edited reply with user modifications."
+
+    review = Review(
+        company_id=company_id,
+        platform_id=company_id,
+        platform="yandex",
+        author_name="Test Customer",
+        rating=4,
+        text="Good service overall",
+        generated_reply=original_reply,
+    )
+    db_session.add(review)
+    await db_session.commit()
+
+    # Approve with edited content
+    response = await client.post(
+        f"/api/v1/reviews/{review.id}/approve",
+        json={"content": edited_reply}
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert data["review_id"] == str(review.id)
+    assert data["reply_status"] == "approved"
+
+    # Verify generated_reply was updated with edited content
+    await db_session.refresh(review)
+    assert review.generated_reply == edited_reply
+    assert review.reply_status == "approved"
+
+    # Verify outbox event created
+    event = await db_session.scalar(
+        select(OutboxEvent).where(
+            OutboxEvent.idempotency_key
+            == f"review.reply.publish_requested:{company_id}:{review.id}"
+        )
+    )
+    assert event is not None
+    assert event.event_type == OutboxEventType.REVIEW_REPLY_PUBLISH_REQUESTED
+
+
+@pytest.mark.asyncio
+async def test_approve_generated_reply_without_content_preserves_original(
+    client: AsyncClient,
+    company_id,
+    db_session: AsyncSession,
+):
+    """Test that approve without content parameter preserves original generated_reply."""
+    original_reply = "Original SI-generated reply."
+
+    review = Review(
+        company_id=company_id,
+        platform_id=company_id,
+        platform="2gis",
+        author_name="Another Customer",
+        rating=5,
+        text="Excellent!",
+        generated_reply=original_reply,
+    )
+    db_session.add(review)
+    await db_session.commit()
+
+    # Approve without content (or with null/empty content)
+    response = await client.post(f"/api/v1/reviews/{review.id}/approve")
+
+    assert response.status_code == 202
+
+    # Verify generated_reply unchanged
+    await db_session.refresh(review)
+    assert review.generated_reply == original_reply
+    assert review.reply_status == "approved"
+
+
+@pytest.mark.asyncio
 async def test_publish_generated_reply_marks_review_published(
     company_id,
     db_session: AsyncSession,

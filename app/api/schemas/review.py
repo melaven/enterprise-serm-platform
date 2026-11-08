@@ -33,6 +33,39 @@ class ReviewCreate(BaseModel):
         }
 
 
+class ApproveReplyRequest(BaseModel):
+    """Schema for approving SI-generated reply with optional edit."""
+
+    content: str | None = Field(
+        None,
+        min_length=1,
+        max_length=4000,
+        description="Optional edited reply text. If provided, overwrites generated_reply before approval.",
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "content": "Спасибо за ваш отзыв! Мы учтём ваши замечания и постараемся улучшить сервис."
+            }
+        }
+
+
+class ApproveReplyResponse(BaseModel):
+    """Schema for approve reply response."""
+
+    review_id: str
+    reply_status: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "review_id": "123e4567-e89b-12d3-a456-426614174000",
+                "reply_status": "approved",
+            }
+        }
+
+
 class ReviewResponse(BaseModel):
     """Schema for returning review data with single FSM state field."""
 
@@ -49,7 +82,9 @@ class ReviewResponse(BaseModel):
     threat_level: int | None
     suggested_reply: str | None
     auto_reply: str | None
-    generated_reply: str | None = Field(None, description="AI-generated reply from LLM")
+    generated_reply: str | None = Field(
+        None, description="SI-generated reply from LLM"
+    )
     financial_impact: float
     created_at: datetime
     updated_at: datetime | None

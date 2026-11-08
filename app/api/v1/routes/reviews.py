@@ -34,7 +34,12 @@ from app.api.schemas.economics import (
     SubmitModerationRequest,
 )
 from app.api.schemas.ingest import ReviewIngestPayload, ReviewIngestResponse
-from app.api.schemas.review import ReviewCreate, ReviewResponse
+from app.api.schemas.review import (
+    ApproveReplyRequest,
+    ApproveReplyResponse,
+    ReviewCreate,
+    ReviewResponse,
+)
 from app.application import SentimentService
 from app.application.reviews.anti_crisis import AntiCrisisService
 from app.application.reviews.service import (
@@ -161,14 +166,31 @@ async def publish_review_reply(review_id: UUID) -> JSONResponse:
 
 @router.post(
     "/{review_id}/approve",
+    response_model=ApproveReplyResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Утвердить сгенерированный AI-ответ",
+    summary="Утвердить сгенерированный SI-ответ",
+    description=(
+        "Approve SI-generated reply with optional inline edit. "
+        "If content is provided, it overwrites generated_reply before approval."
+    ),
 )
 async def approve_generated_reply(
     review_id: UUID,
+    payload: ApproveReplyRequest | None = None,
     tenant_id: UUID = Depends(get_current_tenant),
     db: AsyncSession = Depends(get_tenant_db),
-) -> dict[str, str]:
+) -> ApproveReplyResponse:
+    """
+    Approve SI-generated reply with optional content override.
+
+    **Workflow:**
+    1. Validate review exists and has generated_reply
+    2. If payload.content is provided and non-empty, overwrite generated_reply
+    3. Set reply_status = "approved"
+    4. Create/update OutboxEvent for publish request
+
+    **Idempotency:** Multiple calls with same review_id are safe (no duplicate events)
+    """
     result = await db.execute(
         select(Review)
         .where(Review.id == review_id, Review.company_id == tenant_id)
@@ -189,7 +211,13 @@ async def approve_generated_reply(
             detail="Review has no generated reply to approve",
         )
     if review.reply_status == "published":
-        return {"review_id": str(review.id), "reply_status": "published"}
+        return ApproveReplyResponse(
+            review_id=str(review.id), reply_status="published"
+        )
+
+    # If content is provided, overwrite generated_reply with edited text
+    if payload is not None and payload.content and payload.content.strip():
+        review.generated_reply = payload.content.strip()
 
     idempotency_key = f"review.reply.publish_requested:{tenant_id}:{review.id}"
     event = await db.scalar(
@@ -212,7 +240,9 @@ async def approve_generated_reply(
 
     review.reply_status = "approved"
     await db.flush()
-    return {"review_id": str(review.id), "reply_status": review.reply_status}
+    return ApproveReplyResponse(
+        review_id=str(review.id), reply_status=review.reply_status
+    )
 
 
 @router.post(

@@ -1,4 +1,4 @@
-import { BarChart3, Inbox, LogOut, Menu, Settings, X, type LucideIcon } from 'lucide-react';
+import { BarChart3, Inbox, LogOut, Menu, X, Sparkles, Plug, type LucideIcon } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 
@@ -15,9 +15,10 @@ interface NavItem {
 }
 
 const NAV: readonly NavItem[] = [
-  { to: '/', label: 'Аналитика', icon: BarChart3 },
+  { to: '/dashboard', label: 'Дашборд', icon: BarChart3 },
   { to: '/reviews', label: 'Отзывы', icon: Inbox },
-  { to: '/settings', label: 'Настройки', icon: Settings },
+  { to: '/si-config', label: 'Конфигурация SI', icon: Sparkles },
+  { to: '/integrations', label: 'Интеграции', icon: Plug },
 ];
 
 export interface DashboardLayoutProps {
@@ -35,12 +36,12 @@ export interface DashboardLayoutProps {
 
 function Logo() {
   return (
-    <div className="flex h-16 items-center gap-3 border-b border-chrome-600 px-6">
+    <div className="flex h-16 items-center gap-3 border-b border-slate-700 px-6">
       <span
         aria-hidden="true"
-        className="flex size-8 items-center justify-center rounded-sm bg-plum text-sm font-bold text-white"
+        className="flex size-8 items-center justify-center rounded-sm bg-slate-900 text-sm font-bold text-white"
       >
-        T
+        S
       </span>
       <span className="text-sm font-semibold uppercase tracking-wider text-white">SentiGuard</span>
     </div>
@@ -55,11 +56,11 @@ function SidebarNav() {
           <li key={to}>
             <NavLink
               to={to}
-              end={to === '/'}
+              end={to === '/dashboard'}
               className={({ isActive }) =>
                 isActive
-                  ? 'flex items-center gap-3 px-6 py-3 text-sm transition-all duration-200 ease-in-out bg-ink-900 text-white border-l-2 border-lime'
-                  : 'flex items-center gap-3 px-6 py-3 text-sm transition-all duration-200 ease-in-out text-chrome-400 hover:text-white hover:bg-ink-950 border-l-2 border-transparent'
+                  ? 'flex items-center gap-3 px-6 py-3 text-sm transition-all duration-200 ease-in-out bg-slate-900 text-white border-l-2 border-slate-50'
+                  : 'flex items-center gap-3 px-6 py-3 text-sm transition-all duration-200 ease-in-out text-slate-400 hover:text-white hover:bg-slate-900/50 border-l-2 border-transparent'
               }
             >
               <Icon className="size-5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
@@ -94,7 +95,7 @@ export function DashboardLayout({
     <>
       <div className="flex h-screen bg-ink text-chrome-300">
         {/* Desktop Sidebar */}
-        <aside className="hidden w-72 shrink-0 flex-col border-r border-chrome-600 bg-ink-900 md:flex">
+        <aside className="hidden w-72 shrink-0 flex-col border-r border-slate-700 bg-slate-800 md:flex">
           <Logo />
           <SidebarNav />
           
@@ -106,23 +107,23 @@ export function DashboardLayout({
         {mobileMenuOpen && (
           <>
             <div
-              className="fixed inset-0 z-40 bg-ink/90 md:hidden"
+              className="fixed inset-0 z-40 bg-slate-900/90 md:hidden"
               onClick={() => setMobileMenuOpen(false)}
             />
-            <aside className="fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-chrome-600 bg-ink-900 md:hidden">
-              <div className="flex h-16 items-center justify-between border-b border-chrome-600 px-6">
+            <aside className="fixed left-0 top-0 z-50 flex h-full w-72 flex-col border-r border-slate-700 bg-slate-800 md:hidden">
+              <div className="flex h-16 items-center justify-between border-b border-slate-700 px-6">
                 <div className="flex items-center gap-3">
                   <span
                     aria-hidden="true"
-                    className="flex size-8 items-center justify-center rounded-sm bg-plum text-sm font-bold text-white"
+                    className="flex size-8 items-center justify-center rounded-sm bg-slate-900 text-sm font-bold text-white"
                   >
-                    T
+                    S
                   </span>
                   <span className="text-sm font-semibold uppercase tracking-wider text-white">SentiGuard</span>
                 </div>
                 <button
                   onClick={() => setMobileMenuOpen(false)}
-                  className="-m-2 p-2 text-chrome-400 transition-all duration-200 ease-in-out hover:text-white"
+                  className="-m-2 p-2 text-slate-400 transition-all duration-200 ease-in-out hover:text-white"
                   aria-label="Закрыть меню"
                 >
                   <X className="size-5" strokeWidth={1.75} />
@@ -137,25 +138,25 @@ export function DashboardLayout({
         )}
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-chrome-600 bg-ink-900 px-4 sm:gap-6 sm:px-6 md:px-8">
+          <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 sm:gap-6 sm:px-6 md:px-8">
             <div className="flex items-center gap-3">
               {/* Mobile Menu Button */}
               <button
                 onClick={() => setMobileMenuOpen(true)}
-                className="p-2 text-chrome-400 transition-all duration-200 ease-in-out hover:text-white md:hidden"
+                className="p-2 text-slate-500 transition-all duration-200 ease-in-out hover:text-slate-900 md:hidden"
                 aria-label="Открыть меню"
               >
                 <Menu className="size-5" strokeWidth={1.75} />
               </button>
-              <h1 className="truncate text-xs font-medium uppercase tracking-wider text-chrome-400">{title}</h1>
+              <h1 className="truncate text-xs font-medium uppercase tracking-wider text-slate-500">{title}</h1>
             </div>
             <div className="flex items-center gap-3 sm:gap-6">
-              <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-chrome-400">
-                <span aria-hidden="true" className={cn('size-2', online ? 'bg-lime' : 'bg-chrome-700')} />
+              <span className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500">
+                <span aria-hidden="true" className={cn('size-2 rounded-full', online ? 'bg-emerald-500' : 'bg-slate-300')} />
                 <span className="hidden sm:inline">{online ? 'Онлайн' : 'Офлайн'}</span>
               </span>
               {userEmail ? (
-                <span className="hidden truncate text-xs text-chrome-400 lg:inline">{userEmail}</span>
+                <span className="hidden truncate text-xs text-slate-500 lg:inline">{userEmail}</span>
               ) : null}
               <Button variant="outline" size="sm" onClick={handleLogout} className="shrink-0">
                 <LogOut className="size-4" strokeWidth={1.75} aria-hidden="true" />
@@ -164,7 +165,7 @@ export function DashboardLayout({
             </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto bg-ink-950 p-4 sm:p-6 md:p-8">{children ?? <Outlet />}</main>
+          <main className="flex-1 overflow-y-auto bg-slate-50 p-4 sm:p-6 md:p-8">{children ?? <Outlet />}</main>
         </div>
       </div>
       <QuotaModal />

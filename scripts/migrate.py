@@ -68,6 +68,7 @@ MIGRATIONS: Final = (
     "048_outbox_relay_claim_ack.sql",
     "049_add_priority_and_generated_reply.sql",
     "050_add_review_reply_status.sql",
+    "051_review_archive.sql",
 )
 _DOLLAR_TAG = re.compile(r"\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$")
 _TRANSACTION_COMMANDS = {"BEGIN", "COMMIT", "ROLLBACK"}

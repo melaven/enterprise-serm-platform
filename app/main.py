@@ -287,6 +287,8 @@ app.middleware("http")(add_rate_limit_headers)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
@@ -332,6 +334,7 @@ app.include_router(platforms.router, prefix="/api/v1/platforms", tags=["Platform
 
 # Подключаем parser router с LLM-аналитикой
 app.include_router(parser.router)
+app.include_router(parser.router, prefix="/api/v1")
 
 # Подключаем analytics router
 app.include_router(analytics.router, tags=["Analytics"])

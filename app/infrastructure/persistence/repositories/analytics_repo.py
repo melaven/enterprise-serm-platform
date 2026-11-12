@@ -20,7 +20,7 @@ async def get_reviews_list(
 ) -> list[Review]:
     stmt = (
         select(Review)
-        .where(Review.company_id == tenant_id)
+        .where(Review.company_id == tenant_id, Review.is_archived.is_(False))
         .order_by(Review.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -40,7 +40,7 @@ async def get_dashboard_metrics(
             Review.ai_pending,
             func.count(Review.id),
         )
-        .where(Review.company_id == tenant_id)
+        .where(Review.company_id == tenant_id, Review.is_archived.is_(False))
         .group_by(Review.sentiment, Review.is_critical, Review.ai_pending)
     )
     result = await db.execute(stmt)
@@ -71,13 +71,15 @@ async def get_dashboard_metrics(
     start = datetime.combine(first_day, time.min, tzinfo=timezone.utc)
     avg_rating = await db.scalar(
         select(func.avg(func.nullif(Review.rating, 0))).where(
-            Review.company_id == tenant_id
+            Review.company_id == tenant_id,
+            Review.is_archived.is_(False),
         )
     )
     timeline_result = await db.execute(
         select(func.date(Review.created_at), func.count(Review.id))
         .where(
             Review.company_id == tenant_id,
+            Review.is_archived.is_(False),
             Review.created_at >= start,
         )
         .group_by(func.date(Review.created_at))

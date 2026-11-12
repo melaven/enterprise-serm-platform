@@ -64,7 +64,7 @@ export function useSubmitReview(
       const signal = controller.signal;
 
       try {
-        const response = await apiClient.post<Review>('/api/v1/reviews', data, {
+        const response = await apiClient.post<Review>('/v1/reviews', data, {
           signal,
         });
         return response.data;

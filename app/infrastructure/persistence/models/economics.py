@@ -203,6 +203,9 @@ class Review(Base):
     ai_pending: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=sql_text("false")
     )
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=sql_text("false")
+    )
     ai_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     retry_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=sql_text("0")

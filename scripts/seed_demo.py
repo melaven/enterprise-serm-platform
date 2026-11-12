@@ -3,9 +3,15 @@
 # ruff: noqa: E402
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import argparse
 import asyncio
+import json
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,6 +23,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+from supabase import create_client
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -24,6 +31,7 @@ if str(ROOT) not in sys.path:
 
 from app.api.schemas.economics import ReplyModerationStatus, ReviewStatus
 from app.core.database import DATABASE_URL, AsyncSessionLocal, engine
+from app.core.pii import PIISanitizer
 from app.core.tenant_session import set_tenant_rls_context
 from app.domain.reviews.state import ReviewState
 from app.infrastructure.persistence.models.economics import Company, Review
@@ -36,6 +44,8 @@ logger = logging.getLogger("seed_demo")
 
 DEMO_TENANT_ID = UUID("d3b20001-0000-4000-8000-000000000001")
 DEMO_COMPANY_NAME = "Демо: SentiGuard SaaS"
+DEMO_USER_EMAIL = os.getenv("DEMO_USER_EMAIL", "admin@sentiguard.io")
+DEMO_USER_PASSWORD = os.getenv("DEMO_USER_PASSWORD", "admin123")
 OUTBOX_SOURCE = "scripts.seed_demo"
 LOCAL_DATABASE_HOSTS = {
     "localhost",
@@ -57,6 +67,7 @@ class DemoReview:
     moderation_status: ReplyModerationStatus
     state: ReviewState
     sentiment: str
+    tags: tuple[str, ...]
     generated_reply: str | None = None
 
 
@@ -75,6 +86,7 @@ REVIEWS: tuple[DemoReview, ...] = (
         moderation_status=ReplyModerationStatus.NEW,
         state=ReviewState.NEW,
         sentiment="NEGATIVE",
+        tags=("SERVICE",),
     ),
     DemoReview(
         external_id="demo-b2b-bug-002",
@@ -90,6 +102,7 @@ REVIEWS: tuple[DemoReview, ...] = (
         moderation_status=ReplyModerationStatus.NEW,
         state=ReviewState.NEW,
         sentiment="NEGATIVE",
+        tags=("PRODUCT_QUALITY",),
     ),
     DemoReview(
         external_id="demo-b2b-onboarding-003",
@@ -104,6 +117,7 @@ REVIEWS: tuple[DemoReview, ...] = (
         moderation_status=ReplyModerationStatus.DRAFTED,
         state=ReviewState.DRAFT_PENDING,
         sentiment="POSITIVE",
+        tags=("SERVICE",),
         generated_reply=(
             "Илья, спасибо за отзыв! Рады, что команда смогла быстро пройти "
             "онбординг и запустить интеграцию. Передадим ваши замечания по "
@@ -124,6 +138,7 @@ REVIEWS: tuple[DemoReview, ...] = (
         moderation_status=ReplyModerationStatus.DRAFTED,
         state=ReviewState.DRAFT_PENDING,
         sentiment="POSITIVE",
+        tags=("OTHER",),
         generated_reply=(
             "Екатерина, благодарим за доверие и подробную обратную связь. "
             "Здорово, что отчёты помогают командам быстрее видеть статус задач. "
@@ -143,6 +158,7 @@ REVIEWS: tuple[DemoReview, ...] = (
         moderation_status=ReplyModerationStatus.DRAFTED,
         state=ReviewState.DRAFT_PENDING,
         sentiment="POSITIVE",
+        tags=("PRODUCT_QUALITY",),
         generated_reply=(
             "Денис, спасибо, что поделились опытом интеграции. Рады, что "
             "документация помогла быстро запустить тестовый контур. Учтём замечание "
@@ -162,6 +178,7 @@ REVIEWS: tuple[DemoReview, ...] = (
         moderation_status=ReplyModerationStatus.PUBLISHED,
         state=ReviewState.PUBLISHED,
         sentiment="POSITIVE",
+        tags=("SERVICE",),
         generated_reply=(
             "Ольга, спасибо за высокую оценку! Нам важно, чтобы запуск в крупных "
             "командах проходил предсказуемо и с учётом требований безопасности. "
@@ -181,6 +198,7 @@ REVIEWS: tuple[DemoReview, ...] = (
         moderation_status=ReplyModerationStatus.PUBLISHED,
         state=ReviewState.PUBLISHED,
         sentiment="POSITIVE",
+        tags=("SERVICE",),
         generated_reply=(
             "Павел, благодарим за отзыв и за то, что остаетесь с нами. Рады, что "
             "после внедрения команде стало проще контролировать процессы и меньше "
@@ -284,6 +302,93 @@ async def create_demo_tenant() -> None:
     logger.info("Demo company %s is ready.", DEMO_TENANT_ID)
 
 
+def provision_demo_auth_user() -> UUID:
+    supabase_url = os.getenv("SUPABASE_URL")
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    if not supabase_url or not service_role_key:
+        raise RuntimeError(
+            "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required to create "
+            "the demo user."
+        )
+
+    admin = create_client(supabase_url, service_role_key).auth.admin
+    existing_user = None
+    page = 1
+    while existing_user is None:
+        users = admin.list_users(page=page, per_page=1000)
+        existing_user = next(
+            (
+                user
+                for user in users
+                if user.email and user.email.lower() == DEMO_USER_EMAIL
+            ),
+            None,
+        )
+        if existing_user is not None or len(users) < 1000:
+            break
+        page += 1
+
+    attributes = {
+        "email": DEMO_USER_EMAIL,
+        "password": DEMO_USER_PASSWORD,
+        "email_confirm": True,
+        "user_metadata": {"tenant_id": str(DEMO_TENANT_ID)},
+    }
+    if existing_user is None:
+        response = admin.create_user(attributes)
+    else:
+        response = admin.update_user_by_id(str(existing_user.id), attributes)
+
+    if response.user is None:
+        raise RuntimeError("Supabase did not return the demo user after provisioning.")
+
+    return UUID(str(response.user.id))
+
+
+async def create_demo_user() -> None:
+    user_id = await asyncio.to_thread(provision_demo_auth_user)
+    admin_engine = create_async_engine(
+        admin_database_url(),
+        poolclass=NullPool,
+        connect_args={"statement_cache_size": 0},
+    )
+    try:
+        async with admin_engine.begin() as connection:
+            await connection.execute(
+                text(
+                    """
+                    INSERT INTO auth.users (id, email, raw_user_meta_data)
+                    VALUES (:user_id, :email, CAST(:user_metadata AS jsonb))
+                    ON CONFLICT (id) DO NOTHING
+                    """
+                ),
+                {
+                    "user_id": user_id,
+                    "email": DEMO_USER_EMAIL,
+                    "user_metadata": json.dumps(
+                        {"tenant_id": str(DEMO_TENANT_ID)}, ensure_ascii=False
+                    ),
+                },
+            )
+            await connection.execute(
+                text(
+                    """
+                    INSERT INTO public.company_members (user_id, company_id, role)
+                    VALUES (:user_id, :company_id, 'admin')
+                    ON CONFLICT (user_id) DO UPDATE
+                    SET company_id = EXCLUDED.company_id, role = 'admin'
+                    """
+                ),
+                {"user_id": user_id, "company_id": DEMO_TENANT_ID},
+            )
+    finally:
+        await admin_engine.dispose()
+
+    logger.info(
+        "Demo admin %s is ready for tenant %s.", DEMO_USER_EMAIL, DEMO_TENANT_ID
+    )
+
+
 def make_review(
     template: DemoReview,
     created_at: datetime,
@@ -295,8 +400,9 @@ def make_review(
         id=review_id,
         company_id=DEMO_TENANT_ID,
         platform="B2B SaaS",
-        external_id=template.external_id,
-        author_name=template.author_name,
+        external_id=PIISanitizer.hash_user_id("B2B SaaS", template.external_id),
+        author_name="Автор отзыва",
+        author_display="Клиент",
         rating=template.rating,
         text=template.text,
         status=ReviewStatus.NEW,
@@ -309,11 +415,10 @@ def make_review(
         created_at=created_at,
         is_analyzed=template.generated_reply is not None,
         is_critical=template.rating <= 2,
-        ai_pending=template.reply_status == "pending",  # Note: Internal field, kept as-is for DB compatibility
-        analysis_tags=["support", "enterprise"]
-        if template.rating <= 2
-        else ["b2b", "saas"],
-        tags=["support", "enterprise"] if template.rating <= 2 else ["b2b", "saas"],
+        ai_pending=template.reply_status
+        == "pending",  # Note: Internal field, kept as-is for DB compatibility
+        analysis_tags=list(template.tags),
+        tags=list(template.tags),
     )
 
 
@@ -352,33 +457,25 @@ async def seed_demo_reviews() -> None:
                     "a local database to create it with DATABASE_URL."
                 )
 
-            stale_event_ids = await session.scalars(
-                select(OutboxEvent.id).where(
-                    OutboxEvent.status == "pending",
-                    OutboxEvent.payload["source"].as_string() == OUTBOX_SOURCE,
-                    OutboxEvent.payload["tenant_id"].as_string() == str(DEMO_TENANT_ID),
-                )
-            )
-            for event_id in stale_event_ids:
-                result = await session.scalar(
-                    text(
-                        "SELECT public.set_outbox_event_status("
-                        ":event_id, 'processed')"
-                    ),
-                    {"event_id": event_id},
-                )
-                if result is not True:
-                    raise RuntimeError(
-                        f"Could not retire stale demo outbox event {event_id}."
-                    )
-
             await session.execute(
                 delete(Review).where(Review.company_id == DEMO_TENANT_ID)
             )
             session.add_all(review_rows)
 
-            for review in review_rows[:2]:
-                session.add(
+            review_ids = [str(review.id) for review in review_rows[:2]]
+            active_outbox_review_ids = set(
+                await session.scalars(
+                    select(OutboxEvent.payload["review_id"].as_string()).where(
+                        OutboxEvent.status.in_(("pending", "processing")),
+                        OutboxEvent.payload["source"].as_string() == OUTBOX_SOURCE,
+                        OutboxEvent.payload["tenant_id"].as_string()
+                        == str(DEMO_TENANT_ID),
+                        OutboxEvent.payload["review_id"].as_string().in_(review_ids),
+                    )
+                )
+            )
+            session.add_all(
+                [
                     OutboxEvent(
                         event_type=OutboxEventType.REVIEW_CREATED,
                         payload={
@@ -388,7 +485,10 @@ async def seed_demo_reviews() -> None:
                         },
                         priority=1,
                     )
-                )
+                    for review in review_rows[:2]
+                    if str(review.id) not in active_outbox_review_ids
+                ]
+            )
 
             await session.commit()
         except Exception:
@@ -410,6 +510,7 @@ async def main() -> None:
     try:
         if args.create_tenant:
             await create_demo_tenant()
+            await create_demo_user()
         await seed_demo_reviews()
     finally:
         await engine.dispose()

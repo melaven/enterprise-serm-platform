@@ -51,6 +51,9 @@ concurrent runners with a PostgreSQL advisory lock, and records successful
 versions in `public.serm_schema_migrations`. It stops on the first error; fix
 the reported migration issue before retrying.
 
+Migration `051_review_archive.sql` adds the tenant-scoped soft-archive flag used
+by the dashboard review list.
+
 The Docker backend entrypoint runs the same migration command before starting
 the API. The seed script requires the migrated schema and will not create
 tables or extensions itself.

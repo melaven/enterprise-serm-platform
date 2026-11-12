@@ -18,7 +18,7 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 /**
- * LoginPage — строгая flat-форма входа на bg-ink-950
+ * LoginPage — строгая flat-форма входа
  * 
  * Интеграция:
  * - useAppStore.performLogin() для API /api/v1/auth/login
@@ -72,23 +72,21 @@ export function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-ink-950 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-ink px-4">
       <div className="w-full max-w-md space-y-8">
         {/* Логотип / Название */}
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-white">
-            SentiGuard <span className="bg-plum px-2 text-white">SERM</span>
-          </h1>
-          <p className="mt-3 text-chrome-400">Аналитика оценок и качества сервиса</p>
+          <h1 className="text-4xl font-bold text-chrome-300">SentiGuard</h1>
+          <p className="mt-3 text-chrome-500">Аналитика оценок и качества сервиса</p>
         </div>
 
         {/* Форма входа */}
-        <div className="rounded-sm border-2 border-chrome-600 bg-ink-900 p-8">
-          <h2 className="mb-6 text-2xl font-semibold text-white">Вход</h2>
-          
+        <div className="rounded-none border border-chrome-600 bg-ink-50 p-8">
+          <h2 className="mb-6 text-2xl font-semibold text-chrome-300">Вход</h2>
+
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-2">
-              <label htmlFor="email" className="block text-sm font-medium text-chrome-300">
+              <label htmlFor="email" className="block text-sm font-medium text-chrome-400">
                 Email
               </label>
               <Input
@@ -97,15 +95,16 @@ export function LoginPage() {
                 placeholder="you@company.com"
                 disabled={isLoading}
                 autoComplete="email"
+                className="border-chrome-600 bg-ink-50 text-chrome-300 placeholder:text-chrome-500 focus-visible:border-plum focus-visible:outline-plum aria-[invalid=true]:border-red-600"
                 {...form.register('email')}
               />
               {form.formState.errors.email && (
-                <p className="mt-1 text-sm text-plum">{form.formState.errors.email.message}</p>
+                <p className="mt-1 text-sm text-red-600">{form.formState.errors.email.message}</p>
               )}
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="password" className="block text-sm font-medium text-chrome-300">
+              <label htmlFor="password" className="block text-sm font-medium text-chrome-400">
                 Пароль
               </label>
               <Input
@@ -114,19 +113,20 @@ export function LoginPage() {
                 placeholder="••••••••"
                 disabled={isLoading}
                 autoComplete="current-password"
+                className="border-chrome-600 bg-ink-50 text-chrome-300 placeholder:text-chrome-500 focus-visible:border-plum focus-visible:outline-plum aria-[invalid=true]:border-red-600"
                 {...form.register('password')}
               />
               {form.formState.errors.password && (
-                <p className="mt-1 text-sm text-plum">{form.formState.errors.password.message}</p>
+                <p className="mt-1 text-sm text-red-600">{form.formState.errors.password.message}</p>
               )}
             </div>
 
             <Button
               type="submit"
-              variant="default"
+              variant="outline"
               size="lg"
               disabled={isLoading}
-              className="w-full bg-lime text-ink-950 hover:bg-lime/90"
+              className="w-full border-transparent bg-plum text-white hover:bg-plum-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-plum"
             >
               {isLoading ? (
                 <>
@@ -139,12 +139,12 @@ export function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-chrome-400">
+          <div className="mt-6 text-center text-sm text-chrome-500">
             Нет аккаунта?{' '}
             <button
               type="button"
               onClick={() => navigate('/register')}
-              className="font-medium text-plum hover:text-plum-400 transition-colors"
+              className="font-medium text-chrome-300 transition-colors hover:text-plum"
             >
               Зарегистрироваться
             </button>

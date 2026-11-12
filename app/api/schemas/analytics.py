@@ -28,6 +28,10 @@ class DashboardReview(BaseModel):
     risk_level: RiskLevel
     sentiment: str | None
     tags: list[str] = Field(default_factory=list)
+    threat_level: int | None = None
+    suggested_reply: str | None = None
+    generated_reply: str | None = None
+    moderation_status: str | None = None
     is_critical: bool
     status: ReviewStatus
     financial_impact: float

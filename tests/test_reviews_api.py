@@ -301,6 +301,31 @@ async def test_reviews_summary_is_isolated_by_tenant(
     assert tenant_a_summary["critical_reviews"] == 1
     assert sum(point["reviews"] for point in tenant_a_summary["timeline"]) == 3
 
+    analytics_summary = await tenant_a_client.get("/api/v1/analytics/dashboard")
+    assert analytics_summary.status_code == 200
+    assert analytics_summary.json() == tenant_a_response.json()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_archived_reviews_are_hidden_from_dashboard(
+    client_factory: ClientFactory,
+    review_tenants: dict[str, UUID],
+) -> None:
+    client = client_factory(review_tenants["tenant_a"])
+    listed = await client.get("/api/v1/reviews")
+    review_id = listed.json()["data"]["items"][0]["id"]
+
+    archived = await client.post(f"/api/v1/reviews/{review_id}/archive")
+
+    assert archived.status_code == 204
+    after_archive = await client.get("/api/v1/reviews")
+    assert after_archive.status_code == 200
+    assert after_archive.json()["data"]["total"] == 2
+    assert all(
+        review["id"] != review_id for review in after_archive.json()["data"]["items"]
+    )
+
 
 @pytest.mark.integration
 @pytest.mark.asyncio

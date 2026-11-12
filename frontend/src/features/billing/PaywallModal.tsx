@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { apiClient } from '@/api/services';
 
 // ============================================================================
 // Types
@@ -89,27 +90,13 @@ export function PaywallModal({
     
     try {
       // Call backend to create Stripe Checkout session
-      const response = await fetch('/api/v1/billing/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-        },
-        body: JSON.stringify({
-          price_id: 'price_pro_monthly',
-          success_url: `${window.location.origin}/?upgraded=true`,
-          cancel_url: window.location.href,
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to create checkout session');
+      const { data } = await apiClient.post<{ url: string }>('/v1/billing/checkout');
+      if (!data.url) {
+        throw new Error('Billing API did not return a checkout URL');
       }
       
-      const { checkout_url } = await response.json();
-      
       // Redirect to Stripe
-      window.location.href = checkout_url;
+      window.location.href = data.url;
     } catch (error) {
       console.error('Upgrade error:', error);
       toast.error('Failed to start checkout. Please try again.');

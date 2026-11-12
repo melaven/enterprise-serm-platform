@@ -5,6 +5,7 @@ Analytics API Router
 
 import csv
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta, timezone
 from io import StringIO
 from uuid import UUID
 
@@ -13,7 +14,12 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.schemas.analytics import AnalyticsRequest, DetailedAnalyticsResponse
+from app.api.schemas.analytics import (
+    AnalyticsRequest,
+    DashboardMetrics,
+    DashboardMetricsResponse,
+    DetailedAnalyticsResponse,
+)
 from app.application.analytics import AnalyticsService
 from app.core.auth import get_current_tenant
 from app.core.database import AsyncSessionLocal
@@ -21,6 +27,7 @@ from app.core.dependencies import (
     get_company_repository,
     get_platform_repository,
     get_review_repository,
+    get_tenant_db,
 )
 from app.core.exceptions import BusinessLogicError, NotFoundError
 from app.core.tenant_session import get_tenant_session
@@ -29,6 +36,9 @@ from app.infrastructure.persistence.repositories import (
     CompanyRepository,
     PlatformRepository,
     ReviewRepository,
+)
+from app.infrastructure.persistence.repositories.analytics_repo import (
+    get_dashboard_metrics,
 )
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["Analytics"])
@@ -63,9 +73,11 @@ async def get_analytics_service(
     description="Выгрузка отзывов текущей компании для бизнес-отчетов",
 )
 async def export_reviews_csv(
+    days: int = Query(30, ge=1, le=365, description="Количество дней для экспорта"),
     tenant_id: UUID = Depends(get_current_tenant),
     session: AsyncSession = Depends(get_analytics_tenant_session),
 ) -> StreamingResponse:
+    since = datetime.now(timezone.utc) - timedelta(days=days)
     result = await session.execute(
         select(
             Review.created_at,
@@ -75,7 +87,11 @@ async def export_reviews_csv(
             Review.threat_level,
             Review.text,
         )
-        .where(Review.company_id == tenant_id)
+        .where(
+            Review.company_id == tenant_id,
+            Review.is_archived.is_(False),
+            Review.created_at >= since,
+        )
         .order_by(Review.created_at)
     )
 
@@ -107,6 +123,22 @@ async def export_reviews_csv(
         headers={
             "Content-Disposition": 'attachment; filename="serm_report.csv"',
         },
+    )
+
+
+@router.get(
+    "/dashboard",
+    response_model=DashboardMetricsResponse,
+    summary="KPI-метрики дашборда",
+)
+async def get_dashboard_summary(
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> DashboardMetricsResponse:
+    metrics = await get_dashboard_metrics(db, tenant_id)
+    return DashboardMetricsResponse(
+        success=True,
+        data=DashboardMetrics(**metrics),
     )
 
 

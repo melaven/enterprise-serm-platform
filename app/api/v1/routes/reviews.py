@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import and_, column, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.api.dependencies.idempotency import verify_review_idempotency
 from app.api.dependencies.tenant import verify_tenant_access
 from app.api.schemas.analytics import (
     DashboardMetrics,
@@ -53,7 +55,6 @@ from app.core.dependencies import (
     get_review_repository,
     get_sentiment_service,
     get_tenant_db,
-    verify_idempotency,
 )
 from app.core.dispatch import enqueue_bulk
 from app.core.pii_sanitizer import PIISanitizer
@@ -92,7 +93,7 @@ def _require_crisis_publish_role(company_role: str | None) -> None:
 async def ingest_review(
     payload: ReviewIngestPayload,
     tenant_id: UUID = Depends(verify_tenant_access),
-    _idempotency: None = Depends(verify_idempotency),
+    _idempotency: None = Depends(verify_review_idempotency),
     arq_pool: ArqRedis | None = Depends(get_review_queue),
 ) -> ReviewIngestResponse:
     """Queue an untrusted review payload for worker-side PII sanitization."""
@@ -124,6 +125,13 @@ async def ingest_review(
     )
 
 
+@router.post(
+    "",
+    response_model=ReviewResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Создать новый отзыв",
+    description="Принять новый отзыв от внешней системы и сохранить в базу данных",
+)
 @router.post(
     "/",
     response_model=ReviewResponse,
@@ -361,14 +369,21 @@ async def receive_review_webhook(
     description="Детальная информация об отзыве",
 )
 async def get_review(
-    review_id: UUID, review_repo: ReviewRepository = Depends(get_review_repository)
+    review_id: UUID,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
 ) -> JSONResponse:
     """
     Получение полной информации об отзыве
     включая данные платформы и компании
     """
 
-    review = await review_repo.get_with_platform_and_company(review_id)
+    result = await db.execute(
+        select(Review)
+        .where(Review.id == review_id, Review.company_id == tenant_id)
+        .options(selectinload(Review.platform_ref), selectinload(Review.company))
+    )
+    review = result.scalar_one_or_none()
     if not review:
         return JSONResponse(
             status_code=404,
@@ -386,7 +401,9 @@ async def get_review(
         content={
             "success": True,
             "data": {
+                "id": str(review.id),
                 "review_id": str(review.id),
+                "platform": review.platform,
                 "platform_name": (
                     review.platform_ref.name
                     if review.platform_ref
@@ -397,6 +414,16 @@ async def get_review(
                 "rating": review.rating,
                 "text": review.text,
                 "status": review.status.value,
+                "state": review.state.value,
+                "sentiment": review.sentiment,
+                "threat_level": review.threat_level,
+                "suggested_reply": review.suggested_reply,
+                "generated_reply": review.generated_reply,
+                "moderation_status": review.moderation_status.value,
+                "tags": review.tags or [],
+                "is_critical": review.is_critical,
+                "ai_pending": review.ai_pending,
+                "auto_reply": review.auto_reply,
                 "financial_impact": review.financial_impact,
                 "si_response": review.si_response,
                 "created_at": review.created_at.isoformat(),
@@ -744,7 +771,10 @@ async def get_reviews_list(
         offset if offset is not None else (page - 1) * effective_page_size
     )
     response_page = effective_offset // effective_page_size + 1
-    filters = [Review.company_id == tenant_id]
+    filters = [
+        Review.company_id == tenant_id,
+        Review.is_archived.is_(False),
+    ]
 
     if platform:
         # Используем column() для обращения к text-колонке platform
@@ -830,6 +860,32 @@ async def get_reviews_summary(
         success=True,
         data=DashboardMetrics(**metrics),
     )
+
+
+@router.post(
+    "/{review_id}/archive",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Архивировать отзыв",
+)
+async def archive_review(
+    review_id: UUID,
+    tenant_id: UUID = Depends(get_current_tenant),
+    db: AsyncSession = Depends(get_tenant_db),
+) -> None:
+    result = await db.execute(
+        select(Review)
+        .where(Review.id == review_id, Review.company_id == tenant_id)
+        .with_for_update()
+    )
+    review = result.scalar_one_or_none()
+    if review is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Review not found",
+        )
+
+    review.is_archived = True
+    await db.flush()
 
 
 # ============================================================================

@@ -75,3 +75,23 @@ def test_cors_exposes_retry_after_and_correlation_id(cors_client: TestClient) ->
         header.strip().lower()
         for header in response.headers["access-control-expose-headers"].split(",")
     } == {"retry-after", "x-correlation-id"}
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["http://localhost:3000", "http://127.0.0.1:3000"],
+)
+def test_cors_allows_local_frontend_origins(
+    cors_client: TestClient, origin: str
+) -> None:
+    response = cors_client.options(
+        "/api/v1/auth/login",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin

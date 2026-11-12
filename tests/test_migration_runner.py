@@ -54,6 +54,17 @@ def test_migration_chain_respects_dependencies_and_all_files_exist() -> None:
     )
 
 
+def test_review_archive_migration_matches_runtime_model() -> None:
+    filename = "051_review_archive.sql"
+    assert filename in MIGRATIONS
+
+    sql = (MIGRATIONS_DIR / filename).read_text(encoding="utf-8")
+    statements = migration_statements(sql)
+
+    assert any("ADD COLUMN IF NOT EXISTS is_archived" in s for s in statements)
+    assert any("ix_reviews_company_archived_created" in s for s in statements)
+
+
 def test_quota_service_migration_matches_runtime_contract() -> None:
     sql = (MIGRATIONS_DIR / "015_quota_service_contract.sql").read_text(
         encoding="utf-8"

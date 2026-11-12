@@ -15,5 +15,5 @@ async def duplicate_webhook_exception_handler(
     """Acknowledge duplicates so webhook providers do not retry them."""
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED,
-        content={"status": "accepted", "duplicate": True},
+        content={"message": "Already processing"},
     )

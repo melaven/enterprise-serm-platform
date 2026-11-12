@@ -212,11 +212,11 @@ export interface AuthResponse {
   access_token: string;
   token_type: 'bearer';
   expires_in: number;
-  refresh_token: string;
-  user: {
+  refresh_token?: string;
+  user?: {
     id: string;
     email: string;
-    tenant_id: string;
+    tenant_id?: string | null;
   };
 }
 

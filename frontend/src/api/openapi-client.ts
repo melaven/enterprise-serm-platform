@@ -33,6 +33,7 @@
  */
 
 import createClient from 'openapi-fetch';
+import { tokens } from './services';
 import type { paths } from './schema';
 
 // schema.d.ts is a placeholder until the backend OpenAPI types are generated.
@@ -50,9 +51,10 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
  * @returns Configured openapi-fetch client
  */
 export function createOpenAPIClient(token?: string) {
+  const accessToken = token ?? tokens.get();
   const client = createClient<ClientPaths>({
     baseUrl: BASE_URL,
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
   });
 
   return client;
@@ -90,7 +92,7 @@ export const api = {
    */
   getReview: async (reviewId: string) => {
     const client = createOpenAPIClient();
-    return client.GET('/api/v1/reviews/{review_id}', {
+    return client.GET('/api/v1/reviews/details/{review_id}', {
       params: { path: { review_id: reviewId } },
     });
   },
@@ -120,7 +122,7 @@ export const api = {
     const client = createOpenAPIClient();
     return client.PUT('/api/v1/reviews/{review_id}/status', {
       params: { path: { review_id: reviewId } },
-      body,
+      query: body,
     });
   },
 

@@ -9,13 +9,11 @@ from functools import lru_cache
 from uuid import UUID
 
 from arq.connections import ArqRedis
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.errors import DuplicateWebhookError
 from app.api.schemas.auth import JWTPayload
-from app.api.schemas.ingest import ReviewIngestPayload
 from app.application import (
     EconomicsService,
     ParserService,
@@ -32,29 +30,12 @@ from app.infrastructure.persistence.repositories import (
     PlatformRepository,
     ReviewRepository,
 )
-from app.infrastructure.redis.deduplicator import RedisDeduplicator
 
 from .auth import get_current_tenant, get_jwt_payload
 from .database import AsyncSessionLocal
 from .tenant_session import set_rls_context, track_session_writes
 
 logger = logging.getLogger(__name__)
-
-
-async def verify_idempotency(payload: ReviewIngestPayload, request: Request) -> None:
-    """Reject duplicate platform review events and acknowledge them with HTTP 202."""
-    redis = getattr(request.app.state, "redis_pool", None)
-    if redis is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Review ingestion idempotency service is unavailable",
-        )
-
-    if await RedisDeduplicator(redis).is_duplicate(
-        payload.platform,
-        payload.external_id,
-    ):
-        raise DuplicateWebhookError
 
 
 # === TENANT-AWARE DATABASE DEPENDENCIES ===

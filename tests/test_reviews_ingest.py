@@ -5,6 +5,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from app.api.dependencies.idempotency import build_review_idempotency_key
 from app.api.dependencies.tenant import get_current_user
 from app.api.errors import (
     DuplicateWebhookError,
@@ -126,12 +127,22 @@ async def test_duplicate_ingest_returns_202_without_enqueuing_again() -> None:
 
     assert first_response.status_code == 202
     assert duplicate_response.status_code == 202
-    assert duplicate_response.json() == {"status": "accepted", "duplicate": True}
+    assert duplicate_response.json() == {"message": "Already processing"}
     assert len(queue.calls) == 1
+    expected_key = build_review_idempotency_key(
+        tenant_id,
+        "yandex",
+        "review-123",
+    )
     assert app.state.redis_pool.set_calls == [
-        ("dedup:review:yandex:review-123", "1", 300, True),
-        ("dedup:review:yandex:review-123", "1", 300, True),
+        (expected_key, "processing", 60, True),
+        (expected_key, "processing", 60, True),
     ]
+    assert expected_key != build_review_idempotency_key(
+        uuid4(),
+        "yandex",
+        "review-123",
+    )
 
 
 @pytest.mark.asyncio

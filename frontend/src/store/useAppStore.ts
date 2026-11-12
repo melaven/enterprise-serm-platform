@@ -85,8 +85,8 @@ export const useAppStore = create<AppState>()(
         set({
           isAuthenticated: true,
           token: auth.access_token,
-          refreshToken: auth.refresh_token,
-          user: auth.user,
+          refreshToken: auth.refresh_token ?? null,
+          user: auth.user ?? null,
           parserJobId: null,
           parserStatus: null,
           parserResult: null,

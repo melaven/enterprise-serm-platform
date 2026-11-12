@@ -14,7 +14,7 @@ import { Check, Crown, ArrowRight, Loader2 } from 'lucide-react';
 import { DashboardLayout } from '@/features/dashboard/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/useAppStore';
-import { getQuotaStatus } from '@/api/services';
+import { apiClient, getQuotaStatus } from '@/api/services';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -337,27 +337,13 @@ export function BillingPage() {
       
       try {
         // Call backend to create Stripe Checkout session
-        const response = await fetch('/api/v1/billing/create-checkout-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
-          },
-          body: JSON.stringify({
-            price_id: 'price_pro_monthly', // Stripe Price ID
-            success_url: `${window.location.origin}/billing?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${window.location.origin}/billing`,
-          }),
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to create checkout session');
+        const { data } = await apiClient.post<{ url: string }>('/v1/billing/checkout');
+        if (!data.url) {
+          throw new Error('Billing API did not return a checkout URL');
         }
         
-        const { checkout_url } = await response.json() as { checkout_url: string };
-        
         // Redirect to Stripe Checkout
-        window.location.href = checkout_url;
+        window.location.href = data.url;
       } catch (error) {
         console.error('Upgrade error:', error);
         toast.error('Не удалось начать оформление. Попробуйте снова.');

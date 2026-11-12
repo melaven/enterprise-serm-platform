@@ -51,10 +51,17 @@ class UserLogin(BaseModel):
     password: str
 
 
+class TokenUserResponse(BaseModel):
+    id: str
+    email: str
+    tenant_id: str | None = None
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int | None = None
+    user: TokenUserResponse | None = None
     # refresh_token removed from response - now in httpOnly cookie
 
 
@@ -156,6 +163,15 @@ async def login(
 
         session = auth_response.session
 
+        user_response = None
+        if session.user is not None and session.user.email:
+            user_metadata = session.user.user_metadata or {}
+            user_response = TokenUserResponse(
+                id=str(session.user.id),
+                email=session.user.email,
+                tenant_id=user_metadata.get("tenant_id"),
+            )
+
         # Set refresh token in httpOnly cookie
         if hasattr(session, "refresh_token") and session.refresh_token:
             response.set_cookie(
@@ -181,6 +197,7 @@ async def login(
             access_token=session.access_token,
             token_type="bearer",
             expires_in=session.expires_in if hasattr(session, "expires_in") else 3600,
+            user=user_response,
         )
 
     except HTTPException:

@@ -8,6 +8,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import { ApiError } from '@/api/client';
+import { apiClient } from '@/api/services';
 
 export interface ParserJobResult {
   reviews_found: number;
@@ -70,24 +72,22 @@ export function useParserPolling({
       if (!isMountedRef.current) return;
 
       try {
-        const response = await fetch(`/api/v1/parsers/status/${jobId}`);
-        
-        // ✅ Critical: Handle HTTP errors properly
-        if (!response.ok) {
-          if (response.status >= 500) {
-            throw new Error(`Server error: ${response.status}`);
-          }
-          if (response.status === 404) {
+        let data: ParserJobStatus;
+        try {
+          const response = await apiClient.get<ParserJobStatus>(
+            `/v1/parser/jobs/${encodeURIComponent(jobId)}`,
+          );
+          data = response.data;
+        } catch (requestError) {
+          if (requestError instanceof ApiError && requestError.status === 404) {
             setState('not_found');
             const errorMsg = 'Parser job not found';
             setError(errorMsg);
             onError?.(errorMsg);
             return;
           }
-          throw new Error(`HTTP ${response.status}`);
+          throw requestError;
         }
-
-        const data: ParserJobStatus = await response.json();
         
         // ✅ Check if still mounted before updating state
         if (!isMountedRef.current) return;

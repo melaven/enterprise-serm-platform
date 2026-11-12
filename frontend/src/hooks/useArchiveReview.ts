@@ -35,7 +35,7 @@ export function useArchiveReview() {
 
   return useMutation<void, Error, ArchiveReviewVariables, ArchiveReviewContext>({
     mutationFn: async ({ reviewId }) => {
-      await apiClient.post(`/api/v1/reviews/${reviewId}/archive`);
+      await apiClient.post(`/v1/reviews/${encodeURIComponent(reviewId)}/archive`);
     },
 
     onMutate: async ({ reviewId }) => {
